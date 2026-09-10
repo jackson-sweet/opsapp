@@ -126,6 +126,8 @@ final class AppStateNotificationRPCTests: XCTestCase {
         let spy = ReviewReminderSyncSpy()
         let syncTask = fixture.appState.checkStaleEstimates(
             dataController: fixture.dataController,
+            count: reviewSnapshot(fixture).counts.staleEstimateCount,
+            threshold: reviewSnapshot(fixture).scope.staleEstimateThresholdDays,
             frequencyDays: 7,
             syncer: spy
         )
@@ -152,6 +154,7 @@ final class AppStateNotificationRPCTests: XCTestCase {
         let spy = ReviewReminderSyncSpy()
         let syncTask = fixture.appState.checkProjectsNeedingTasks(
             dataController: fixture.dataController,
+            count: reviewSnapshot(fixture).counts.projectsWithoutTasksCount,
             frequencyDays: 7,
             syncer: spy
         )
@@ -174,6 +177,8 @@ final class AppStateNotificationRPCTests: XCTestCase {
 
         let first = fixture.appState.checkStaleEstimates(
             dataController: fixture.dataController,
+            count: reviewSnapshot(fixture).counts.staleEstimateCount,
+            threshold: reviewSnapshot(fixture).scope.staleEstimateThresholdDays,
             frequencyDays: 7,
             syncer: spy
         )
@@ -182,6 +187,8 @@ final class AppStateNotificationRPCTests: XCTestCase {
 
         let second = fixture.appState.checkStaleEstimates(
             dataController: fixture.dataController,
+            count: reviewSnapshot(fixture).counts.staleEstimateCount,
+            threshold: reviewSnapshot(fixture).scope.staleEstimateThresholdDays,
             frequencyDays: 7,
             syncer: spy
         )
@@ -221,6 +228,8 @@ final class AppStateNotificationRPCTests: XCTestCase {
         let spy = ReviewReminderSyncSpy()
         let syncTask = fixture.appState.checkStaleEstimates(
             dataController: fixture.dataController,
+            count: reviewSnapshot(fixture).counts.staleEstimateCount,
+            threshold: reviewSnapshot(fixture).scope.staleEstimateThresholdDays,
             frequencyDays: 7,
             syncer: spy
         )
@@ -293,6 +302,12 @@ final class AppStateNotificationRPCTests: XCTestCase {
 
         XCTAssertNil(notifyTask, "nothing overdue -> no task")
         XCTAssertEqual(spy.callCount, 0, "nothing overdue -> the server is never asked")
+    }
+
+    private func reviewSnapshot(_ fixture: Fixture) -> ReviewSnapshot {
+        let request = ReviewSnapshotRequest.capture(dataController: fixture.dataController, permissionStore: .shared)!
+        return ReviewSnapshotCalculator.compute(tasks: fixture.dataController.getAllTasks(),
+            projects: fixture.dataController.getProjects(), request: request)
     }
 
     // MARK: - Fixture

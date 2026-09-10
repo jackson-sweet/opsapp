@@ -90,7 +90,7 @@ struct TaskBadge: View {
             .padding(.horizontal, size.paddingH)
             .padding(.vertical, size.paddingV)
             .frostedBadgeFill(color, cornerRadius: size.cornerRadius, lineWidth: size.borderWidth)
-            .opacity(faded ? 0.4 : 1.0)
+            .opacity(faded ? OPSStyle.Layout.Opacity.faded : 1.0)
     }
 }
 

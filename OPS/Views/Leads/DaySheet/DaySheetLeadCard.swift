@@ -501,6 +501,7 @@ private struct DaySheetCardHeaderShell: ViewModifier {
 /// scrolling list would be the wrong trade.
 private struct DaySheetPhotoStrip: View {
 
+    @EnvironmentObject private var dataController: DataController
     let opportunity: Opportunity
     let canEdit: Bool
 
@@ -550,13 +551,13 @@ private struct DaySheetPhotoStrip: View {
             Button("CANCEL", role: .cancel) {}
         }
         .fullScreenCover(isPresented: $showingCamera) {
-            CameraBatchView { images in
-                showingCamera = false
-                guard !images.isEmpty else { return }
-                let reservationIDs = images.map { _ in UUID().uuidString }
-                importingPhotoIDs.append(contentsOf: reservationIDs)
-                addPhotos(images, reservationIDs: reservationIDs)
+            CameraBatchView(owner: StagedPhotoDestinations.owner(companyID: opportunity.companyId, userID: dataController.currentUser?.id ?? "", kind: "lead", id: opportunity.id)) { batch in
+                await imageService.acceptCapture(batch, opportunity: opportunity, userID: dataController.currentUser?.id ?? "")
             }
+        }
+        .task(id: opportunity.id) {
+            do { try await imageService.recoverCaptures(opportunity: opportunity, userID: dataController.currentUser?.id ?? "") }
+            catch { ToastCenter.shared.present(Toast(label: Feedback.Err.saveFailed, tone: .error)) }
         }
         .photosPicker(
             isPresented: $showingLibrary,
@@ -685,21 +686,15 @@ private struct DaySheetDeckResolver: View {
         // dead — fetching or saving on it would trap. Bail before touching it.
         guard !Task.isCancelled else { return }
 
-        for dto in dtos {
-            let designId = DeckDesign.canonicalUUIDString(dto.id)
-            let descriptor = FetchDescriptor<DeckDesign>(
-                predicate: #Predicate<DeckDesign> { $0.id == designId }
-            )
-            if let existing = (try? modelContext.fetch(descriptor))?.first {
-                existing.applyServerSnapshot(dto, accepting: Set(DeckDesign.serverMergeFields))
-            } else {
-                let model = dto.toModel()
-                model.lastSyncedAt = Date()
-                model.needsSync = false
-                modelContext.insert(model)
-            }
+        // One merge for every deck self-repair fetch. The hand-rolled upsert
+        // this replaced applied full server snapshots with NO pending-write
+        // protection at all, so a deck edit still queued for push could be
+        // overwritten by a card simply appearing on screen. Bug 9f4aeaf8.
+        do {
+            try DeckDesignServerMerge.merge(dtos, into: modelContext)
+        } catch {
+            print("[DaySheetLeadCard] Deck self-repair merge failed: \(error)")
         }
-        try? modelContext.save()
     }
 }
 

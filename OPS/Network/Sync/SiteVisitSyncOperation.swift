@@ -12,30 +12,35 @@ import Foundation
 enum SiteVisitSyncOperation {
     static let completionOperationType = "siteVisitComplete"
     static let mediaOperationType = "siteVisitMediaUpload"
+    static let stageOperationType = "siteVisitStageMove"
 
     struct Payload: Codable, Equatable {
         let companyId: String
         let siteVisitId: String
         let entityId: String
         let completion: SiteVisitCompletionPayload?
+        let stageCommand: SiteVisitStageCommand?
 
         enum CodingKeys: String, CodingKey {
             case companyId = "company_id"
             case siteVisitId = "site_visit_id"
             case entityId = "entity_id"
             case completion
+            case stageCommand = "stage_command"
         }
 
         init(
             companyId: String,
             siteVisitId: String,
             entityId: String,
-            completion: SiteVisitCompletionPayload? = nil
+            completion: SiteVisitCompletionPayload? = nil,
+            stageCommand: SiteVisitStageCommand? = nil
         ) {
             self.companyId = companyId.lowercased()
             self.siteVisitId = siteVisitId.lowercased()
             self.entityId = entityId.lowercased()
             self.completion = completion
+            self.stageCommand = stageCommand
         }
     }
 

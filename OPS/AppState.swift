@@ -132,6 +132,12 @@ class AppState: ObservableObject {
     /// LeadsTabView drains it exactly like the lead deep link.
     @Published var pendingSiteVisitStartLeadId: String? = nil
 
+    /// A BOOK-a-time intent headed for the leads tab's booking sheet — set by
+    /// the appointment-review rail row's SET THE TIME action (bug 74bbb5b7).
+    /// Drained exactly like the two batons above; the sheet is state-aware, so
+    /// a lead that already holds an open booking opens THAT one to reschedule.
+    @Published var pendingVisitBookingLeadId: String? = nil
+
     /// Refresh unread notification count from Supabase
     func refreshUnreadCount() {
         guard let userId = UserDefaults.standard.string(forKey: "user_id"), !userId.isEmpty else { return }
@@ -451,45 +457,30 @@ class AppState: ObservableObject {
 
     // MARK: - Overdue Payment Review Check
 
-    /// Check for overdue projects on app launch and schedule a local notification if needed.
-    /// Should be called after initial data sync completes.
-    func checkOverdueProjects(dataController: DataController) {
-        let companyId = dataController.currentUser?.companyId
-        let company: Company? = companyId.flatMap { dataController.getCompany(id: $0) }
-        let frequency = company?.overdueReminderFrequencyDays ?? 7
-
-        let overdueCount = ProjectReviewQuery.snapshot(
-            dataController: dataController
-        ).overdueProjects.count
-
-        NotificationManager.shared.checkAndSchedulePaymentReviewNotifications(
-            overdueCount: overdueCount,
-            reminderFrequencyDays: frequency
-        )
-
-        // The in-app rail entry for payment review is now handled by
-        // ReviewThresholdService (fires at 5+, persistent, auto-clears).
-        // The local push above remains in place as a periodic iOS reminder.
-
-        // Check for overdue invoices and notify admin/office users
-        checkOverdueInvoices(dataController: dataController)
-
-        // Check for tasks stacking up in the completion review queue
-        checkOverdueTasks(dataController: dataController, frequencyDays: frequency)
-
-        // Check for projects stuck in the estimated phase — the "rotting
-        // quote" problem where a quote is sent and never followed up.
-        checkStaleEstimates(dataController: dataController, frequencyDays: frequency)
-
-        // Check for accepted/in-progress projects with zero tasks — work
-        // committed to but never broken down for the crew.
-        checkProjectsNeedingTasks(dataController: dataController, frequencyDays: frequency)
-
-        // Stacked-review rail notifications: upsert a persistent rail entry
-        // whenever any review queue crosses the 5-item threshold, auto-clear
-        // when it drops below. Runs after all other review checks so the
-        // condensed stack notification reflects the freshest data.
-        ReviewThresholdService.evaluate(dataController: dataController)
+    /// Startup reminders await the same scalar snapshot as the FAB/header/rail.
+    /// Unavailable storage never schedules reminders from invented zero counts.
+    @MainActor
+    @discardableResult
+    func checkOverdueProjects(dataController: DataController) -> Task<Void, Never> {
+        let store = ReviewSnapshotStore.shared
+        store.bind(dataController: dataController)
+        return Task { @MainActor in
+            guard !Task.isCancelled else { return }
+            checkOverdueInvoices(dataController: dataController)
+            guard let snapshot = await store.value(), store.isCurrent(snapshot), !Task.isCancelled else { return }
+            let counts = snapshot.counts
+            let frequency = snapshot.scope.reminderFrequencyDays
+            NotificationManager.shared.checkAndSchedulePaymentReviewNotifications(
+                overdueCount: counts.overduePaymentCount, reminderFrequencyDays: frequency
+            )
+            checkOverdueTasks(count: counts.taskReviewCount, frequencyDays: frequency)
+            checkStaleEstimates(dataController: dataController, count: counts.staleEstimateCount,
+                threshold: snapshot.scope.staleEstimateThresholdDays, frequencyDays: frequency,
+                isCurrent: { store.isCurrent(snapshot) })
+            checkProjectsNeedingTasks(dataController: dataController, count: counts.projectsWithoutTasksCount,
+                frequencyDays: frequency, isCurrent: { store.isCurrent(snapshot) })
+            await store.report(syncer: NotificationRepository.shared).value
+        }
     }
 
     // MARK: - Projects Needing Tasks Check
@@ -500,15 +491,15 @@ class AppState: ObservableObject {
     /// window so it doesn't pile up daily entries for the same backlog.
     /// - Returns: the reporting task, or `nil` when there is nothing to report
     ///   (production call sites discard it; tests await it).
+    @MainActor
     @discardableResult
     func checkProjectsNeedingTasks(
         dataController: DataController,
+        count: Int,
         frequencyDays: Int,
-        syncer: ReviewReminderSyncing = NotificationRepository.shared
+        syncer: ReviewReminderSyncing = NotificationRepository.shared,
+        isCurrent: @escaping () -> Bool = { true }
     ) -> Task<Void, Never>? {
-        let allProjects = dataController.getProjects()
-        let needsTasks = ProjectsWithoutTasksDetector.projectsWithoutTasks(from: allProjects)
-        let count = needsTasks.count
         guard count > 0 else { return nil }
 
         return createInAppReviewNotification(
@@ -517,7 +508,8 @@ class AppState: ObservableObject {
             frequencyDays: frequencyDays,
             kind: "projects_needing_tasks",
             count: count,
-            syncer: syncer
+            syncer: syncer,
+            isCurrent: isCurrent
         )
     }
 
@@ -528,58 +520,37 @@ class AppState: ObservableObject {
     /// the lead goes cold. Runs on the same periodic review-check cadence.
     /// - Returns: the reporting task, or `nil` when there is nothing to report
     ///   (production call sites discard it; tests await it).
+    @MainActor
     @discardableResult
     func checkStaleEstimates(
         dataController: DataController,
+        count: Int,
+        threshold: Int,
         frequencyDays: Int,
-        syncer: ReviewReminderSyncing = NotificationRepository.shared
+        syncer: ReviewReminderSyncing = NotificationRepository.shared,
+        isCurrent: @escaping () -> Bool = { true }
     ) -> Task<Void, Never>? {
-        let allProjects = dataController.getProjects()
-        let companyId = dataController.currentUser?.companyId
-        let company: Company? = companyId.flatMap { dataController.getCompany(id: $0) }
-        // Re-use the same threshold config as overdue review for now; the
-        // UX intent is identical — "nothing has moved in N days, act on it".
-        // Defaults to 30 days when the company hasn't configured a value.
-        let threshold = company?.staleEstimateThresholdDays ?? 30
-
-        let staleProjects = StaleEstimateDetector.staleEstimatedProjects(
-            from: allProjects,
-            thresholdDays: threshold
-        )
-        let staleCount = staleProjects.count
-        guard staleCount > 0 else { return nil }
+        guard count > 0 else { return nil }
 
         return createInAppReviewNotification(
             dataController: dataController,
             throttleKey: "lastStaleEstimateInAppNotification",
             frequencyDays: frequencyDays,
             kind: "stale_estimate_review",
-            count: staleCount,
+            count: count,
             thresholdDays: threshold,
-            syncer: syncer
+            syncer: syncer,
+            isCurrent: isCurrent
         )
     }
 
     // MARK: - Overdue Task Review Check
 
-    /// Check for tasks past their scheduled completion date and notify if there are any
-    /// stacking up in the completion review queue. Called from checkOverdueProjects.
-    func checkOverdueTasks(dataController: DataController, frequencyDays: Int) {
-        // Permission-scoped, identical to the review stack the user opens — a
-        // crew member is notified about THEIR overdue tasks, not the whole
-        // company's. (Previously this counted every task via getAllTasks() with
-        // no scope, so the push read e.g. "15 tasks" while the scoped stack the
-        // user then opened showed only their own ~4.)
-        let reviewableCount = TaskReviewQuery.overdueReviewTasks(dataController: dataController).count
-
+    @MainActor
+    func checkOverdueTasks(count: Int, frequencyDays: Int) {
         NotificationManager.shared.checkAndScheduleTaskReviewNotifications(
-            taskCount: reviewableCount,
-            reminderFrequencyDays: frequencyDays
+            taskCount: count, reminderFrequencyDays: frequencyDays
         )
-
-        // The in-app rail entry for task review is now handled by
-        // ReviewThresholdService (fires at 5+, persistent, auto-clears).
-        // The local push above remains in place as a periodic iOS reminder.
     }
 
     /// Reports one review queue's count to the server, throttled by frequencyDays
@@ -593,6 +564,7 @@ class AppState: ObservableObject {
     ///
     /// - Returns: the reporting task, or `nil` when throttled or no operator is
     ///   resolved (production call sites discard it; tests await it).
+    @MainActor
     @discardableResult
     private func createInAppReviewNotification(
         dataController: DataController,
@@ -601,8 +573,10 @@ class AppState: ObservableObject {
         kind: String,
         count: Int,
         thresholdDays: Int? = nil,
-        syncer: ReviewReminderSyncing = NotificationRepository.shared
+        syncer: ReviewReminderSyncing = NotificationRepository.shared,
+        isCurrent: @escaping () -> Bool = { true }
     ) -> Task<Void, Never>? {
+        guard isCurrent() else { return nil }
         // Throttle: only create a new in-app notification once per frequency window
         if let last = UserDefaults.standard.object(forKey: throttleKey) as? Date {
             let daysSince = Calendar.current.dateComponents([.day], from: last, to: Date()).day ?? 0
@@ -614,7 +588,8 @@ class AppState: ObservableObject {
 
         UserDefaults.standard.set(Date(), forKey: throttleKey)
 
-        return Task {
+        return Task { @MainActor in
+            guard isCurrent(), !Task.isCancelled else { return }
             do {
                 let action = try await syncer.syncReviewReminder(
                     kind: kind,
@@ -624,7 +599,7 @@ class AppState: ObservableObject {
                 // `kept` / `noop` mean the server already holds an unread
                 // reminder for this kind — nothing new landed on the rail, so
                 // the badge is already correct.
-                if action == "created" {
+                if action == "created", isCurrent() {
                     await MainActor.run {
                         self.refreshUnreadCount()
                     }

@@ -276,6 +276,110 @@ enum OPSSchemaLegacyDeckDesignV15 {
     }
 }
 
+/// Released V16–V25 deck shape, before the local server merge base.
+/// Keep this graph immutable: the September 4 in-place field addition changed
+/// all ten released checksums and prevented installed V25 stores from opening.
+enum OPSSchemaLegacyDeckDesignV25 {
+    @Model
+    final class DeckDesign: Identifiable {
+        @Attribute(.unique) var id: String
+        var companyId: String
+        var projectId: String?
+        var opportunityId: String?
+        var title: String
+        var drawingDataJSON: String
+        var thumbnailURL: String?
+        var localThumbnailPath: String?
+        var version: Int = 1
+        var createdBy: String?
+        var needsSync: Bool = false
+        var lastSyncedAt: Date?
+        var syncPriority: Int = 1
+        var deletedAt: Date?
+        var createdAt: Date
+        var updatedAt: Date?
+
+        init(
+            id: String = UUID().uuidString,
+            companyId: String,
+            projectId: String? = nil,
+            opportunityId: String? = nil,
+            title: String = "Untitled Deck",
+            drawingDataJSON: String = "{}",
+            createdBy: String? = nil
+        ) {
+            self.id = id
+            self.companyId = companyId
+            self.projectId = projectId
+            self.opportunityId = opportunityId
+            self.title = title
+            self.drawingDataJSON = drawingDataJSON
+            self.createdBy = createdBy
+            self.createdAt = Date()
+        }
+    }
+}
+
+/// Released V9–V26 project photo shape, before the task link.
+/// `ProjectPhoto` gained `taskId` in V27 (bug a290934f — a photo may document
+/// one task). Freezing the pre-widening shape here keeps every V9–V26
+/// fingerprint byte-identical, so installed stores still open in place.
+enum OPSSchemaLegacyProjectPhotoV26 {
+    @Model
+    final class ProjectPhoto: Identifiable {
+        @Attribute(.unique) var id: String
+        var projectId: String
+        var companyId: String
+        var url: String
+        var thumbnailURL: String?
+        var renderedURL: String?
+        var source: String
+        var siteVisitId: String?
+        var uploadedBy: String
+        var caption: String?
+        var isClientVisible: Bool
+        var takenAt: Date?
+        var createdAt: Date
+        var updatedAt: Date?
+        var deletedAt: Date?
+
+        // Sync tracking
+        var lastSyncedAt: Date?
+        var needsSync: Bool = false
+
+        init(
+            id: String = UUID().uuidString,
+            projectId: String,
+            companyId: String,
+            url: String,
+            thumbnailURL: String? = nil,
+            renderedURL: String? = nil,
+            source: String = "other",
+            siteVisitId: String? = nil,
+            uploadedBy: String,
+            caption: String? = nil,
+            isClientVisible: Bool = false,
+            takenAt: Date? = nil,
+            createdAt: Date = Date()
+        ) {
+            self.id = id
+            self.projectId = projectId
+            self.companyId = companyId
+            self.url = url
+            self.thumbnailURL = thumbnailURL
+            self.renderedURL = renderedURL
+            self.source = source
+            self.siteVisitId = siteVisitId
+            self.uploadedBy = uploadedBy
+            self.caption = caption
+            self.isClientVisible = isClientVisible
+            self.takenAt = takenAt
+            self.createdAt = createdAt
+        }
+    }
+}
+
+
 /// ProjectVinylOrderMarker as it shipped V7 through V16. The live model gained
 /// `vinylColor` / `vinylPO` (projections of `projects.vinyl_color` /
 /// `vinyl_po`, VINYL ORDERS board 2026-07-16) after V16 was already on
@@ -1436,8 +1540,13 @@ enum OPSSchemaCommon {
         OPSSchemaLegacyDeckDesignV15.DeckDesign.self
     ]
 
-    /// DeckDesign from V16 onward, including nullable `opportunityId`.
+    /// DeckDesign as released in V16–V25, including nullable `opportunityId`.
     static let v16DeckDesignModel: [any PersistentModel.Type] = [
+        OPSSchemaLegacyDeckDesignV25.DeckDesign.self
+    ]
+
+    /// V26 adds the nullable server merge base without rewriting released shapes.
+    static let v26DeckDesignModel: [any PersistentModel.Type] = [
         DeckDesign.self
     ]
 
@@ -1525,6 +1634,13 @@ enum OPSSchemaCommon {
     /// previously the only device to render the legacy `projects.project_images`
     /// optimistic append.
     static let v9ProjectPhotoModels: [any PersistentModel.Type] = [
+        OPSSchemaLegacyProjectPhotoV26.ProjectPhoto.self
+    ]
+
+    /// V27 adds the nullable task link without rewriting the released shape.
+    /// A photo may document one of the project's tasks (bug a290934f); the
+    /// column is nullable so every installed row migrates untouched.
+    static let v27ProjectPhotoModel: [any PersistentModel.Type] = [
         ProjectPhoto.self
     ]
 

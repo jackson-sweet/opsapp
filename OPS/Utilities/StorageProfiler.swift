@@ -36,22 +36,22 @@ final class StorageProfiler {
 
     /// Hard floor — below this, OPS photo caching is effectively disabled.
     /// Chosen so a single site-visit batch (≈10 photos at 2 MB each) fits.
-    static let minBudget: Int64 = 200 * 1024 * 1024             // 200 MB
+    nonisolated static let minBudget: Int64 = 200 * 1024 * 1024             // 200 MB
 
     /// Hard ceiling — we never set a budget above this regardless of device size.
     /// Chosen as a reasonable limit for a work app; larger budgets are opt-in
     /// by the user via setBudget().
-    static let initialMaxBudget: Int64 = 5 * 1024 * 1024 * 1024 // 5 GB
+    nonisolated static let initialMaxBudget: Int64 = 5 * 1024 * 1024 * 1024 // 5 GB
 
     /// Fraction of device free space used for the initial calibration.
     private static let budgetPercentageOfFreeSpace: Double = 0.20
 
     /// Fallback when free-space can't be read. Large enough that small devices
     /// still get a reasonable budget; small enough not to overwhelm storage.
-    private static let fallbackFreeBytes: Int64 = 10 * 1024 * 1024 * 1024 // 10 GB
+    private nonisolated static let fallbackFreeBytes: Int64 = 10 * 1024 * 1024 * 1024 // 10 GB
 
     /// Fallback budget when not yet calibrated.
-    private static let fallbackBudget: Int64 = 2 * 1024 * 1024 * 1024    // 2 GB
+    private nonisolated static let fallbackBudget: Int64 = 2 * 1024 * 1024 * 1024    // 2 GB
 
     private init() {}
 
@@ -85,31 +85,26 @@ final class StorageProfiler {
     // MARK: - Queries
 
     /// Current budget in bytes. Returns a 2 GB fallback if not yet calibrated.
-    nonisolated var budgetBytes: Int64 {
-        let stored = Int64(UserDefaults.standard.integer(forKey: Key.budgetBytes))
-        return stored > 0 ? stored : Self.fallbackBudget
+    nonisolated var budgetBytes: Int64 { Self.budgetSnapshot() }
+
+    /// UserDefaults provides a thread-safe scalar read; cache writers need no
+    /// access to the main-actor profiler instance or a mutable UI setting.
+    nonisolated static func budgetSnapshot(defaults: UserDefaults = .standard) -> Int64 {
+        let stored = Int64(defaults.integer(forKey: Key.budgetBytes))
+        return stored > 0 ? stored : fallbackBudget
     }
 
     /// Current on-disk photo storage usage in bytes.
     ///
-    /// Walks the three OPS photo directories and sums allocated file sizes.
-    /// Marked `nonisolated` so callers can run it off the main actor — this
-    /// is essential for the Settings UI, which otherwise stalls main for
-    /// seconds walking hundreds of megabytes of photos.
+    /// Returns shared allocated-byte accounting. First use initializes the
+    /// ledger; prefetch explicitly primes/reconciles it on a background executor.
+    /// Legacy synchronous consumers remain compatible; ordinary reads are O(1).
     nonisolated func currentUsageBytes() -> Int64 {
-        let fm = FileManager.default
-        let docs = fm.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        let dirs = [
-            docs.appendingPathComponent("photos", isDirectory: true),
-            docs.appendingPathComponent("thumbnails", isDirectory: true),
-            docs.appendingPathComponent("ProjectImages", isDirectory: true)
-        ]
+        PhotoCacheLedger.shared.snapshot()
+    }
 
-        var total: Int64 = 0
-        for dir in dirs {
-            total += Self.directorySize(at: dir)
-        }
-        return total
+    nonisolated func backgroundUsageBytes(reconcile: Bool = false) async -> Int64 {
+        await PhotoCacheLedger.shared.backgroundSnapshot(reconcile: reconcile)
     }
 
     /// Remaining budget headroom in bytes. Negative value means over budget.
@@ -180,26 +175,6 @@ final class StorageProfiler {
     }
 
     // MARK: - Helpers
-
-    /// Computes the total allocated size of a directory by walking its contents.
-    /// Returns 0 if the directory doesn't exist or isn't enumerable.
-    nonisolated private static func directorySize(at url: URL) -> Int64 {
-        let fm = FileManager.default
-        guard fm.fileExists(atPath: url.path),
-              let enumerator = fm.enumerator(
-                at: url,
-                includingPropertiesForKeys: [.totalFileAllocatedSizeKey],
-                options: [.skipsHiddenFiles]
-              ) else { return 0 }
-
-        var total: Int64 = 0
-        for case let fileURL as URL in enumerator {
-            guard let values = try? fileURL.resourceValues(forKeys: [.totalFileAllocatedSizeKey]),
-                  let size = values.totalFileAllocatedSize else { continue }
-            total += Int64(size)
-        }
-        return total
-    }
 
     /// Human-readable byte formatter for log messages and UI labels.
     static func formatBytes(_ bytes: Int64) -> String {

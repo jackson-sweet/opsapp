@@ -1,0 +1,133 @@
+{
+  "projectId": "ijeekuhbatykdomumfjx",
+  "migrationVersion": "20260907001000",
+  "migrationName": "site_visit_stage_commands",
+  "approvedSourceSHA256": "2f642640d3be1fc273e6bef82ccdc9f0f149d9dac3bbf1fc950dd41b9df696a6",
+  "ledgerStatementMD5": "4117df9396c7367d6da29c694ea92765",
+  "ledgerExactApprovedSqlMatch": true,
+  "localCatalogExactMatch": true,
+  "catalog": {
+    "storage": [
+      {
+        "rls": true,
+        "name": "site_visit_stage_command_receipts",
+        "anon_select": false,
+        "service_role_select": false,
+        "authenticated_delete": false,
+        "authenticated_insert": false,
+        "authenticated_select": false,
+        "authenticated_update": false
+      },
+      {
+        "rls": true,
+        "name": "site_visit_stage_revisions",
+        "anon_select": false,
+        "service_role_select": false,
+        "authenticated_delete": false,
+        "authenticated_insert": false,
+        "authenticated_select": false,
+        "authenticated_update": false
+      }
+    ],
+    "trigger": "CREATE TRIGGER site_visit_stage_revision AFTER INSERT OR UPDATE ON public.opportunities FOR EACH ROW EXECUTE FUNCTION private.rotate_site_visit_stage_revision()",
+    "functions": [
+      {
+        "name": "apply_site_visit_stage_command",
+        "config": [
+          "search_path=\"\""
+        ],
+        "schema": "private",
+        "arguments": "p_command_id uuid, p_site_visit_id uuid, p_opportunity_id uuid, p_to_stage text, p_expected_stage text, p_expected_revision text, p_expected_actor_id uuid, p_expected_company_id uuid",
+        "anon_execute": false,
+        "definition_md5": "2cb8340c6dbfac27d75fd9fcfe6b5e95",
+        "security_definer": true,
+        "service_role_execute": false,
+        "authenticated_execute": true
+      },
+      {
+        "name": "read_site_visit_stage_snapshot",
+        "config": [
+          "search_path=\"\""
+        ],
+        "schema": "private",
+        "arguments": "p_opportunity_id uuid",
+        "anon_execute": false,
+        "definition_md5": "fd7de9cd84a6fe8a8151bf059eeef61f",
+        "security_definer": true,
+        "service_role_execute": false,
+        "authenticated_execute": true
+      },
+      {
+        "name": "rotate_site_visit_stage_revision",
+        "config": [
+          "search_path=\"\""
+        ],
+        "schema": "private",
+        "arguments": "",
+        "anon_execute": false,
+        "definition_md5": "0665bd93c8e41b9d27243563c7cf349c",
+        "security_definer": true,
+        "service_role_execute": false,
+        "authenticated_execute": false
+      },
+      {
+        "name": "apply_site_visit_stage_command",
+        "config": [
+          "search_path=\"\""
+        ],
+        "schema": "public",
+        "arguments": "p_command_id uuid, p_site_visit_id uuid, p_opportunity_id uuid, p_to_stage text, p_expected_stage text, p_expected_revision text, p_expected_actor_id uuid, p_expected_company_id uuid",
+        "anon_execute": false,
+        "definition_md5": "12970d9d5061fdfb0040906643ae782c",
+        "security_definer": false,
+        "service_role_execute": false,
+        "authenticated_execute": true
+      },
+      {
+        "name": "move_opportunity_stage",
+        "config": [
+          "search_path=pg_catalog, public, private, pg_temp"
+        ],
+        "schema": "public",
+        "arguments": "p_opportunity_id uuid, p_to_stage text, p_user_id uuid, p_win_probability integer",
+        "anon_execute": true,
+        "definition_md5": "34ce4987e8411de6bfbe8d93dcec7afa",
+        "security_definer": false,
+        "service_role_execute": true,
+        "authenticated_execute": true
+      },
+      {
+        "name": "read_site_visit_stage_snapshot",
+        "config": [
+          "search_path=\"\""
+        ],
+        "schema": "public",
+        "arguments": "p_opportunity_id uuid",
+        "anon_execute": false,
+        "definition_md5": "1c5496193d699d80a8d03471b3041915",
+        "security_definer": false,
+        "service_role_execute": false,
+        "authenticated_execute": true
+      }
+    ]
+  },
+  "authenticatedRpcCanary": "pending",
+  "mutatingProductionCanary": false,
+  "independentWorkerPostapply": "pass",
+  "unchangedDependencyFunctionCount": 23,
+  "unchangedPublicColumnCount": 100,
+  "unchangedPublicPolicyCount": 13,
+  "anonymousTransportRoutesResolveAndDenyBeforeInvocation": true,
+  "schemaCacheRouteProof": "both exact parameter sets returned42501 permission denied for function; neither PGRST202",
+  "securityAdvisors": {
+    "total": 426,
+    "info": 163,
+    "warn": 263,
+    "newObjectNotices": [
+      "private.site_visit_stage_command_receipts: RLS enabled/no policies INFO; intentional deny-all direct access",
+      "private.site_visit_stage_revisions: RLS enabled/no policies INFO; intentional deny-all direct access"
+    ],
+    "newObjectWarnings": 0,
+    "unrelatedBaselineNotRemediated": true
+  }
+}

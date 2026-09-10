@@ -261,6 +261,15 @@ final class SiteVisitRecoveryVaultTests: XCTestCase {
         operation.status = "quarantined"
         operation.retryCount = 7
         operation.lastError = "Visit was deleted in OPS — work is held on this phone."
+        let stage = SyncOperation(entityType: "siteVisit", entityId: visitID,
+            operationType: SiteVisitSyncOperation.stageOperationType,
+            payload: try JSONEncoder().encode(SiteVisitSyncOperation.Payload(companyId: companyID, siteVisitId: visitID, entityId: visitID)),
+            changedFields: ["stage"])
+        stage.status = "quarantined"
+        stage.retryCount = 7
+        stage.lastAttemptedAt = operation.lastAttemptedAt
+        let originalStagePayload = stage.payload
+        context.insert(stage)
         try context.save()
 
         let result = try vault.releaseRestoredParentQuarantines(
@@ -275,6 +284,11 @@ final class SiteVisitRecoveryVaultTests: XCTestCase {
         XCTAssertEqual(operation.retryCount, 0)
         XCTAssertNil(operation.lastError)
         XCTAssertNil(operation.lastAttemptedAt)
+        XCTAssertEqual(stage.status, "parked", "Restored visit custody is not authority to replay a historical lead stage")
+        XCTAssertEqual(stage.retryCount, 7)
+        XCTAssertEqual(stage.lastAttemptedAt, Date(timeIntervalSince1970: 1_700_000_100))
+        XCTAssertEqual(stage.payload, originalStagePayload)
+        XCTAssertEqual(stage.lastError, "STAGE REVIEW REQUIRED · OPEN LEAD")
         XCTAssertEqual(try context.fetchCount(FetchDescriptor<SiteVisit>()), 1)
         XCTAssertEqual(try context.fetchCount(FetchDescriptor<SiteVisitCaptureArtifact>()), 1)
         XCTAssertEqual(try Data(contentsOf: mediaURL), media)

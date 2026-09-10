@@ -81,6 +81,27 @@ class OpportunityRepository {
             .value
     }
 
+    /// A bounded, company-scoped suggestion page. Quoted filter values keep
+    /// punctuation in user input out of PostgREST's filter grammar.
+    func searchForSiteVisit(_ query: String) async throws -> [OpportunityDTO] {
+        let text = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        var request = client.from("opportunities").select()
+            .eq("company_id", value: companyId)
+            .is("deleted_at", value: nil)
+            .is("archived_at", value: nil)
+            .not("stage", operator: .in, value: "(won,lost,discarded)")
+        if !text.isEmpty {
+            let literal = text.replacingOccurrences(of: "\\", with: "\\\\")
+                .replacingOccurrences(of: "\"", with: "\\\"")
+                .replacingOccurrences(of: "%", with: "\\%")
+                .replacingOccurrences(of: "_", with: "\\_")
+            let pattern = "\"%\(literal)%\""
+            request = request.or(["contact_name", "contact_email", "contact_phone", "title", "address"]
+                .map { "\($0).ilike.\(pattern)" }.joined(separator: ","))
+        }
+        return try await request.order("created_at", ascending: false).limit(50).execute().value
+    }
+
     func fetchOne(_ opportunityId: String) async throws -> OpportunityDTO {
         try await client
             .from("opportunities")
@@ -206,6 +227,53 @@ class OpportunityRepository {
             .execute()
             .value
         return rows.first?.opportunityId
+    }
+
+    /// Batched twin of `opportunityId(forEmailThreadId:)` — one request for a
+    /// whole rail's worth of thread ids instead of one per row (bug 589e3b1e:
+    /// 89 inbox notifications would otherwise mean 89 selects).
+    ///
+    /// The returned map holds an entry for EVERY id asked for. An id the read
+    /// did not return is recorded with a nil opportunity: the thread is either
+    /// gone or hidden from this operator by `email_threads`' RLS, and in both
+    /// cases the app cannot route it to a lead. A caller that must distinguish
+    /// "no lead" from "never looked up" reads the key's presence, not its value
+    /// — a thrown error leaves the caller with no map at all.
+    func opportunityIds(forEmailThreadIds ids: [String]) async throws -> [String: String?] {
+        struct ThreadRow: Decodable {
+            let id: String
+            let opportunityId: String?
+            enum CodingKeys: String, CodingKey {
+                case id
+                case opportunityId = "opportunity_id"
+            }
+        }
+
+        var seen = Set<String>()
+        let unique = ids
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty && seen.insert($0).inserted }
+        guard !unique.isEmpty else { return [:] }
+
+        var resolved: [String: String?] = [:]
+        for chunk in stride(from: 0, to: unique.count, by: 100).map({
+            Array(unique[$0..<min($0 + 100, unique.count)])
+        }) {
+            let rows: [ThreadRow] = try await client
+                .from("email_threads")
+                .select("id,opportunity_id")
+                .in("id", values: chunk)
+                .execute()
+                .value
+            for row in rows {
+                resolved[row.id] = row.opportunityId
+            }
+        }
+
+        for id in unique where resolved[id] == nil {
+            resolved[id] = String?.none
+        }
+        return resolved
     }
 
     /// Latest email-thread subject for a lead — powers the EMAIL quick action's

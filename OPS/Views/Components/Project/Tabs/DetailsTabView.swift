@@ -134,7 +134,7 @@ struct DetailsTabView: View {
 
             // TASKS
             TaskListSection(
-                tasks: project.tasks.sorted { $0.displayOrder < $1.displayOrder },
+                tasks: project.liveTasks.sorted { $0.displayOrder < $1.displayOrder },
                 selectedTask: viewModel.selectedTask,
                 project: project,
                 canEdit: viewModel.canEditProject,
@@ -392,7 +392,7 @@ private struct ProjectTimelineRow: View {
     let project: Project
 
     private var activeTasks: [ProjectTask] {
-        project.tasks.filter { $0.status != .cancelled }
+        project.liveTasks.filter { $0.status != .cancelled }
     }
 
     private var completedCount: Int {
@@ -962,6 +962,15 @@ struct TaskListSection: View {
     var onDuplicateTask: ((ProjectTask) -> Void)? = nil
     var onDeleteTask: ((ProjectTask) -> Void)? = nil
 
+    var visibleTasks: [ProjectTask] {
+        let allowed = Set(project.liveTasks.map { $0.id.lowercased() })
+        var seen = Set<String>()
+        return tasks.filter {
+            $0.isAvailableForWork && allowed.contains($0.id.lowercased())
+                && seen.insert($0.id.lowercased()).inserted
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             PanelSectionHeader(label: "TASKS")
@@ -969,7 +978,7 @@ struct TaskListSection: View {
                 .padding(.bottom, 10)
 
             VStack(spacing: 0) {
-                ForEach(tasks, id: \.id) { task in
+                ForEach(visibleTasks, id: \.id) { task in
                     let isSelected = selectedTask?.id == task.id
                     let hasSelection = selectedTask != nil
                     let taskColor = Color(hex: task.taskColor) ?? OPSStyle.Colors.primaryAccent
@@ -1030,10 +1039,15 @@ struct TaskListSection: View {
 
                             // Schedule date
                             if let startDate = task.startDate {
-                                Text(TaskListSection.formatTaskDate(startDate))
-                                    .font(OPSStyle.Typography.smallCaption)
-                                    .foregroundColor(Calendar.current.isDateInToday(startDate) ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText)
-
+                                VStack(alignment: .trailing, spacing: OPSStyle.Layout.spacing1) {
+                                    Text(TaskListSection.formatTaskDate(startDate))
+                                        .foregroundColor(Calendar.current.isDateInToday(startDate) ? OPSStyle.Colors.primaryText : OPSStyle.Colors.tertiaryText)
+                                    if task.needsSync {
+                                        Text(SyncStatusCopy.localTaskChanges)
+                                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                                    }
+                                }
+                                .font(OPSStyle.Typography.smallCaption)
                             }
 
                             // Right side: SELECTED badge OR chevron — never both
@@ -1101,7 +1115,7 @@ struct TaskListSection: View {
                     }
 
                     // Divider
-                    if task.id != tasks.last?.id {
+                    if task.id != visibleTasks.last?.id {
                         Rectangle()
                             .fill(OPSStyle.Colors.lineSoft)
                             .frame(height: 1)

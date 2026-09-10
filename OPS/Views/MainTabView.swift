@@ -12,22 +12,12 @@ import SwiftData
 import Combine
 import MapKit
 
-/// Every root floats the recovery pill in the app-level band below its
-/// measured header — including normal Home (bug 417aac7b: the pill must
-/// never displace Home content; it overlays it, pinned to the header's
-/// lower edge). The one exception is Home project mode, whose owned
-/// project stack hosts the same control after AppHeader leaves the screen.
-enum SyncStatusPlacementPolicy {
-    static func showsMainTabOverlay(selectedTab: Int, isInProjectMode: Bool) -> Bool {
-        selectedTab != 0 || !isInProjectMode
-    }
-}
-
 struct MainTabView: View {
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var locationManager: LocationManager
     @EnvironmentObject private var permissionStore: PermissionStore
+    @ObservedObject private var reviewSnapshots = ReviewSnapshotStore.shared
     @Environment(\.modelContext) private var modelContext
     @Environment(\.wizardTriggerService) private var wizardTriggerService
     @Environment(\.wizardStateManager) private var wizardStateManager
@@ -60,11 +50,11 @@ struct MainTabView: View {
     @State private var inFlightDeepLinkTask: Task<Void, Never>?
     // PermissionChangeOverlay moved to PINGatedView (ContentView.swift) so it sits above all sheets
     @StateObject private var imageSyncProgressManager = ImageSyncProgressManager()
-    /// One durable inventory model/monitor feeds both visual placements. Tab
+    /// One durable inventory model/monitor feeds every visual placement — each
+    /// root's superimposed header pill and Home project mode's own stack. Tab
     /// switches must never pay the multi-fetch recovery load or drop debounce.
     @StateObject private var syncStatusIndicatorModel = SyncStatusIndicatorModel()
     @StateObject private var syncStatusRefreshMonitor = RecoveryRefreshMonitor()
-    @ObservedObject private var toastCenter = ToastCenter.shared
     // Drives the global tab-bar overlay's visibility. Pushed detail screens with a
     // bottom action bar fade the tab bar out via `.hidesGlobalTabBar()` so their
     // primary CTA isn't occluded by the 100pt overlay.
@@ -82,6 +72,17 @@ struct MainTabView: View {
     @State private var showAssignRoleSheet = false
     @State private var assignRoleMemberId: String?
     @State private var assignRoleWasSeated: Bool = false
+
+    private struct ReviewSnapshotOwner: Hashable {
+        let container: ObjectIdentifier
+        let userID: String?
+        let companyID: String?
+    }
+
+    private var reviewSnapshotOwner: ReviewSnapshotOwner {
+        ReviewSnapshotOwner(container: ObjectIdentifier(modelContext.container),
+            userID: dataController.currentUser?.id, companyID: dataController.currentUser?.companyId)
+    }
 
     private var hasCatalogAccess: Bool {
         permissionStore.can("catalog.view", requiredScope: "all")
@@ -142,6 +143,12 @@ struct MainTabView: View {
 
     private let startSiteVisitObserver = NotificationCenter.default
         .publisher(for: Notification.Name("StartSiteVisit"))
+
+    // SET THE TIME on an appointment-review rail row (bug 74bbb5b7). Same
+    // permission posture as the two relays above; the leads tab owns the
+    // booking sheet and drains `pendingVisitBookingLeadId` into it.
+    private let bookSiteVisitObserver = NotificationCenter.default
+        .publisher(for: AppointmentReviewPresentation.bookingRelayName)
 
     // Lead-family notification with no resolvable opportunity. Lands on the
     // LEADS tab rather than the Job Board — the surface the row is about.
@@ -497,44 +504,17 @@ struct MainTabView: View {
             // pin the band for the rest of the session.
             .onPreferenceChange(AppHeaderHeightKey.self) { headerBandHeight = $0 }
 
-            // Image sync progress is always banded directly below the active
-            // measured header. Every root — including normal Home (bug
-            // 417aac7b) — floats the sync-status pill here; Home project mode
-            // hosts it in the project stack instead.
+            // Image sync progress is banded directly below the active measured
+            // header, which is why the header publishes its height at all.
             //
-            // This band used to start at the top safe area — the same rectangle
-            // the header's trailing action cluster occupies — so the attention
-            // pill and the 44pt search button (or Home's avatar) were laid out
-            // on top of each other: the pill's trailing edge sits 16pt from the
-            // screen edge, the button's 20pt, and a "<n> NEED A LOOK" pill is far
-            // wider than the 4pt between them. Whichever won the paint order, one
-            // element covered the other and swallowed its taps. Offsetting the
-            // whole band by the header's measured height makes the collision
-            // impossible rather than merely re-ordered — both keep their own
-            // hit areas, and the band follows the header down when Dynamic Type
-            // grows the title block.
+            // The recovery pill is NOT here. It used to be, and that is bug
+            // 417aac7b's second wrong close: a band starting exactly where the
+            // header ends puts the pill straight on top of whatever control the
+            // root parks under its header — on Home, the ALL filter chip. The
+            // pill is now superimposed on the header itself by `AppHeader`,
+            // where it reserves no layout and cannot reach the row below.
             VStack(spacing: OPSStyle.Layout.spacing2) {
                 ImageSyncProgressView(syncManager: imageSyncProgressManager)
-
-                // Hidden while the restored banner speaks, and suppressed only
-                // in Home project mode, whose project stack owns an in-flow host.
-                if !dataController.showSyncRestoredAlert,
-                   !toastCenter.isSuppressingSyncStatusIndicator,
-                   SyncStatusPlacementPolicy.showsMainTabOverlay(
-                       selectedTab: selectedTab,
-                       isInProjectMode: appState.isInProjectMode
-                   ) {
-                    // Trailing-aligned compact pill; the full-width expanded
-                    // variant that accessibility sizes select gets a leading
-                    // inset here instead of touching the screen edge.
-                    HStack {
-                        Spacer(minLength: 0)
-                        SyncStatusIndicator()
-                            .environmentObject(dataController)
-                            .environmentObject(syncStatusIndicatorModel)
-                    }
-                    .padding(.horizontal, OPSStyle.Layout.spacing3)
-                }
 
                 Spacer()
             }
@@ -885,6 +865,27 @@ struct MainTabView: View {
             }
         }
 
+        // BOOK-a-time relay — the appointment-review rail row's SET THE TIME.
+        // OPS read an email about an appointment and could not commit it; the
+        // remedy on a phone is to put a real time on this lead's calendar, so
+        // the tap lands on the leads tab's booking sheet rather than the lead
+        // detail, where nothing is marked as needing one (bug 74bbb5b7).
+        .onReceive(bookSiteVisitObserver) { notification in
+            guard let leadId = notification.userInfo?["leadId"] as? String, !leadId.isEmpty else { return }
+            appState.clearNavigationOccluders()
+            if notification.userInfo?[DeepLinkCoordinator.deepLinkIdUserInfoKey] != nil {
+                DeepLinkCoordinator.shared.clear()
+            }
+            guard hasLeadsAccess, let idx = leadsTabIndex else {
+                print("[PUSH_NAVIGATION] BOOK visit for \(leadId) without pipeline access — access denied")
+                appState.presentAccessDenied(message: "This lead is no longer available.")
+                return
+            }
+            print("[PUSH_NAVIGATION] Booking a visit for lead: \(leadId)")
+            appState.pendingVisitBookingLeadId = leadId
+            selectTab(idx, with: OPSStyle.Animation.fast)
+        }
+
         // Handle access denied presentations (tapped Spotlight result no longer permitted)
         .onReceive(showAccessDeniedObserver) { notification in
             let message = (notification.userInfo?["message"] as? String) ?? "Access denied."
@@ -1069,7 +1070,6 @@ struct MainTabView: View {
         .onChange(of: selectedTab) { _, newValue in
             if !mountedTabs.contains(newValue) { mountedTabs.insert(newValue) }
             let tabName = analyticsTabName(for: newValue)
-            AnalyticsManager.shared.trackTabSelected(tabName: tabName)
             AnalyticsService.shared.track(
                 eventType: .action,
                 eventName: "tab_selected",
@@ -1161,6 +1161,8 @@ struct MainTabView: View {
         // ran at launch and a queue that crossed threshold overnight would
         // stay silent until the next cold start.
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+            reviewSnapshots.bind(dataController: dataController, permissionStore: permissionStore)
+            reviewSnapshots.invalidate()
             ReviewThresholdService.evaluate(dataController: dataController)
             // Around-call lead capture (154cb8a3) — if the operator just called
             // a lead from inside OPS and returned, offer to log it; and drain any
@@ -1217,13 +1219,6 @@ struct MainTabView: View {
             print("[MAIN_TAB_VIEW] onAppear - Current user: \(String(describing: dataController.currentUser?.fullName))")
             print("[MAIN_TAB_VIEW] onAppear - Tab count: \(tabs.count)")
 
-            // Check for overdue payment reviews after giving sync time to complete.
-            // This also kicks ReviewThresholdService via checkOverdueProjects so
-            // the initial evaluation runs once sync has had time to populate.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
-                appState.checkOverdueProjects(dataController: dataController)
-            }
-
             // Evaluate wizard triggers after data has had time to load
             if !hasEvaluatedWizards {
                 hasEvaluatedWizards = true
@@ -1240,6 +1235,25 @@ struct MainTabView: View {
             DispatchQueue.main.async {
                 DeepLinkCoordinator.shared.drain(context: "main_tab_appear")
             }
+        }
+        // One cancellable startup consumer per account/container. All passive
+        // consumers join the same scalar read, including the delayed reminders.
+        .task(id: reviewSnapshotOwner) {
+            reviewSnapshots.bind(dataController: dataController, permissionStore: permissionStore)
+            reviewSnapshots.scopeDidChange()
+            _ = await reviewSnapshots.value()
+            do { try await Task.sleep(for: .seconds(5)) } catch { return }
+            guard !Task.isCancelled else { return }
+            let reminders = appState.checkOverdueProjects(dataController: dataController)
+            await withTaskCancellationHandler {
+                await reminders.value
+            } onCancel: {
+                reminders.cancel()
+            }
+        }
+        .onReceive(reviewSnapshots.$snapshot) { snapshot in
+            guard snapshot != nil else { return }
+            ReviewThresholdService.evaluate(dataController: dataController)
         }
         .onReceive(syncStatusRefreshMonitor.output) { _ in
             syncStatusIndicatorModel.refresh(from: modelContext)
@@ -1260,6 +1274,7 @@ struct MainTabView: View {
             remapMountedTabs()
         }
         .onChange(of: dataController.currentUser?.id) { oldUserId, newUserId in
+            syncStatusIndicatorModel.refresh(from: modelContext)
             print("[MAIN_TAB_VIEW] currentUser ID changed")
             print("[MAIN_TAB_VIEW]   Old ID: \(String(describing: oldUserId))")
             print("[MAIN_TAB_VIEW]   New ID: \(String(describing: newUserId))")

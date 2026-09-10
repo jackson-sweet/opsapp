@@ -106,7 +106,9 @@ class ExpenseRepository {
     // MARK: - Accounting Sync
 
     /// Triggers the accounting-sync-expense Edge Function for an approved expense.
-    /// Fire-and-forget — logs errors but does not throw, so approval is not blocked.
+    /// Best-effort and error-contained: logs failures without throwing.
+    /// Awaiting callers still wait for this request; this method does not
+    /// detach delivery or provide a durable retry queue.
     func triggerAccountingSync(expenseId: String) async {
         do {
             try await client.functions.invoke(
@@ -203,6 +205,19 @@ class ExpenseRepository {
             .select()
             .eq("company_id", value: companyId)
             .order("created_at", ascending: false)
+            .execute()
+            .value
+    }
+
+    /// Canonical affected-row readback after a batch decision. Company scope
+    /// is explicit as well as enforced by RLS.
+    func fetchBatch(_ batchId: String) async throws -> ExpenseBatchDTO {
+        try await client
+            .from("expense_batches")
+            .select()
+            .eq("company_id", value: companyId)
+            .eq("id", value: batchId)
+            .single()
             .execute()
             .value
     }

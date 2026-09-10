@@ -495,8 +495,8 @@ struct UniversalJobBoardCard: View {
 
     private var compactDateRange: String {
         guard case .project(let project) = cardType else { return "-" }
-        let start = project.computedStartDate ?? project.startDate
-        let end = project.computedEndDate ?? project.endDate
+        let start = project.computedStartDate
+        let end = project.computedEndDate
         switch (start, end) {
         case (let s?, let e?):
             return "\(DateHelper.simpleDateString(from: s)) - \(DateHelper.simpleDateString(from: e))"
@@ -1784,7 +1784,16 @@ struct UniversalJobBoardCard: View {
                     ToastCenter.shared.present(Feedback.JobBoard.deleted)
                 }
             } catch {
+                // Never let a failed delete pass as a success. The success toast
+                // above fires on the local tombstone; if the local write itself
+                // threw, nothing happened at all and the operator has to be told
+                // — this used to print to the console and show the user nothing.
                 print("[DELETE] ❌ Error deleting item: \(error)")
+                await MainActor.run {
+                    ToastCenter.shared.present(
+                        Toast(label: Feedback.Err.deleteFailed, tone: .error)
+                    )
+                }
             }
         }
     }

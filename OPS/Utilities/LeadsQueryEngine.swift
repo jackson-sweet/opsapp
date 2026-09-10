@@ -157,6 +157,39 @@ enum LeadsQueryEngine {
         return .flat(sortedFlat(buckets.leads(for: effective).filter(inCrew), by: controls.sort))
     }
 
+    // MARK: Chip counts (bug 2a89477d)
+
+    /// The number a bucket chip carries.
+    ///
+    /// BROWSING it is the raw bucket count, deliberately: the chips describe
+    /// the queue the operator owns, not the slice a crew filter is currently
+    /// showing. A chip reading `OVERDUE 0` because of a crew filter would look
+    /// like there is nothing overdue.
+    ///
+    /// SEARCHING, a raw count is the lie instead. The chips stand down while a
+    /// query is live — dimmed, untappable — and a dimmed row of numbers that
+    /// describe a queue nobody is looking at is noise. Under a search they
+    /// become a read-out of the RESULT: how many of these matches are overdue,
+    /// how many are fresh. The operator watches the breakdown as they type.
+    ///
+    /// ALL counts the searched POPULATION — open leads plus unconverted wins,
+    /// the exact set `apply` searches — so the ALL chip and the `// MATCHES`
+    /// header above the results can never disagree.
+    nonisolated static func chipCount(
+        for bucket: PipelineViewModel.TriageBucket,
+        controls: LeadsListControls,
+        buckets: PipelineViewModel.TriageBuckets
+    ) -> Int {
+        let population = bucket == .all && controls.isSearching
+            ? buckets.all + buckets.unconvertedWon
+            : buckets.leads(for: bucket)
+
+        guard controls.isSearching else { return population.count }
+        return population.reduce(into: 0) { total, lead in
+            if matches(lead, query: controls.query) { total += 1 }
+        }
+    }
+
     /// Mirrors the console's chip rule: a chip whose bucket has emptied drops
     /// back to ALL rather than stranding the operator on an empty list.
     /// Emptiness is measured on the RAW bucket because the chips carry raw

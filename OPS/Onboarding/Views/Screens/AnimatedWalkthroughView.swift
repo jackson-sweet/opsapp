@@ -101,7 +101,11 @@ struct AnimatedWalkthroughView: View {
             }
         }
         .onChange(of: currentPage) { _, newIndex in
-            AnalyticsManager.shared.trackWalkthroughScreenViewed(screenIndex: newIndex)
+            AnalyticsService.shared.track(
+                eventType: .screenView,
+                eventName: "walkthrough_screen_viewed",
+                properties: ["screen_index": newIndex]
+            )
             withAnimation {
                 buttonVisible = newIndex == screens.count - 1
             }

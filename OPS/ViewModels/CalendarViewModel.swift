@@ -100,7 +100,7 @@ class CalendarViewModel: ObservableObject {
 
     /// Force reload of calendar data (called after scheduling changes)
     func reloadCalendarData() {
-        clearProjectCountCache()
+        invalidateForReload()
         scheduleCalendarLoad(around: selectedDate, force: true)
     }
     
@@ -267,11 +267,25 @@ class CalendarViewModel: ObservableObject {
     /// is bounded and assembled by the DataActor; freshness is never traded for
     /// a main-thread shortcut.
     func clearProjectCountCache() {
+        invalidateForReload()
+        // A scope or filter change alters what a row MEANS, so the displayed
+        // caches go with the guard — a stale ALL day under a fresh MINE filter
+        // would be a lie for the length of the reload.
+        projectCountCache = [:]
+        dayTaskCache = [:]
+    }
+
+    /// Bug a4225f3f — a data-change reload used to empty the day caches up
+    /// front, so every schedule edit blanked the day for the length of the
+    /// off-main reload ("all events disappear momentarily"). The last snapshot
+    /// now stays on screen and `performCalendarLoad` swaps in the replacement
+    /// synchronously; the generation bump still cancels a stale in-flight load
+    /// and dropping `cachedWeekStart` means the reload can never be skipped as
+    /// "same week".
+    func invalidateForReload() {
         calendarLoadGeneration &+= 1
         calendarLoadTask?.cancel()
         calendarLoadTask = nil
-        projectCountCache = [:]
-        dayTaskCache = [:]
         cachedWeekStart = nil
         cachedWeekSnapshot = nil
         cachedAuxiliaryWindow = nil
@@ -440,7 +454,10 @@ class CalendarViewModel: ObservableObject {
     /// Land a rebuilt window. `tasks` supplies the live models for the ids the
     /// snapshot names — the snapshot itself carries ids because it may have been
     /// built in another context.
-    private func applyWeekCache(_ snapshot: CalendarWeekCacheSnapshot, resolving tasks: [ProjectTask]) {
+    /// Internal (not private) so the reload policy can be proven with a seeded
+    /// snapshot instead of a full DataActor load — see
+    /// `CalendarReloadKeepsLastSnapshotTests`.
+    func applyWeekCache(_ snapshot: CalendarWeekCacheSnapshot, resolving tasks: [ProjectTask]) {
         let byId = Dictionary(tasks.map { ($0.id, $0) }, uniquingKeysWith: { current, _ in current })
 
         var newCache: [String: [ProjectTask]] = [:]
@@ -494,7 +511,7 @@ class CalendarViewModel: ObservableObject {
     /// context, even when the long-lived DataActor feature flag is disabled.
     @MainActor
     func reloadCalendarDataOffMain() async {
-        clearProjectCountCache()
+        invalidateForReload()
         guard let weekStart = weekCacheAnchor(for: selectedDate) else { return }
         calendarLoadGeneration &+= 1
         let generation = calendarLoadGeneration
@@ -520,28 +537,51 @@ class CalendarViewModel: ObservableObject {
             return
         }
 
-        let actor: DataActor
-        if let existing = dataController.dataActor {
-            actor = existing
-        } else {
-            actor = DataActor(modelContainer: context.container)
-            await actor.configure()
-        }
-
+        // Capture scope before readiness can suspend; a logout may invalidate
+        // the old User model while the actor is being prepared.
+        let userID = user.id
         let taskScope = currentTaskScope()
         let auxiliaryScope = CalendarAuxiliaryScope(
-            userId: user.id,
+            userId: userID,
             companyId: companyId,
             canViewAllCalendar: PermissionStore.shared.can("calendar.view", requiredScope: "all"),
             canApproveTimeOff: PermissionStore.shared.can("time_off.approve")
         )
-        let snapshot = await actor.calendarLoadSnapshot(
+        func isCurrent() -> Bool {
+            !Task.isCancelled && generation == calendarLoadGeneration
+                && self.dataController === dataController
+                && dataController.modelContext === context
+                && dataController.currentUser?.id == userID
+                && dataController.currentUser?.companyId == companyId
+        }
+        let actor: DataActor
+        if FeatureFlags.useDataActor {
+            guard let ready = await dataController.readyDataActor(), isCurrent() else {
+                if generation == calendarLoadGeneration { isLoading = false }
+                return
+            }
+            actor = ready
+        } else {
+            // Flag-off still uses an independent background reader, preserving
+            // the calendar's existing off-main fallback contract.
+            do {
+                actor = try await DataActor.makeBackgroundConfigured(modelContainer: context.container)
+            } catch {
+                if generation == calendarLoadGeneration { isLoading = false }
+                return
+            }
+            guard isCurrent() else { return }
+        }
+        guard let snapshot = try? await actor.calendarLoadSnapshot(
             taskScope: taskScope,
             auxiliaryScope: auxiliaryScope,
             weekStart: weekStart,
             centerDate: centerDate
-        )
-        guard !Task.isCancelled, generation == calendarLoadGeneration else { return }
+        ) else {
+            if isCurrent() { isLoading = false }
+            return
+        }
+        guard isCurrent(), !FeatureFlags.useDataActor || dataController.dataActor === actor else { return }
 
         // Resolve exactly the actor-approved ids into main-context models. No
         // actor-owned @Model crosses isolation and no unbounded relationship

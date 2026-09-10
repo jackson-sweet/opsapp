@@ -648,13 +648,14 @@ final class SyncOperationReconcilerTests: XCTestCase {
                 errorDescription: missing
             )
         )
-        // A task update against a missing row is not the project verdict.
-        XCTAssertNil(
+        // A task update uses its own conservative row reconciliation.
+        XCTAssertEqual(
             SyncOperationReconcilers.kind(
                 operationType: "update",
                 entityType: SyncEntityType.projectTask.rawValue,
                 errorDescription: missing
-            )
+            ),
+            .taskTombstone
         )
         // Right shape, unrelated error — still parks.
         XCTAssertNil(
@@ -737,6 +738,11 @@ final class SyncOperationReconcilerTests: XCTestCase {
         XCTAssertEqual(decode("\"active\""), .active)
         XCTAssertEqual(decode("\"deleted\""), .deleted)
         XCTAssertEqual(decode("\"absent\""), .absent)
+        // Bug bf2a75fb — the server now says "I could not identify you"
+        // instead of reporting a live project as missing. A build that decodes
+        // it explicitly says so; a build that does not still answers nil, and
+        // nil already means retry.
+        XCTAssertEqual(decode("\"unknown\""), .unknown)
         XCTAssertEqual(decode("active"), .active, "An unquoted body still answers")
         XCTAssertEqual(decode("\n \"deleted\" \n"), .deleted)
 

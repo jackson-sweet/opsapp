@@ -12,6 +12,7 @@ struct JobBoardView: View {
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var permissionStore: PermissionStore
+    @ObservedObject private var reviewSnapshots = ReviewSnapshotStore.shared
     @Environment(\.tutorialMode) private var tutorialMode
     @Environment(\.tutorialPhase) private var tutorialPhase
     @Environment(\.wizardTriggerService) private var wizardTriggerService
@@ -43,17 +44,14 @@ struct JobBoardView: View {
     @State private var showPaymentReview: Bool = false
     @State private var overdueProjects: [Project] = []
     @State private var completedProjects: [Project] = []
-    @State private var overdueCount: Int = 0
 
     // Task review state
     @State private var showTaskReview: Bool = false
     @State private var reviewableTasks: [ProjectTask] = []
-    @State private var reviewableTaskCount: Int = 0
 
     // Unscheduled task review state
     @State private var showUnscheduledReview: Bool = false
     @State private var unscheduledTasks: [ProjectTask] = []
-    @State private var unscheduledTaskCount: Int = 0
 
     // Review unlock thresholds. Shared with the FAB review menu — see
     // ReviewUnlockThresholds for why the value lives outside both views.
@@ -89,11 +87,11 @@ struct JobBoardView: View {
     }
 
     private var completedProjectCount: Int {
-        dataController.getProjects().filter { $0.status == .completed || $0.status == .closed }.count
+        reviewSnapshot?.counts.completedProjectCount ?? 0
     }
 
     private var completedTaskCount: Int {
-        dataController.getAllTasks().filter { $0.status == .completed }.count
+        reviewSnapshot?.counts.completedTaskCount ?? 0
     }
 
     private var projectSortOption: Binding<ProjectSortOption> {
@@ -113,11 +111,11 @@ struct JobBoardView: View {
     }
 
     private var isPaymentReviewLocked: Bool {
-        completedProjectCount < Self.paymentReviewThreshold
+        reviewSnapshot?.isPaymentReviewLocked ?? true
     }
 
     private var isTaskReviewLocked: Bool {
-        completedTaskCount < Self.taskReviewThreshold
+        reviewSnapshot?.isTaskReviewLocked ?? true
     }
 
     private var sections: [JobBoardSection] {
@@ -237,17 +235,6 @@ struct JobBoardView: View {
             computeUnscheduledTasks()
             showUnscheduledReview = true
         }
-        // Live refresh: scheduledTasksDidChange fires on any local task mutation
-        // (complete / cancel / reschedule / reassign) AND on inbound/realtime
-        // task changes (via InboundChangeRouter). Keeps the header review badges
-        // current after a task is handled inside a review sheet, without waiting
-        // for the view to reappear or the app to relaunch.
-        .onChange(of: dataController.scheduledTasksDidChange) { _, _ in
-            // Each badge pass walks the company's projects and tasks; a board
-            // nobody is looking at picks the new counts up on its next visit.
-            guard isActiveTab else { return }
-            recomputeReviewBadges()
-        }
         .onChange(of: selectedProjectStatuses) { _, _ in
             showingFilters = hasActiveProjectFilters
         }
@@ -274,9 +261,9 @@ struct JobBoardView: View {
                     showPaymentReview = true
                 }
             } : nil,
-            paymentReviewBadgeCount: overdueCount,
+            paymentReviewBadgeCount: reviewSnapshot?.counts.paymentReviewCount ?? 0,
             isPaymentReviewLocked: isPaymentReviewLocked,
-            paymentReviewLockedMessage: "Complete \(Self.paymentReviewThreshold) projects to unlock payment review. You've completed \(completedProjectCount) so far.",
+            paymentReviewLockedMessage: reviewSnapshot == nil ? reviewUnavailableMessage : "Complete \(Self.paymentReviewThreshold) projects to unlock payment review. You've completed \(completedProjectCount) so far.",
             onTaskReviewTapped: {
                 // When a wizard is guiding the user to open task review,
                 // bypass the first-open intro alert to avoid an unexpected
@@ -292,9 +279,9 @@ struct JobBoardView: View {
                     showTaskReview = true
                 }
             },
-            taskReviewBadgeCount: reviewableTaskCount,
+            taskReviewBadgeCount: reviewSnapshot?.counts.taskReviewCount ?? 0,
             isTaskReviewLocked: isTaskReviewLocked,
-            taskReviewLockedMessage: "Complete \(Self.taskReviewThreshold) tasks to unlock task review. You've completed \(completedTaskCount) so far.",
+            taskReviewLockedMessage: reviewSnapshot == nil ? reviewUnavailableMessage : "Complete \(Self.taskReviewThreshold) tasks to unlock task review. You've completed \(completedTaskCount) so far.",
             onUnscheduledReviewTapped: unscheduledReviewTapped,
             unscheduledReviewBadgeCount: unscheduledReviewBadge
         )
@@ -493,7 +480,8 @@ struct JobBoardView: View {
                         activeOnly: activeOnly,
                         assignedToMe: assignedToMe,
                         selectedStatuses: selectedProjectStatuses,
-                        selectedTeamMemberIds: selectedProjectTeamMemberIds
+                        selectedTeamMemberIds: selectedProjectTeamMemberIds,
+                        sortOption: projectSortOption.wrappedValue
                     )
                 }
             }
@@ -504,15 +492,15 @@ struct JobBoardView: View {
         .onChange(of: selectedSection) { oldValue, newSection in
             previousSection = oldValue
             // Track section changes within Job Board
-            let screenName: ScreenName? = {
+            let screenName: String? = {
                 switch newSection {
-                case .projects, .myProjects: return .jobBoardProjects
-                case .tasks, .myTasks:       return .jobBoardTasks
+                case .projects, .myProjects: return "job_board_projects"
+                case .tasks, .myTasks:       return "job_board_tasks"
                 default: return nil
                 }
             }()
             if let screenName = screenName {
-                AnalyticsManager.shared.trackScreenView(screenName: screenName, screenClass: "JobBoardView")
+                AnalyticsService.shared.trackScreenView(screenName: screenName)
             }
         }
         .onAppear {
@@ -548,15 +536,15 @@ struct JobBoardView: View {
     /// counts are per-visit: they ran on every mount back when a tab switch
     /// rebuilt this view, and they still run on every visit now.
     private func beginVisit() {
-        AnalyticsManager.shared.trackScreenView(screenName: .jobBoard, screenClass: "JobBoardView")
         AnalyticsService.shared.trackScreenView(screenName: "job_board")
 
-        recomputeReviewBadges()
+        reviewSnapshots.bind(dataController: dataController, permissionStore: permissionStore)
 
         // Wizard system: evaluate job board wizard trigger (requires ≥1 project)
         Task {
             guard let wizard = WizardRegistry.contextualWizard(for: "job_board") else { return }
-            let projectCount = await MainActor.run { dataController.getProjects().count }
+            guard let snapshot = await reviewSnapshots.value(), reviewSnapshots.isCurrent(snapshot), isActiveTab else { return }
+            let projectCount = snapshot.counts.projectCount
             await MainActor.run {
                 wizardTriggerService?.evaluateTrigger(for: wizard, context: "job_board_tab_visit", projectCount: projectCount)
             }
@@ -567,12 +555,12 @@ struct JobBoardView: View {
         AnalyticsService.shared.endScreenView(screenName: "job_board")
     }
 
-    /// The three header badges, always recomputed together — they read the same
-    /// project and task snapshots.
-    private func recomputeReviewBadges() {
-        computeReviewProjects()
-        computeReviewableTasks()
-        computeUnscheduledTasks()
+    private var reviewSnapshot: ReviewSnapshot? {
+        reviewSnapshots.visibleSnapshot(dataController: dataController, permissionStore: permissionStore)
+    }
+
+    private var reviewUnavailableMessage: String {
+        reviewSnapshots.isUnavailable ? "Review counts are unavailable." : "Review counts are loading."
     }
 
     // MARK: - Payment Review
@@ -582,7 +570,6 @@ struct JobBoardView: View {
             dataController: dataController,
             permissionStore: permissionStore
         )
-        overdueCount = snapshot.count
         overdueProjects = snapshot.overdueProjects
         completedProjects = snapshot.completedProjects
     }
@@ -595,7 +582,6 @@ struct JobBoardView: View {
 
     private func computeReviewableTasks() {
         reviewableTasks = TaskReviewQuery.overdueReviewTasks(dataController: dataController)
-        reviewableTaskCount = reviewableTasks.count
     }
 
     // MARK: - Unscheduled Task Review
@@ -604,7 +590,7 @@ struct JobBoardView: View {
     /// Entry therefore requires task-edit access; each card direction separately
     /// enforces its row and calendar scope.
     private var unscheduledReviewTapped: (() -> Void)? {
-        guard unscheduledReviewAccessAvailable else { return nil }
+        guard unscheduledReviewAccessAvailable, reviewSnapshot != nil else { return nil }
         return {
             computeUnscheduledTasks()
             showUnscheduledReview = true
@@ -612,7 +598,7 @@ struct JobBoardView: View {
     }
 
     private var unscheduledReviewBadge: Int {
-        unscheduledReviewAccessAvailable ? unscheduledTaskCount : 0
+        unscheduledReviewAccessAvailable ? (reviewSnapshot?.counts.unscheduledReviewCount ?? 0) : 0
     }
 
     private var unscheduledReviewAccessAvailable: Bool {
@@ -621,7 +607,6 @@ struct JobBoardView: View {
 
     private func computeUnscheduledTasks() {
         unscheduledTasks = TaskReviewQuery.unscheduledReviewTasks(dataController: dataController)
-        unscheduledTaskCount = unscheduledTasks.count
     }
 }
 
@@ -1536,5 +1521,7 @@ struct TaskListSheet: View {
     JobBoardView()
         .environmentObject(DataController())
         .environmentObject(AppState())
+        .environmentObject(SubscriptionManager.shared)
+        .environmentObject(SyncStatusIndicatorModel())
         .preferredColorScheme(.dark)
 }

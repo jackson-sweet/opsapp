@@ -20,6 +20,29 @@
 
 import SwiftUI
 
+/// Bounds of the header's trailing control cluster, published so the layout
+/// proofs can measure where it actually lands.
+///
+/// This is NOT an avoidance contract. It used to be one: `AppHeader` consumed
+/// it to reserve the cluster's column for the recovery pill, which staggered
+/// the pill below-left of Home's avatar and was rejected (bug 417aac7b,
+/// 2026-09-08 — "It is being influenced by the avatar. It should appear ONTOP
+/// of the avatar"). Production now positions the pill from the band's own
+/// geometry alone and paints it OVER this cluster; see
+/// `HeaderSyncStatusGeometry`.
+///
+/// The key survives because `SyncPillHeaderLayoutTests` measures the shipped
+/// cluster through it to prove the pill overlaps the control on every root —
+/// the assertion that keeps a fourth wrong close from landing. Nothing in
+/// production reads it; do not reintroduce a consumer that moves the pill.
+struct OPSHeaderTrailingSlotBoundsKey: PreferenceKey {
+    static let defaultValue: Anchor<CGRect>? = nil
+
+    static func reduce(value: inout Anchor<CGRect>?, nextValue: () -> Anchor<CGRect>?) {
+        value = nextValue() ?? value
+    }
+}
+
 /// Shared, testable policy for the mobile header's trailing edge. The visual
 /// spec permits no more than two actions; extra actions must move into one of
 /// those slots (normally an overflow menu) rather than widening the band.
@@ -207,6 +230,7 @@ struct OPSScreenHeader<Leading: View, Trailing: View>: View {
             OPSHeaderControlSlot(position: .trailing(0), alignment: .trailing) {
                 trailing
             }
+            .anchorPreference(key: OPSHeaderTrailingSlotBoundsKey.self, value: .bounds) { $0 }
         }
     }
 }

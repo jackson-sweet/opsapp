@@ -555,8 +555,7 @@ struct TaskFormSheet: View {
         }
         .errorToast($errorMessage, label: Feedback.Err.saveFailed)
         .onAppear {
-            // Track screen view for analytics
-            AnalyticsManager.shared.trackScreenView(screenName: .taskForm, screenClass: "TaskFormSheet")
+            // Track screen view in first-party analytics.
             AnalyticsService.shared.trackScreenView(screenName: "task_form")
 
             if let selectedProject = selectedProject {
@@ -1751,11 +1750,6 @@ struct TaskFormSheet: View {
             if case .create = mode {
                 ToastCenter.shared.present(Feedback.Task.created)
                 let hasSchedule = snapshotStart != nil || snapshotEnd != nil
-                AnalyticsManager.shared.trackTaskCreated(
-                    taskType: snapshotTaskType?.display,
-                    hasSchedule: hasSchedule,
-                    teamSize: snapshotTeamMemberIds.count
-                )
                 AnalyticsService.shared.track(
                     eventType: .action,
                     eventName: "task_created",
@@ -1766,7 +1760,10 @@ struct TaskFormSheet: View {
                     ]
                 )
             } else if case .edit = mode {
-                AnalyticsManager.shared.trackTaskEdited(taskId: task.id)
+                AnalyticsService.shared.track(
+                    eventType: .action,
+                    eventName: "task_edited"
+                )
             }
 
             let taskTypeName = snapshotTaskType?.display ?? ""

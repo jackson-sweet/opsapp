@@ -120,18 +120,47 @@ class ClientRepository {
             .execute()
     }
 
-    // MARK: - Soft Delete Client
+    // MARK: - Soft Delete / Restore Client
 
+    /// Tombstone a client through the definer-owned RPC.
+    ///
+    /// Same policy family as `create(_:)` above, one step further on. The PATCH
+    /// this replaces was refused outright: `clients.role_scope_read` is a
+    /// RESTRICTIVE SELECT policy that returns false the moment `deleted_at` is
+    /// set, and Postgres attaches SELECT policies as WITH CHECK options to any
+    /// UPDATE whose target requires ACL_SELECT — which `where id = $1` does. So
+    /// `update clients set updated_at = now()` was accepted while
+    /// `update clients set deleted_at = now()` came back
+    /// `42501 new row violates row-level security policy "role_scope_read"`,
+    /// for every client role including a company admin holding
+    /// `clients.delete all`.
+    ///
+    /// It fired on the founder's phone on 2026-09-04 at 17:15 UTC — two parked
+    /// sync operations, two clients he had been told were deleted still live on
+    /// the server. `public.soft_delete_client` re-states the same
+    /// `clients.delete all` ladder the table's own DELETE policy demands, and is
+    /// idempotent. Bug 2a55c78f.
     func softDelete(_ id: String) async throws {
-        struct SoftDelete: Codable {
-            let deleted_at: String
-            let updated_at: String
-        }
-        let payload = SoftDelete(deleted_at: isoNow(), updated_at: isoNow())
-        try await client
-            .from("clients")
-            .update(payload)
-            .eq("id", value: id)
+        _ = try await client
+            .rpc(
+                "soft_delete_client",
+                params: SoftDeleteClientRPCParams(p_client_id: id.lowercased())
+            )
+            .execute()
+    }
+
+    /// Clear a client's tombstone.
+    ///
+    /// The PATCH this replaces did not fail — it matched zero rows, because a
+    /// tombstoned client is invisible to the read policy the UPDATE's USING
+    /// clause consults, and PostgREST answers that 200 with an empty body. The
+    /// restore looked delivered and never reached the server.
+    func restore(_ id: String) async throws {
+        _ = try await client
+            .rpc(
+                "restore_client",
+                params: SoftDeleteClientRPCParams(p_client_id: id.lowercased())
+            )
             .execute()
     }
 

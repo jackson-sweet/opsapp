@@ -54,14 +54,14 @@ final class PhotoProcessor {
 
         // Write full-size image
         let fullURL = dir.appendingPathComponent(filename)
-        try? imageData.write(to: fullURL)
+        _ = PhotoCacheLedger.shared.write(data: imageData, to: fullURL, budget: nil)
 
         // Generate and write thumbnail
         let thumbnail = generateThumbnail(resized, size: Self.thumbnailSize)
         let thumbData = thumbnail?.jpegData(compressionQuality: 0.7)
         let thumbURL = thumbDir.appendingPathComponent(thumbFilename)
         if let thumbData {
-            try? thumbData.write(to: thumbURL)
+            _ = PhotoCacheLedger.shared.write(data: thumbData, to: thumbURL, budget: nil)
         }
 
         // Relative paths (from Documents/)
@@ -338,7 +338,7 @@ final class PhotoProcessor {
         for photo in photosToClean {
             let fullPath = documentsDir.appendingPathComponent(photo.localPath)
             if fm.fileExists(atPath: fullPath.path) {
-                try? fm.removeItem(at: fullPath)
+                _ = PhotoCacheLedger.shared.remove(fullPath)
             }
         }
     }

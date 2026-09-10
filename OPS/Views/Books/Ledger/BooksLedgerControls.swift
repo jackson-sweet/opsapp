@@ -90,24 +90,22 @@ enum BooksEstimateFilter: String, CaseIterable, Identifiable {
     }
 }
 
-// MARK: - Expense filter (ALL · NO RECEIPT · NEEDS OK)
+// MARK: - Expense filter (ALL · NO RECEIPT)
 
 enum BooksExpenseFilter: String, CaseIterable, Identifiable {
-    case all, noReceipt, needsOk
+    case all, noReceipt
     var id: String { rawValue }
 
     var label: String {
         switch self {
         case .all: return "ALL"
         case .noReceipt: return "NO RECEIPT"
-        case .needsOk: return "NEEDS OK"
         }
     }
 
     var tone: Color? {
         switch self {
         case .noReceipt: return OPSStyle.Colors.rose
-        case .needsOk: return OPSStyle.Colors.tan
         default: return nil
         }
     }
@@ -116,7 +114,6 @@ enum BooksExpenseFilter: String, CaseIterable, Identifiable {
         switch self {
         case .all: return true
         case .noReceipt: return (expense.receiptImageUrl?.isEmpty ?? true)
-        case .needsOk: return ExpenseStatus(rawValue: expense.status) == .submitted
         }
     }
 

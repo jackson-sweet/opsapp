@@ -23,6 +23,7 @@ struct ExpenseBatchDetailView: View {
     @State private var showReceiptViewer = false
     @State private var receiptImageUrl: String? = nil
     @State private var showRejectConfirmation = false
+    @State private var hasLeftDetail = false
 
     // MARK: - Computed
 
@@ -39,13 +40,17 @@ struct ExpenseBatchDetailView: View {
     /// Where this batch sits in its lifecycle — drives the header stats and
     /// which footer (if any) renders. Same derivation as the console so the
     /// two can never disagree.
-    private var bucket: ExpenseBucket? {
-        ExpenseBuckets.bucket(for: batch, lineCount: viewModel.selectedBatchExpenses.count)
+    private var currentBatch: ExpenseBatchDTO {
+        viewModel.reviewBatches.first(where: { $0.id == batch.id }) ?? batch
     }
 
-    private var owedAmount: Double { ExpenseBuckets.owedAmount(batch) }
+    private var bucket: ExpenseBucket? {
+        ExpenseBuckets.bucket(for: currentBatch, lineCount: viewModel.selectedBatchExpenses.count)
+    }
 
-    private var batchStatus: ExpenseBatchStatus? { ExpenseBatchStatus(rawValue: batch.status) }
+    private var owedAmount: Double { ExpenseBuckets.owedAmount(currentBatch) }
+
+    private var batchStatus: ExpenseBatchStatus? { ExpenseBatchStatus(rawValue: currentBatch.status) }
 
     private var isReviewable: Bool {
         // Filling (open) envelopes are not review-ready; only sent ones are.
@@ -107,6 +112,7 @@ struct ExpenseBatchDetailView: View {
                         sectionHeader("EXPENSES")
 
                         expenseCards
+                            .disabled(viewModel.isApprovingBatches || viewModel.approvalInFlightBatchIds.contains(batch.id))
                     }
                     .padding(.bottom, hasFooter ? 100 : OPSStyle.Layout.spacing5)
                 }
@@ -119,6 +125,8 @@ struct ExpenseBatchDetailView: View {
         .navigationTitle(batch.batchNumber)
         .navigationBarTitleDisplayMode(.inline)
         .hidesGlobalTabBar()
+        .onAppear { hasLeftDetail = false }
+        .onDisappear { hasLeftDetail = true }
         .task {
             isLoading = true
             await viewModel.loadBatchExpenses(batch.id)
@@ -634,7 +642,17 @@ struct ExpenseBatchDetailView: View {
     private var stickyFooter: some View {
         OPSFloatingButtonBar(horizontalPadding: OPSStyle.Layout.spacing3, verticalPadding: OPSStyle.Layout.spacing2) {
             Group {
-                if isReviewable {
+                if viewModel.isApprovingBatches {
+                    footerButton(viewModel.approvalProgressLabel, background: OPSStyle.Colors.successStatus) {}
+                        .disabled(true)
+                        .accessibilityValue("Approval in progress")
+                } else if viewModel.approvalInFlightBatchIds.contains(batch.id) {
+                    footerButton("APPROVAL IN PROGRESS", background: OPSStyle.Colors.successStatus) {}
+                        .disabled(true)
+                } else if isReviewable && viewModel.confirmedApprovedBatchIds.contains(batch.id) {
+                    footerButton("APPROVED · REFRESH PENDING", background: OPSStyle.Colors.successStatus) {}
+                        .disabled(true)
+                } else if isReviewable {
                     reviewFooter
                 } else if bucket == .pay {
                     // Approved money not yet settled — the one next step.
@@ -662,20 +680,18 @@ struct ExpenseBatchDetailView: View {
                 "APPROVE ALL (\(viewModel.selectedBatchExpenses.count))",
                 background: OPSStyle.Colors.successStatus
             ) {
-                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                 Task {
-                    await viewModel.approveBatch(batch)
-                    dismiss()
+                    if await viewModel.approveBatch(batch), !hasLeftDetail { dismiss() }
                 }
             }
         } else {
             // Has flags — approve everything anyway, or send the flags back.
             HStack(spacing: OPSStyle.Layout.spacing2) {
                 footerButton("APPROVE ALL", background: OPSStyle.Colors.successStatus) {
-                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                     Task {
-                        await viewModel.approveBatch(batch)
-                        dismiss()
+                        if await viewModel.approveBatch(batch), !hasLeftDetail { dismiss() }
                     }
                 }
                 footerButton("SEND BACK \(flaggedCount)", background: OPSStyle.Colors.errorStatus) {

@@ -181,6 +181,7 @@ final class BugReportSubmissionService {
         description: String,
         category: String,
         screenshot: UIImage?,
+        element: BugReportElementPick? = nil,
         appState: AppState,
         dataController: DataController
     ) async throws {
@@ -233,6 +234,7 @@ final class BugReportSubmissionService {
             breadcrumbs: Self.convertToJSONArray(breadcrumbs),
             networkLog: Self.convertToJSONArray(networkLog),
             stateSnapshot: Self.convertToJSONDict(stateSnapshot),
+            customMetadata: Self.customMetadata(element: element),
             reporterName: reporterName,
             reporterEmail: reporterEmail
         )
@@ -414,12 +416,28 @@ final class BugReportSubmissionService {
             breadcrumbs: .array(payload.breadcrumbs ?? []),
             networkLog: .array(payload.networkLog ?? []),
             stateSnapshot: .dictionary(payload.stateSnapshot ?? [:]),
-            customMetadata: .dictionary([:]),
+            customMetadata: .dictionary(payload.customMetadata ?? [:]),
             reporterName: payload.reporterName,
             reporterEmail: payload.reporterEmail,
             priority: "none",
             status: "new"
         )
+    }
+
+    /// `custom_metadata.elementReferences` — what the operator picked with
+    /// POINT AT IT (bug 14e5a792), in the web picker's exact shape so the
+    /// admin bug console reads iOS picks the same way it reads web ones. See
+    /// `BugReportElementPick.elementReference` for the field-by-field mapping.
+    ///
+    /// Nil when nothing was picked, so an unmarked report carries no empty
+    /// array. The retired `custom_metadata.element` key (5aabcc3a) is no
+    /// longer written; reports queued by that build still decode, because the
+    /// outbox stores metadata as free-form JSON.
+    nonisolated static func customMetadata(element: BugReportElementPick?) -> [String: JSONPrimitive]? {
+        guard let element else { return nil }
+        return [
+            "elementReferences": .nestedArray([.nested(element.elementReference)])
+        ]
     }
 
     // MARK: - JSON Conversion Helpers
@@ -475,6 +493,10 @@ struct BugReportPayload: Codable, Equatable {
     let breadcrumbs: [[String: JSONPrimitive]]?
     let networkLog: [[String: JSONPrimitive]]?
     let stateSnapshot: [String: JSONPrimitive]?
+    /// Free-form report metadata. Today it carries only `elementReferences` —
+    /// what POINT AT IT picked. Optional and untyped so reports queued by an
+    /// older build (including 5aabcc3a's `element` key) still decode.
+    let customMetadata: [String: JSONPrimitive]?
     let reporterName: String
     let reporterEmail: String
 
@@ -498,6 +520,7 @@ struct BugReportPayload: Codable, Equatable {
         breadcrumbs: [[String: JSONPrimitive]]? = nil,
         networkLog: [[String: JSONPrimitive]]? = nil,
         stateSnapshot: [String: JSONPrimitive]? = nil,
+        customMetadata: [String: JSONPrimitive]? = nil,
         reporterName: String,
         reporterEmail: String
     ) {
@@ -520,6 +543,7 @@ struct BugReportPayload: Codable, Equatable {
         self.breadcrumbs = breadcrumbs
         self.networkLog = networkLog
         self.stateSnapshot = stateSnapshot
+        self.customMetadata = customMetadata
         self.reporterName = reporterName
         self.reporterEmail = reporterEmail
     }

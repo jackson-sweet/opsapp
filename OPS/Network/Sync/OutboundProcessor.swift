@@ -17,9 +17,59 @@ import Supabase
 final class OutboundProcessor {
 
     private let projectTaskSyncingFactory: (String) -> ProjectTaskSyncing
+    typealias RepositoryPush = (String, String, String, [String: Any]) async throws -> Void
+    private let repositoryPush: RepositoryPush?
+    private var invalidated = false
 
-    init(projectTaskSyncingFactory: @escaping (String) -> ProjectTaskSyncing = { TaskRepository(companyId: $0) }) {
+    init(
+        projectTaskSyncingFactory: @escaping (String) -> ProjectTaskSyncing = { TaskRepository(companyId: $0) },
+        repositoryPush: RepositoryPush? = nil
+    ) {
         self.projectTaskSyncingFactory = projectTaskSyncingFactory
+        self.repositoryPush = repositoryPush
+    }
+
+    /// Stop callbacks before the old account's context is cleared/replaced.
+    func invalidate() { invalidated = true }
+
+    private struct RunScope {
+        // ModelContext alone does not retain its container through async work.
+        let container: ModelContainer
+        let context: ModelContext
+        let userID: String?
+        let companyID: String?
+        init(context: ModelContext) {
+            self.container = context.container
+            self.context = context
+            self.userID = UserDefaults.standard.string(forKey: "currentUserId")?.lowercased()
+            self.companyID = UserDefaults.standard.string(forKey: "currentUserCompanyId")?.lowercased()
+        }
+    }
+
+    private struct OperationHandle {
+        let model: SyncOperation
+        let persistentID: PersistentIdentifier
+        let id: UUID
+        let entityType: String
+        let entityID: String
+        init(_ model: SyncOperation) {
+            self.model = model
+            self.persistentID = model.persistentModelID
+            self.id = model.id
+            self.entityType = model.entityType
+            self.entityID = model.entityId
+        }
+    }
+
+    private func isCurrent(_ scope: RunScope, handle: OperationHandle? = nil) -> Bool {
+        guard !invalidated, !Task.isCancelled,
+              scope.userID == UserDefaults.standard.string(forKey: "currentUserId")?.lowercased(),
+              scope.companyID == UserDefaults.standard.string(forKey: "currentUserCompanyId")?.lowercased() else { return false }
+        guard let handle else { return true }
+        // Do not ask a destroyed model for even its ID. Registration is checked
+        // using the identifier captured while the model was still usable.
+        let registered: SyncOperation? = scope.context.registeredModel(for: handle.persistentID)
+        return registered === handle.model
     }
 
     // MARK: - Main Entry Point
@@ -30,6 +80,10 @@ final class OutboundProcessor {
         context: ModelContext,
         connectivity: ConnectivityManager
     ) async {
+        guard !invalidated, !Task.isCancelled else { return }
+        let scope = RunScope(context: context)
+        defer { withExtendedLifetime(scope) {} }
+        guard isCurrent(scope) else { return }
         var shouldContinueDrain: Bool
         repeat {
             let mentionReadyBeforePass = readyPendingMentionOperationIds(
@@ -45,8 +99,10 @@ final class OutboundProcessor {
                 readyCrossEntityOperationIds(context: context)
             await processPendingOperationsPass(
                 context: context,
-                connectivity: connectivity
+                connectivity: connectivity,
+                scope: scope
             )
+            guard isCurrent(scope) else { return }
             let mentionReadyAfterPass = readyPendingMentionOperationIds(
                 context: context
             )
@@ -105,9 +161,10 @@ final class OutboundProcessor {
 
     private func processPendingOperationsPass(
         context: ModelContext,
-        connectivity: ConnectivityManager
+        connectivity: ConnectivityManager,
+        scope: RunScope
     ) async {
-        guard await connectivity.shouldAttemptSync else {
+        guard isCurrent(scope), connectivity.shouldAttemptSync else {
             print("[OutboundProcessor] Skipping — connectivity says do not sync")
             return
         }
@@ -145,6 +202,9 @@ final class OutboundProcessor {
             try? context.fetch(FetchDescriptor<SyncOperation>())
         ) ?? pending
         let eligible = pending.filter { op in
+            guard !DeckEditingSessionRegistry.shared.isHeld(
+                entityType: op.entityType, entityId: op.entityId
+            ) else { return false }
             // Backoff check: if retried before, ensure enough time has elapsed since last attempt
             if op.retryCount > 0, let lastAttempt = op.lastAttemptedAt {
                 let earliestRetry = lastAttempt.addingTimeInterval(op.backoffDelay)
@@ -213,16 +273,21 @@ final class OutboundProcessor {
         print("[OutboundProcessor] Coalesced \(eligible.count) → \(coalesced.count) operation(s)")
 
         // 4. Execute each independently
-        for op in coalesced {
+        let handles = coalesced.map(OperationHandle.init)
+        for handle in handles {
+            guard isCurrent(scope, handle: handle) else { return }
             do {
-                try await executeOperation(op, context: context)
+                try await executeOperation(handle.model, context: context)
             } catch {
+                guard isCurrent(scope, handle: handle) else { return }
                 let classified = classifySyncError(error)
-                print("[OutboundProcessor] Operation failed for \(op.entityType) \(op.entityId): \(classified.localizedDescription)")
-                // Error handling already done inside executeOperation
+                print("[OutboundProcessor] Operation failed for \(handle.entityType) \(handle.entityID): \(classified.localizedDescription)")
+                // Error handling already done inside executeOperation.
             }
+            guard isCurrent(scope, handle: handle) else { return }
         }
 
+        guard isCurrent(scope) else { return }
         // 5. Save context
         do {
             try context.save()
@@ -368,6 +433,11 @@ final class OutboundProcessor {
 
         for (_, groupOps) in groups {
             guard !groupOps.isEmpty else { continue }
+            // Preserve delete → restore → later edits as individually acknowledged commands.
+            if groupOps.contains(where: TaskLifecycleSync.isLifecycle) {
+                result.append(contentsOf: groupOps.sorted(by: TaskLifecycleSync.precedes))
+                continue
+            }
             var ops = groupOps
 
             // Single operation — no coalescing needed
@@ -466,14 +536,20 @@ final class OutboundProcessor {
     /// Executes a single SyncOperation against Supabase.
     /// Sets status to "inProgress" before attempting, and updates status/retryCount on completion or failure.
     func executeOperation(_ operation: SyncOperation, context: ModelContext) async throws {
+        guard !invalidated, !Task.isCancelled else { throw CancellationError() }
+        let scope = RunScope(context: context)
+        defer { withExtendedLifetime(scope) {} }
+        guard isCurrent(scope) else { throw CancellationError() }
+        guard !DeckEditingSessionRegistry.shared.isHeld(
+            entityType: operation.entityType, entityId: operation.entityId
+        ) else { return }
         guard try claimForExecution(
             operation,
             context: context
         ) else { return }
+        let handle = OperationHandle(operation)
         defer {
-            ProjectNoteMentionQueueCoordinator.shared.release(
-                operationId: operation.id
-            )
+            ProjectNoteMentionQueueCoordinator.shared.release(operationId: handle.id)
         }
         print("[OutboundProcessor] Pushing \(operation.entityType) \(operation.entityId)...")
 
@@ -485,21 +561,29 @@ final class OutboundProcessor {
                 .executeIfHandled(
                     operation: operation,
                     context: context,
-                    activeCompanyId: activeCompanyId
+                    activeCompanyId: activeCompanyId,
+                    isCurrent: { self.isCurrent(scope, handle: handle) }
                 )
+            guard isCurrent(scope, handle: handle) else { throw CancellationError() }
             if !handledSiteVisit {
                 guard let payloadDict = decodePayload(operation.payload) else {
                     throw SyncError.decodingFailed(detail: "Could not decode payload for \(operation.entityType) \(operation.entityId)")
                 }
-                try await routeToRepository(
-                    entityType: operation.entityType,
-                    entityId: operation.entityId,
-                    operationType: operation.operationType,
-                    payload: payloadDict
-                )
+                if let repositoryPush {
+                    try await repositoryPush(handle.entityType, handle.entityID, operation.operationType, payloadDict)
+                } else {
+                    try await routeToRepository(
+                        entityType: handle.entityType,
+                        entityId: handle.entityID,
+                        operationType: operation.operationType,
+                        payload: payloadDict,
+                        isCurrent: { self.isCurrent(scope, handle: handle) }
+                    )
+                }
             }
 
         } catch {
+            guard isCurrent(scope, handle: handle), !(error is CancellationError) else { throw CancellationError() }
             let classified = classifySyncError(error)
 
             // Idempotency: if this is a `create` retry and the server says the row
@@ -538,6 +622,7 @@ final class OutboundProcessor {
             ), await reconcile(operation, as: reconciliation, context: context) {
                 return
             }
+            guard isCurrent(scope, handle: handle) else { throw CancellationError() }
 
             // Classify + apply the SHARED failure policy (single source of truth
             // for the state transition — mirrored byte-for-byte with DataActor).
@@ -677,6 +762,7 @@ final class OutboundProcessor {
             throw error
         }
 
+        guard isCurrent(scope, handle: handle) else { throw CancellationError() }
         // Push confirmed. Persisting the confirmation is a LOCAL concern: it
         // sits outside the push's `do` so a store throw can never be classified
         // as a server rejection, consume retry budget, or park an operation the
@@ -699,7 +785,16 @@ final class OutboundProcessor {
                 // calendar row's dirty flag — and it commits with the
                 // completion, because that flag is what keeps the inbound merge
                 // off a locally-edited row (bug ef5a69e6).
+                try TaskLifecycleSync.clearNeedsSyncAfterConfirmation(operation, companyId: scope.companyID, in: context)
                 try CalendarUserEventOutboundSync.clearNeedsSyncOnCompletion(
+                    for: operation,
+                    in: context
+                )
+                // Confirmed server success is also the only thing that may move
+                // a deck design's merge base — the baseline the inbound merge
+                // compares against to decide whether a snapshot is a genuine
+                // remote edit or an echo of this push (bug 9f4aeaf8).
+                try DeckDesignServerMerge.recordConfirmedPush(
                     for: operation,
                     in: context
                 )
@@ -724,13 +819,19 @@ final class OutboundProcessor {
         as kind: SyncOperationReconcilers.Kind,
         context: ModelContext
     ) async -> Bool {
+        guard !invalidated, !Task.isCancelled else { return false }
+        let scope = RunScope(context: context)
+        defer { withExtendedLifetime(scope) {} }
+        guard isCurrent(scope) else { return false }
+        let handle = OperationHandle(operation)
+        let continuationIsCurrent = { self.isCurrent(scope, handle: handle) }
         switch kind {
         case .duplicatePhotoCreate:
-            return await reconcileDuplicateProjectPhotoCreate(operation, context: context)
+            return await reconcileDuplicateProjectPhotoCreate(operation, context: context, isCurrent: continuationIsCurrent)
         case .taskTombstone:
-            return await reconcileTaskUpdateAgainstTombstone(operation, context: context)
+            return await reconcileTaskUpdateAgainstTombstone(operation, context: context, isCurrent: continuationIsCurrent)
         case .projectUpdateRowVerdict:
-            return await reconcileProjectUpdateRowVerdict(operation, context: context)
+            return await reconcileProjectUpdateRowVerdict(operation, context: context, isCurrent: continuationIsCurrent)
         }
     }
 
@@ -741,8 +842,10 @@ final class OutboundProcessor {
     /// (then the failure is real and disposition should run).
     private func reconcileDuplicateProjectPhotoCreate(
         _ operation: SyncOperation,
-        context: ModelContext
+        context: ModelContext,
+        isCurrent: () -> Bool
     ) async -> Bool {
+        guard isCurrent() else { return false }
         guard let payload = decodePayload(operation.payload),
               let projectId = payload["project_id"] as? String,
               let url = payload["url"] as? String else { return false }
@@ -762,7 +865,7 @@ final class OutboundProcessor {
                 .limit(1)
                 .execute()
                 .value
-            guard let server = rows.first else { return false }
+            guard isCurrent(), let server = rows.first else { return false }
 
             let serverId = server.id.lowercased()
             var patch: [String: String] = [:]
@@ -786,9 +889,11 @@ final class OutboundProcessor {
                     .eq("id", value: serverId)
                     .execute()
             }
+            guard isCurrent() else { return false }
             print("[OutboundProcessor] projectPhoto create \(operation.entityId) reconciled to server row \(serverId) (dedupe-index conflict)")
             return true
         } catch {
+            guard isCurrent() else { return false }
             print("[OutboundProcessor] projectPhoto duplicate reconciliation failed for \(operation.entityId): \(error)")
             return false
         }
@@ -799,47 +904,28 @@ final class OutboundProcessor {
     /// task returns false — parking is correct for a refusal we cannot explain.
     private func reconcileTaskUpdateAgainstTombstone(
         _ operation: SyncOperation,
-        context: ModelContext
+        context: ModelContext,
+        isCurrent: () -> Bool
     ) async -> Bool {
-        struct ServerTaskRow: Decodable {
-            let id: String
-            let deleted_at: String?
-        }
+        guard isCurrent() else { return false }
+        guard let companyId = UserDefaults.standard.string(forKey: "currentUserCompanyId"), !companyId.isEmpty else { return false }
         do {
-            let rows: [ServerTaskRow] = try await SupabaseService.shared.client
+            let rows: [SyncOperationReconcilers.ServerTaskRow] = try await SupabaseService.shared.client
                 .from("project_tasks")
-                .select("id, deleted_at")
+                .select("id, company_id, deleted_at")
                 .eq("id", value: operation.entityId.lowercased())
+                .eq("company_id", value: companyId.lowercased())
                 .execute()
                 .value
-            if rows.isEmpty {
-                // The task read policy hides soft-deleted rows entirely, so the
-                // tombstone this op parked on can never become visible here. The
-                // RPC raised task_not_found under the caller's own RLS — the task
-                // is gone from this caller's world and a retry can never succeed.
-                // Retire the operation; leave local task data untouched so a
-                // permission eclipse (not a deletion) self-corrects on later pulls.
-                try context.transaction {
-                    SyncOperationReconcilers.markResolved(operation)
-                }
-                print("[OutboundProcessor] projectTask update \(operation.entityId) retired: server row invisible after task_not_found")
-                return true
-            }
-            guard let server = rows.first,
-                  let deletedAtRaw = server.deleted_at,
-                  let deletedAt = SupabaseDate.parse(deletedAtRaw) else { return false }
-
+            guard isCurrent() else { return false }
+            var resolved = false
             try context.transaction {
-                _ = try SyncOperationReconcilers.applyTaskTombstone(
-                    taskId: operation.entityId,
-                    deletedAt: deletedAt,
-                    in: context
-                )
-                SyncOperationReconcilers.markResolved(operation)
+                resolved = try SyncOperationReconcilers.reconcileTaskUpdate(operation,
+                    server: rows.first, companyId: companyId, in: context)
             }
-            print("[OutboundProcessor] projectTask update \(operation.entityId) resolved against server tombstone")
-            return true
+            return resolved
         } catch {
+            guard isCurrent() else { return false }
             print("[OutboundProcessor] task tombstone reconciliation failed for \(operation.entityId): \(error)")
             return false
         }
@@ -871,8 +957,10 @@ final class OutboundProcessor {
     /// not evidence, and inventing a verdict from one is the bug being fixed.
     private func reconcileProjectUpdateRowVerdict(
         _ operation: SyncOperation,
-        context: ModelContext
+        context: ModelContext,
+        isCurrent: () -> Bool
     ) async -> Bool {
+        guard isCurrent() else { return false }
         struct ServerProjectRow: Decodable {
             let id: String
             let deleted_at: String?
@@ -885,6 +973,7 @@ final class OutboundProcessor {
                 .eq("id", value: projectId)
                 .execute()
                 .value
+            guard isCurrent() else { return false }
             if !rows.isEmpty {
                 try context.transaction {
                     SyncOperationReconcilers.applyEditRefusedVerdict(
@@ -899,6 +988,7 @@ final class OutboundProcessor {
             let response = try await SupabaseService.shared.client
                 .rpc("project_server_state", params: ["p_project_id": projectId])
                 .execute()
+            guard isCurrent() else { return false }
             guard let state = SyncOperationReconcilers
                 .projectServerState(from: response.data) else {
                 print("[OutboundProcessor] project_server_state returned an unrecognized verdict for \(operation.entityId)")
@@ -920,6 +1010,7 @@ final class OutboundProcessor {
             print("[OutboundProcessor] project update \(operation.entityId) resolved against server tombstone")
             return true
         } catch {
+            guard isCurrent() else { return false }
             print("[OutboundProcessor] project row-verdict probe failed for \(operation.entityId): \(error)")
             return false
         }
@@ -937,13 +1028,19 @@ final class OutboundProcessor {
     /// Fetches predicate-free and filters in Swift: a `#Predicate` fetch of
     /// SyncOperation traps against a table that has never held a row.
     func resolveReconcilableParkedOperations(context: ModelContext) async {
+        guard !invalidated, !Task.isCancelled else { return }
+        let scope = RunScope(context: context)
+        defer { withExtendedLifetime(scope) {} }
+        guard isCurrent(scope) else { return }
         let all = (try? context.fetch(FetchDescriptor<SyncOperation>())) ?? []
         let parked = all.filter { $0.status == "parked" }
         guard !parked.isEmpty else { return }
         var resolved = 0
-        for operation in parked {
-            guard let kind = SyncOperationReconcilers.parkedKind(for: operation) else { continue }
-            if await reconcile(operation, as: kind, context: context) { resolved += 1 }
+        for handle in parked.map(OperationHandle.init) {
+            guard isCurrent(scope, handle: handle) else { return }
+            guard let kind = SyncOperationReconcilers.parkedKind(for: handle.model) else { continue }
+            if await reconcile(handle.model, as: kind, context: context) { resolved += 1 }
+            guard isCurrent(scope, handle: handle) else { return }
         }
         if resolved > 0 {
             print("[OutboundProcessor] Parked-op sweep: \(resolved) reconciled against server state")
@@ -1016,8 +1113,10 @@ final class OutboundProcessor {
         entityType: String,
         entityId: String,
         operationType: String,
-        payload: [String: Any]
+        payload: [String: Any],
+        isCurrent: () -> Bool
     ) async throws {
+        guard isCurrent() else { throw CancellationError() }
         let companyId = UserDefaults.standard.string(forKey: "currentUserCompanyId") ?? ""
 
         if try await ProjectNoteMentionEditSync.executeIfHandled(
@@ -1028,6 +1127,7 @@ final class OutboundProcessor {
         ) {
             return
         }
+        guard isCurrent() else { throw CancellationError() }
         if try await TaskTypeMutationSync.executeIfHandled(
             entityType: entityType,
             operationType: operationType,
@@ -1038,6 +1138,7 @@ final class OutboundProcessor {
         // Time off and personal events. Owned here rather than by a switch case
         // below because the create also carries the notification that must not
         // fire until the server has the row (bug ef5a69e6).
+        guard isCurrent() else { throw CancellationError() }
         if try await CalendarUserEventOutboundSync.executeIfHandled(
             entityType: entityType,
             operationType: operationType,
@@ -1048,6 +1149,7 @@ final class OutboundProcessor {
             return
         }
 
+        guard isCurrent() else { throw CancellationError() }
         guard let syncEntityType = SyncEntityType(rawValue: entityType) else {
             print("[OutboundProcessor] Unknown entity type: \(entityType) — using generic table push")
             try await genericTablePush(entityType: entityType, entityId: entityId, operationType: operationType, payload: payload)
@@ -1103,8 +1205,21 @@ final class OutboundProcessor {
             try await repo.create(dto)
 
         case "update":
-            let fields = payloadToAnyJSON(sanitizedPayload)
-            try await repo.updateFields(entityId, fields: fields)
+            // Restore is staged as an `update` carrying `deleted_at: null`
+            // (DataController.restoreTrash), so the "delete" branch never sees
+            // it — and `deleted_at` cannot ride a PATCH on projects in either
+            // direction. Split it off for the definer RPC, in the order the read
+            // policy allows (SoftDeleteRPC.swift).
+            for step in TombstoneFieldSplit.steps(for: payloadToAnyJSON(sanitizedPayload)) {
+                switch step {
+                case .patch(let patch):
+                    try await repo.updateFields(entityId, fields: patch)
+                case .softDelete:
+                    try await repo.softDelete(entityId)
+                case .restore:
+                    try await repo.restore(entityId)
+                }
+            }
 
         case "delete":
             try await repo.softDelete(entityId)
@@ -1233,8 +1348,20 @@ final class OutboundProcessor {
                     materialAdjustments: TaskCompletionSync.materialAdjustments(from: payload)
                 )
             } else {
-                let fields = payloadToAnyJSON(sanitizedPayload)
-                try await repo.updateFields(entityId, fields: fields)
+                // A completion payload never carries `deleted_at`, so only this
+                // arm needs the split. Restore arrives here as an `update`
+                // carrying `deleted_at: null`, and the tombstone column cannot
+                // travel by PATCH in either direction (SoftDeleteRPC.swift).
+                for step in TombstoneFieldSplit.steps(for: payloadToAnyJSON(sanitizedPayload)) {
+                    switch step {
+                    case .patch(let patch):
+                        try await repo.updateFields(entityId, fields: patch)
+                    case .softDelete:
+                        try await repo.softDelete(entityId)
+                    case .restore:
+                        try await repo.restore(entityId)
+                    }
+                }
             }
 
         case "delete":
@@ -1301,9 +1428,20 @@ final class OutboundProcessor {
             try await repo.create(dto)
 
         case "update":
-            // ClientRepository doesn't have updateFields — use generic table push
-            let fields = payloadToAnyJSON(sanitizedPayload)
-            try await genericUpdateFields(table: "clients", entityId: entityId, fields: fields)
+            // ClientRepository doesn't have updateFields — use generic table push.
+            // The tombstone half cannot go through PostgREST at all: setting
+            // `deleted_at` is refused 42501 and clearing it matches zero rows in
+            // silence, so it splits off to the definer RPC (SoftDeleteRPC.swift).
+            for step in TombstoneFieldSplit.steps(for: payloadToAnyJSON(sanitizedPayload)) {
+                switch step {
+                case .patch(let patch):
+                    try await genericUpdateFields(table: "clients", entityId: entityId, fields: patch)
+                case .softDelete:
+                    try await repo.softDelete(entityId)
+                case .restore:
+                    try await repo.restore(entityId)
+                }
+            }
 
         case "delete":
             try await repo.softDelete(entityId)

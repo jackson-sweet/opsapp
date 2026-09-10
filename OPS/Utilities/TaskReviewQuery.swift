@@ -46,11 +46,12 @@ enum TaskReviewQuery {
 
     /// `scopedTasks(dataController:)` over an already-fetched task list.
     /// Pass `getAllTasks()` output; the soft-delete gate lives there. Under
-    /// `tasks.view=all` this returns the array verbatim, tombstones included.
+    /// `tasks.view=all` retains every same-company row, tombstones included.
     static func scopedTasks(
         tasks: [ProjectTask],
         dataController: DataController
     ) -> [ProjectTask] {
+        let tasks = companyTasks(tasks, dataController: dataController)
         if PermissionStore.shared.hasFullAccess("tasks.view") {
             return tasks
         }
@@ -72,11 +73,12 @@ enum TaskReviewQuery {
 
     /// `editableTasks(dataController:)` over an already-fetched task list.
     /// Pass `getAllTasks()` output; the soft-delete gate lives there. Under
-    /// `tasks.edit=all` this returns the array verbatim, tombstones included.
+    /// `tasks.edit=all` retains every same-company row, tombstones included.
     static func editableTasks(
         tasks allTasks: [ProjectTask],
         dataController: DataController
     ) -> [ProjectTask] {
+        let allTasks = companyTasks(allTasks, dataController: dataController)
         switch PermissionStore.shared.scope(for: "tasks.edit") {
         case "all":
             return allTasks
@@ -114,10 +116,10 @@ enum TaskReviewQuery {
         )
         return scopedTasks(tasks: tasks, dataController: dataController)
             .filter { task in
-                guard task.status == .active, task.deletedAt == nil else { return false }
-                // Prefer scheduled completion (endDate), fall back to startDate.
-                guard let scheduledDate = task.endDate ?? task.startDate else { return false }
-                return scheduledDate < endOfToday
+                ReviewEligibility.overdueTask(
+                    isActive: task.status == .active, isDeleted: task.deletedAt != nil,
+                    scheduledDate: task.endDate ?? task.startDate, endOfToday: endOfToday
+                )
             }
             .sorted {
                 let a = $0.endDate ?? $0.startDate ?? .distantPast
@@ -163,12 +165,18 @@ enum TaskReviewQuery {
                     projectTeamMemberIDs: task.project?.getTeamMemberIds() ?? [],
                     isScheduled: task.startDate != nil
                 )
-                return task.status == .active
-                    && task.deletedAt == nil
-                    && (task.project?.status.isActive ?? false)
-                    && (task.startDate == nil || task.getTeamMemberIds().isEmpty)
-                    && policy.hasAvailableMutation(for: state)
+                return ReviewEligibility.unscheduledTask(
+                    isActive: task.status == .active, isDeleted: task.deletedAt != nil,
+                    projectIsActive: task.project?.status.isActive ?? false, state: state, policy: policy
+                )
             }
             .sorted { ($0.project?.title ?? "") < ($1.project?.title ?? "") }
     }
+    /// A cached row from a previous company is never eligible for this review.
+    /// The global DataController getter retains its behavior for other callers.
+    private static func companyTasks(_ tasks: [ProjectTask], dataController: DataController) -> [ProjectTask] {
+        guard let companyID = dataController.currentUser?.companyId, !companyID.isEmpty else { return [] }
+        return tasks.filter { $0.companyId == companyID }
+    }
+
 }

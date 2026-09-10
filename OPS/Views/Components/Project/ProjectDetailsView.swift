@@ -115,6 +115,19 @@ struct ProjectDetailsView: View {
             } else {
                 mainContent
                     .navigationBarHidden(true)
+                    .onChange(of: project.liveTasks.map { $0.id.lowercased() }, initial: true) { _, liveIDs in
+                        if let selected = viewModel.selectedTask,
+                           !liveIDs.contains(selected.id.lowercased()) {
+                            viewModel.selectedTask = nil
+                            viewModel.showingTaskScheduler = false
+                            viewModel.showingTaskActionMenu = false
+                            viewModel.showingTaskTeamPicker = false
+                            viewModel.showingTaskDeleteConfirmation = false
+                        }
+                        if let detail = taskDetailTask, !liveIDs.contains(detail.id.lowercased()) {
+                            taskDetailTask = nil
+                        }
+                    }
                     // MARK: - Sheets & Alerts
                     .fullScreenCover(isPresented: $viewModel.showingPhotoViewer) {
                         photoViewerContent
@@ -127,6 +140,12 @@ struct ProjectDetailsView: View {
                     }
                     .sheet(isPresented: $viewModel.showingImagePicker) {
                         imagePickerContent
+                    }
+                    .task(id: project.id) {
+                        guard let context = dataController.modelContext else { return }
+                        do {
+                            try await StagedPhotoDestinations.recoverProject(project: project, userID: dataController.currentUser?.id ?? "", context: context, imageSyncManager: dataController.imageSyncManager, tutorialMode: tutorialMode)
+                        } catch { viewModel.networkError = "Saved photos could not be recovered. Open the camera to retry." }
                     }
                     .fullScreenCover(isPresented: $showingCamera) {
                         cameraContent
@@ -239,25 +258,14 @@ struct ProjectDetailsView: View {
                                 onClearDates: {
                                     // Gated on calendar.edit, scope-aware on the task.
                                     guard task.canEditSchedule else { return }
-                                    // Bug f3604d52 — allow clearing the task's
-                                    // dates from the scheduler sheet toolbar.
-                                    // Mirrors CalendarEventCard.clearTaskDates.
-                                    task.startDate = nil
-                                    task.endDate = nil
-                                    task.duration = 0
-                                    task.needsSync = true
-                                    try? dataController.modelContext?.save()
-                                    dataController.scheduledTasksDidChange.toggle()
-                                    let taskId = task.id
-                                    Task {
-                                        try? await dataController.updateTaskFields(
-                                            taskId: taskId,
-                                            fields: [
-                                                "start_date": .null,
-                                                "end_date": .null,
-                                                "duration": .integer(0)
-                                            ]
-                                        )
+                                    Task { @MainActor in
+                                        do {
+                                            try await dataController.updateTaskFields(taskId: task.id, fields: [
+                                                "start_date": .null, "end_date": .null, "duration": .integer(0)
+                                            ])
+                                        } catch {
+                                            viewModel.networkError = error.localizedDescription
+                                        }
                                     }
                                 }
                             )
@@ -599,7 +607,7 @@ struct ProjectDetailsView: View {
                             viewModel.showingImagePicker = true
                         },
                         allTasksComplete: {
-                            let activeTasks = project.tasks.filter { $0.deletedAt == nil && $0.status != .cancelled }
+                            let activeTasks = project.liveTasks.filter { $0.deletedAt == nil && $0.status != .cancelled }
                             return !activeTasks.isEmpty && activeTasks.allSatisfy { $0.status == .completed }
                         }(),
                         projectIsActive: project.status != .completed && project.status != .closed && project.status != .archived,
@@ -773,7 +781,7 @@ struct ProjectDetailsView: View {
                     }
                 }
                 .buttonStyle(PlainButtonStyle())
-            } else if project.tasks.isEmpty {
+            } else if project.liveTasks.isEmpty {
                 // No tasks on project — non-tappable
                 TaskBadge(
                     name: "No Tasks",
@@ -1077,15 +1085,11 @@ struct ProjectDetailsView: View {
         // Bug 56c37df2 — the standardized batch camera (same component
         // as site-visit capture): live multi-shot, real lens stops, and
         // library import built into the camera HUD.
-        CameraBatchView { images in
-            showingCamera = false
-            guard !images.isEmpty else { return }
-            viewModel.selectedImages = images
-            viewModel.addPhotosToProject(tutorialMode: tutorialMode)
-            NotificationCenter.default.post(
-                name: Notification.Name("WizardPhotoCaptured"),
-                object: nil
-            )
+        CameraBatchView(owner: StagedPhotoDestinations.owner(companyID: project.companyId, userID: dataController.currentUser?.id ?? "", kind: "project", id: project.id)) { batch in
+            guard let context = dataController.modelContext else { return false }
+            let accepted = await StagedPhotoDestinations.acceptProject(batch, project: project, userID: dataController.currentUser?.id ?? "", context: context, imageSyncManager: dataController.imageSyncManager, tutorialMode: tutorialMode)
+            if accepted { NotificationCenter.default.post(name: Notification.Name("WizardPhotoCaptured"), object: nil) }
+            return accepted
         }
     }
 
@@ -1189,7 +1193,7 @@ struct ProjectDetailsView: View {
     @State private var lastSnappedTaskID: UUID?
 
     private var taskPickerOverlay: some View {
-        let sortedTasks = project.tasks.sorted { $0.displayOrder < $1.displayOrder }
+        let sortedTasks = project.liveTasks.sorted { $0.displayOrder < $1.displayOrder }
         let baseDelay: Double = 0.04
 
         return ZStack(alignment: .topTrailing) {

@@ -338,6 +338,7 @@ struct TabBarItem: View {
             }
             .frame(width: cellWidth, height: OPSStyle.Layout.tabBarItemHeight)
             .contentShape(Rectangle())
+            .bugReportPickable(.button, label: tab.title ?? tab.accessibilityLabel)
         }
     }
 }

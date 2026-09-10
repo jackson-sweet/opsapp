@@ -1,0 +1,46 @@
+{
+  "ZSITEVISIT": {
+    "before": 30,
+    "after": 30,
+    "missingOriginalIds": 0,
+    "newIds": 0
+  },
+  "ZSITEVISITCAPTUREARTIFACT": {
+    "before": 149,
+    "after": 149,
+    "missingOriginalIds": 0,
+    "newIds": 0
+  },
+  "ZSITEVISITCHECKLISTANSWER": {
+    "before": 283,
+    "after": 283,
+    "missingOriginalIds": 0,
+    "newIds": 0
+  },
+  "ZSITEVISITIDENTITYDRAFT": {
+    "before": 25,
+    "after": 25,
+    "missingOriginalIds": 0,
+    "newIds": 0
+  },
+  "ZDECKDESIGN": {
+    "before": 153,
+    "after": 153,
+    "missingOriginalIds": 0,
+    "newIds": 0
+  },
+  "ZPROJECTPHOTO": {
+    "before": 967,
+    "after": 969,
+    "missingOriginalIds": 0,
+    "newIds": 2
+  },
+  "ZSYNCOPERATION": {
+    "before": 2636,
+    "after": 2636,
+    "missingOriginalIds": 0,
+    "newIds": 0
+  },
+  "parkedWorkExactPayloadAndIdentityPreserved": true,
+  "allOriginalDeckJSONPreserved": true
+}

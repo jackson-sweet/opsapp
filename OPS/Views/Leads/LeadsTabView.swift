@@ -322,6 +322,7 @@ struct LeadsTabView: View {
             }
             await resolvePendingLeadDeepLinkIfNeeded()
             await resolvePendingSiteVisitStartIfNeeded()
+            await resolvePendingVisitBookingIfNeeded()
         }
         .modifier(LeadsRefreshListeners(viewModel: viewModel))
         .onChange(of: isActiveTab) { _, active in
@@ -341,6 +342,10 @@ struct LeadsTabView: View {
         .onChange(of: appState.pendingSiteVisitStartLeadId) { _, newValue in
             guard newValue != nil else { return }
             Task { await resolvePendingSiteVisitStartIfNeeded() }
+        }
+        .onChange(of: appState.pendingVisitBookingLeadId) { _, newValue in
+            guard newValue != nil else { return }
+            Task { await resolvePendingVisitBookingIfNeeded() }
         }
         .onChange(of: showsDaySheet) { _, isDaySheet in
             // Permissions can hydrate after the tab's first `.task` — a store
@@ -375,12 +380,14 @@ struct LeadsTabView: View {
     @ViewBuilder
     private var surface: some View {
         VStack(spacing: 0) {
-            // Visit-day START cards — pinned above whichever surface is live,
-            // so the morning's appointment leads the tab until it's started
-            // or dismissed. START goes straight into the ONE capture cover.
+            // Today's visits rail — pinned above whichever surface is live,
+            // so the morning's appointments lead the tab until each is started
+            // or dismissed. START goes straight into the ONE capture cover; a
+            // row opens the lead (f77d38fc).
             SiteVisitStartCardsHost(
                 currentUserId: dataController.currentUser?.id,
-                onStart: { activeSiteVisitLead = $0 }
+                onStart: { activeSiteVisitLead = $0 },
+                onOpen: { detailLead = $0 }
             )
             surfaceBody
         }
@@ -512,17 +519,25 @@ struct LeadsTabView: View {
         )
     }
 
-    /// Chips carry RAW bucket counts, deliberately: they describe the queue the
-    /// operator owns, not the slice a crew filter is currently showing. A chip
-    /// that read `OVERDUE 0` because of a crew filter would look like there is
-    /// nothing overdue. Group headers below carry the filtered counts.
+    /// Chip counts are `LeadsQueryEngine.chipCount` — raw bucket counts while
+    /// browsing (a chip describes the queue the operator owns, not the slice a
+    /// crew filter is showing), and the breakdown of the MATCHES while a search
+    /// is live (bug 2a89477d). Group headers below carry the filtered counts.
     private var bucketChips: [TacticalChip] {
         let order: [PipelineViewModel.TriageBucket] = [
             .all, .overdue, .dueToday, .waitingOnYou, .fresh, .waitingOnThem
         ]
         return order.map { b in
-            let count = (b == .all) ? buckets.all.count : buckets.leads(for: b).count
-            return TacticalChip(id: b.rawValue, label: chipLabel(b), count: count, tone: bucketTone(b))
+            TacticalChip(
+                id: b.rawValue,
+                label: chipLabel(b),
+                count: LeadsQueryEngine.chipCount(
+                    for: b,
+                    controls: controls,
+                    buckets: buckets
+                ),
+                tone: bucketTone(b)
+            )
         }
     }
 
@@ -849,6 +864,34 @@ struct LeadsTabView: View {
             activeSiteVisitLead = lead
         } catch {
             print("[Pipeline] START-visit lead \(leadId) not resolvable: \(error)")
+        }
+    }
+
+    @MainActor
+    /// Drain a BOOK-a-time intent into the tab's booking sheet (bug 74bbb5b7).
+    /// Same resolve-local-then-fetch shape as the START-visit drain. The sheet
+    /// is state-aware, so a lead that already holds an open booking opens THAT
+    /// booking — the operator reschedules rather than stacking a second one.
+    private func resolvePendingVisitBookingIfNeeded() async {
+        guard let leadId = appState.pendingVisitBookingLeadId, !leadId.isEmpty else { return }
+        appState.pendingVisitBookingLeadId = nil
+
+        // Never stomp a sheet already up — a booking mid-edit outranks a relay.
+        guard bookingRequest == nil, activeSiteVisitLead == nil else { return }
+
+        if let lead = viewModel.allOpportunities.first(where: { $0.id == leadId }) {
+            bookingRequest = BookSiteVisitRequest(lead: lead, existing: openBookingSnapshot(for: lead))
+            return
+        }
+        guard let companyId = dataController.currentUser?.companyId else { return }
+        let repo = OpportunityRepository(companyId: companyId)
+        do {
+            let dto = try await repo.fetchOne(leadId)
+            let lead = dto.toModel()
+            guard !lead.isDeleted else { return }
+            bookingRequest = BookSiteVisitRequest(lead: lead, existing: openBookingSnapshot(for: lead))
+        } catch {
+            print("[Pipeline] BOOK-visit lead \(leadId) not resolvable: \(error)")
         }
     }
 

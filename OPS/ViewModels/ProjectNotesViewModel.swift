@@ -822,15 +822,32 @@ class ProjectNotesViewModel: ObservableObject {
         }.count
     }
 
-    /// Update the content of an existing note
+    /// Update the content of an existing note.
+    ///
+    /// Bug f5f57917 — `attachments` carries the media half of the edit. It is
+    /// `nil` for a text-only edit (the note's photos are left alone) and a
+    /// concrete set when the user detached one in the edit strip. Detach only:
+    /// the photo leaves the note, never the project gallery.
     func updateNoteContent(
         _ note: ProjectNote,
         newContent: String,
-        identitySpans: [ProjectNoteMentionSpan] = []
+        identitySpans: [ProjectNoteMentionSpan] = [],
+        attachments: [String]? = nil
     ) async -> Bool {
         error = nil
         guard modelContext != nil else {
             error = "Couldn't save. Try again."
+            return false
+        }
+        // An edit must never quietly become a delete. The RPC refuses the same
+        // shape, so this guard is the local half of one rule, not a second one.
+        if let attachments,
+           ActivityEditAttachmentPresentation.wouldStrandNote(
+               content: newContent,
+               photoURL: note.photoURL,
+               attachments: attachments
+           ) {
+            error = "A note needs words or a photo."
             return false
         }
         let plan = ProjectNoteMentionEditPlan.make(
@@ -858,7 +875,8 @@ class ProjectNotesViewModel: ObservableObject {
                note: note,
                content: plan.content,
                mentionedUserIds: plan.mentionedUserIds,
-               mentionEventId: mentionEventId
+               mentionEventId: mentionEventId,
+               attachments: attachments
            ) {
             loadNotesFromLocal()
             ProjectNoteChangeSignal.post(projectId: projectId)

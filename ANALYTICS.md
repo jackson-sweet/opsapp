@@ -1,213 +1,99 @@
-# OPS Analytics & Conversion Tracking
+# OPS iOS Analytics Contract
 
-This document details the Firebase Analytics implementation for tracking user behavior and Google Ads conversion events.
+OPS separates business truth, product behaviour, and Google conversion signals. No single analytics destination is allowed to claim all three.
 
-## Overview
+**Release state — August 31, 2026:** this contract is implemented, verified, and pushed to `main` through `bbf985b9`. It is not customer-live until a signed iOS build is released through the App Store and live event readback succeeds. The release machine currently has no valid code-signing identity. The production Firebase key-event configuration is a separate Google-admin state.
 
-OPS uses Firebase Analytics to track:
-- User acquisition and authentication events
-- Screen/page views and navigation patterns
-- CRUD operations (create, read, update, delete)
-- Status changes and workflow progression
-- Subscription and revenue events
+## Source ownership
 
-All analytics are centralized through `AnalyticsManager.swift`.
+| Signal | Destination | Purpose |
+|---|---|---|
+| Companies, trials, projects, task progress, billing | Supabase business records | Canonical business milestones |
+| Detailed product behaviour and friction | Supabase `analytics_events` | First-party product analysis |
+| Five deliberate conversion events | Firebase Analytics | Google conversion QA and optimization |
+| App Store impressions, page views, and downloads | App Store Connect | Storefront discovery, not user-level attribution |
 
-## Firebase Configuration
+Client events never define whether a company activated or paid. Those milestones are derived from persisted business records.
 
-- **SDK Version**: 12.6.0+ (Swift Package Manager)
-- **Project ID**: `ops-ios-app`
-- **Bundle ID**: `co.opsapp.ops.OPS`
-- **Config File**: `GoogleService-Info.plist`
-- **Google Ads Integration**: Enabled (`IS_ADS_ENABLED: true`)
+## Firebase conversion allowlist
 
-Firebase is initialized in `AppDelegate.swift` as the first step in `didFinishLaunchingWithOptions`.
+The `AnalyticsManager` contract on `main` may emit only:
 
----
+1. `sign_up`
+2. `begin_trial`
+3. `complete_onboarding`
+4. `create_first_project`
+5. `purchase`
 
-## Events Reference
+Screen views, app opens, logins, navigation, CRUD actions, sync failures, and other product behaviour must not be added to Firebase. They belong in `AnalyticsService` and Supabase.
 
-### Authentication Events
+Firebase user properties are limited to conversion segmentation: `user_type`, `subscription_status`, and the configured Firebase user ID. The exact event allowlist is locked by `FirebaseConversionContractTests`.
 
-| Event | Parameters | Description | Location |
-|-------|------------|-------------|----------|
-| `sign_up` | `method` (email/apple/google), `user_type` | New user account creation | OnboardingViewModel, DataController |
-| `login` | `method`, `user_type` | Returning user login | DataController |
+## Supabase event contract
 
-### Onboarding & Trial Events
+The `AnalyticsService` contract on `main` creates a stable UUID for every product event and queues it durably in `UserDefaults`. The queue preserves order, caps itself at 1,000 events, retries transient failures, and drops permanent poison events so one bad payload cannot block the stream.
 
-| Event | Parameters | Description | Location |
-|-------|------------|-------------|----------|
-| `complete_onboarding` | `user_type`, `has_company` | User completes onboarding flow | OnboardingViewModel |
-| `begin_trial` | `user_type`, `trial_days` (default: 30) | Company owner starts trial | OnboardingViewModel |
+Each event carries:
 
-### Subscription & Revenue Events
+- contract schema version `1`
+- explicit `production` or `development` environment
+- stable event and session UUIDs
+- event type and snake-case name
+- bounded app/device context
+- allowlisted, scalar, PII-screened properties
+- optional bounded duration
+- client creation time
 
-| Event | Parameters | Description | Location |
-|-------|------------|-------------|----------|
-| `purchase` | `item_name`, `price`, `currency`, `user_type` | Subscription purchase (Firebase standard) | SubscriptionManager |
-| `subscribe` | `item_name`, `price`, `currency`, `user_type` | Custom subscription event | SubscriptionManager |
+The authenticated `append_analytics_events` RPC is the only current delivery path. It verifies the signed Firebase subject, resolves canonical user/company/role/plan on the server, stamps `platform=ios`, rate-limits the user, and inserts by event UUID with idempotent retry semantics. Client-supplied identity is never accepted.
 
-### Screen View Events
+Pre-signup product events remain local until authentication, then bind once to the first authenticated subject without changing their event IDs. Authenticated events are bound to the subject that created them. Legacy ownerless events and events from a different signed-in account are discarded rather than misattributed.
 
-| Event | Parameters | Description | Location |
-|-------|------------|-------------|----------|
-| `screen_view` | `screen_name`, `screen_class` | Screen/page viewed | All main views |
-| `tab_selected` | `tab_name`, `tab_index` | Tab bar navigation | MainTabView |
+## Privacy boundary
 
-**Screen Names Tracked:**
-- Main tabs: `home`, `job_board`, `schedule`, `settings`
-- Job Board sections: `job_board_dashboard`, `job_board_projects`, `job_board_tasks`, `job_board_clients`
-- Detail views: `project_details`, `task_details`, `client_details`
-- Forms: `project_form`, `task_form`, `client_form`
-- Settings: `profile_settings`, `organization_settings`, `notification_settings`, `app_settings`, `manage_team`, `manage_subscription`
-- Subscription: `plan_selection`, `subscription_lockout`
-- Auth: `login`, `forgot_password`
+Event properties are allowlisted. Strings are trimmed and capped at 256 UTF-8 bytes; each event accepts at most 25 properties. Nested values and arrays are rejected. The sanitizer rejects emails, URLs, UUIDs, phone-like strings, resource IDs, arbitrary query strings, and noncanonical paths.
 
-### Project Events
+Do not collect:
 
-| Event | Parameters | Description | Location |
-|-------|------------|-------------|----------|
-| `create_project` | `project_count`, `user_type` | Project created | ContentView |
-| `create_first_project` | `user_type` | First project (high-intent conversion) | AnalyticsManager (auto-triggered) |
-| `project_edited` | `project_id` | Project updated | ProjectFormSheet |
-| `project_deleted` | - | Project deleted | ProjectDetailsView |
-| `project_status_changed` | `old_status`, `new_status` | Status transition | DataController |
+- names, email addresses, phone numbers, or street addresses
+- notes or other free-form customer content
+- auth tokens or secrets
+- full URLs or query strings
+- project, task, client, company, or user identifiers in properties
 
-### Task Events
+Counts, booleans, stable enum values, status transitions, and coarse UI context are appropriate. Hashing does not make PII appropriate for product analytics.
 
-| Event | Parameters | Description | Location |
-|-------|------------|-------------|----------|
-| `task_created` | `task_type`, `has_schedule`, `team_size` | Task created | TaskFormSheet |
-| `task_edited` | `task_id` | Task updated | TaskFormSheet |
-| `task_deleted` | - | Task deleted | TaskDetailsView |
-| `task_status_changed` | `old_status`, `new_status` | Status transition | DataController |
-| `task_completed` | `task_type` | Task marked complete (high-value) | DataController |
+## Logging
 
-### Client Events
+Analytics diagnostics compile only in debug builds and contain event categories or counts, never user IDs or raw payloads. Release builds do not print analytics identifiers or property bodies.
 
-| Event | Parameters | Description | Location |
-|-------|------------|-------------|----------|
-| `client_created` | `has_email`, `has_phone`, `has_address`, `import_method` | Client created | ClientSheet |
-| `client_edited` | `client_id` | Client updated | ClientSheet |
-| `client_deleted` | - | Client deleted | ClientListView |
+## Business milestones and source health
 
-### Team Member Events
+iOS conversion/product events cannot define trial, activation, first value, paid, or revenue membership. Those metrics are derived on the server from company, project, task, and billing records under the shared growth measurement contract.
 
-| Event | Parameters | Description | Location |
-|-------|------------|-------------|----------|
-| `team_member_invited` | `role`, `team_size` | New team member invited | ManageTeamView |
-| `team_member_removed` | - | Team member deleted | ManageTeamView |
-| `team_member_role_changed` | `old_role`, `new_role` | Role/permission changed | TeamRoleManagementView |
+The app notification rail recognizes the staged persistent type `analytics_source_failed`. It uses the design-system alert icon and error status colour. Creation, deduplication, and automatic resolution are server-owned; the iOS client only renders the notification returned by the existing notification API.
 
-### Engagement Events
+The registered iOS Firebase/GA property is `514229717`. It is conversion QA only. Search Console, the two web GA properties, and App Store Connect facts are owned and health-checked by OPS-Web.
 
-| Event | Parameters | Description | Location |
-|-------|------------|-------------|----------|
-| `navigation_started` | `project_id` | User starts navigation to project | HomeView |
-| `search_performed` | `section`, `results_count` | Search executed | Various search components |
-| `filter_applied` | `section`, `filter_type` | Filter applied | Filter sheets |
-| `image_uploaded` | `image_count`, `context` | Photo uploaded | ProjectFormSheet, ClientSheet |
-| `form_abandoned` | `form_type`, `fields_filled` | Form closed without saving | Form sheets |
+## Adding telemetry
 
-### Calendar Events
+Before adding a product event:
 
-| Event | Parameters | Description | Location |
-|-------|------------|-------------|----------|
-| `calendar_view_mode_changed` | `view_mode` (month/week) | Calendar view toggled | ScheduleView |
-| `calendar_day_selected` | `events_count` | Day selected in calendar | ScheduleView |
+1. Confirm the behaviour cannot be derived more reliably from a business record.
+2. Use a stable snake-case event name.
+3. Add only bounded, reusable enum/count/boolean properties.
+4. Add any new property key to `AnalyticsEventContract` with sanitizer coverage.
+5. Call `AnalyticsService`, not Firebase.
+6. Add or update contract tests, including offline/retry behaviour when delivery changes.
 
----
+Changing the Firebase conversion set is a separate measurement decision. Update the allowlist test and reconcile the event to a canonical Supabase business record before changing it.
 
-## User Properties
+## Files
 
-| Property | Values | Description |
-|----------|--------|-------------|
-| `user_type` | `company`, `employee` | User account type |
-| `subscription_status` | `subscribed`, `free` | Subscription state |
-
-User ID is set via `Analytics.setUserID()` during authentication.
-
----
-
-## Google Ads Conversion Events
-
-These events are automatically sent to Google Ads through the Firebase-Google Ads integration:
-
-1. **`sign_up`** - Primary acquisition conversion
-2. **`purchase`** - Revenue/subscription conversion
-3. **`create_first_project`** - High-intent engagement signal
-4. **`complete_onboarding`** - Onboarding completion
-5. **`task_completed`** - Productivity/engagement signal
-
----
-
-## Implementation Details
-
-### Adding a New Event
-
-1. Add the tracking method to `AnalyticsManager.swift`:
-```swift
-func trackNewEvent(param1: String, param2: Int) {
-    let parameters: [String: Any] = [
-        "param1": param1,
-        "param2": param2
-    ]
-    Analytics.logEvent("new_event", parameters: parameters)
-    print("[ANALYTICS] Tracked new_event - param1: \(param1), param2: \(param2)")
-}
-```
-
-2. Call the method from the appropriate location:
-```swift
-AnalyticsManager.shared.trackNewEvent(param1: "value", param2: 42)
-```
-
-### Adding a New Screen
-
-1. Add the screen name to `ScreenName` enum in `AnalyticsManager.swift`:
-```swift
-enum ScreenName: String {
-    // ... existing cases
-    case newScreen = "new_screen"
-}
-```
-
-2. Add tracking in the view's `onAppear`:
-```swift
-.onAppear {
-    AnalyticsManager.shared.trackScreenView(screenName: .newScreen, screenClass: "NewScreenView")
-}
-```
-
----
-
-## Files Reference
-
-| File | Purpose |
-|------|---------|
-| `OPS/Utilities/AnalyticsManager.swift` | Centralized analytics singleton |
-| `OPS/GoogleService-Info.plist` | Firebase configuration |
-| `OPS/AppDelegate.swift` | Firebase initialization |
-
----
-
-## Console Logging
-
-All analytics events log to console with the `[ANALYTICS]` prefix for debugging:
-```
-[ANALYTICS] Tracked screen_view - screen: home
-[ANALYTICS] Tracked task_created - type: Installation, hasSchedule: true, teamSize: 2
-[ANALYTICS] Tracked project_status_changed - from: accepted to: inProgress
-```
-
----
-
-## Best Practices
-
-1. **Always use AnalyticsManager** - Don't call `Analytics.logEvent()` directly
-2. **Use snake_case** for event names and parameters
-3. **Include context** - Add relevant parameters (IDs, counts, types)
-4. **Track success, not attempts** - Log events after successful operations
-5. **Respect privacy** - Don't log PII (names, emails) in events
-6. **Log to console** - Include print statements for debugging
+| File | Responsibility |
+|---|---|
+| `OPS/Utilities/AnalyticsManager.swift` | Firebase conversion allowlist only |
+| `OPS/Utilities/Analytics/AnalyticsService.swift` | First-party product event creation and authenticated flush |
+| `OPS/Utilities/Analytics/AnalyticsEventQueue.swift` | Contract, sanitizer, durable queue, and RPC encoding |
+| `OPS/Utilities/Analytics/AnalyticsFlushPolicy.swift` | Poison/transient delivery disposition |
+| `OPSTests/Analytics/` | Contract and Firebase allowlist tests |
+| `OPSTests/Sync/AnalyticsFlushPolicyTests.swift` | Offline, retry, duplicate, and poison-batch policy |

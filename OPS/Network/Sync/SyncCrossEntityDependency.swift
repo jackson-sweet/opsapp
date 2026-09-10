@@ -113,6 +113,7 @@ enum SyncCrossEntityDependency {
     ) -> Bool {
         isBlockedByUnresolvedCreate(operation, in: operations)
             || isBlockedByUnresolvedSameEntityCreate(operation, in: operations)
+            || TaskLifecycleSync.isHeld(operation, in: operations)
     }
 
     /// True when `operation` references an entity whose own create has not yet

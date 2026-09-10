@@ -1,0 +1,23 @@
+{
+  "source": "993ca64133060d0c5184cc30526d76430923ba39",
+  "localMainIntegration": "a2e0e55fa086ffc3276a3bac3dbf63c73e7e7f37",
+  "productionSourceEqualityVerified": true,
+  "configuration": "Release",
+  "status": "succeeded",
+  "errorCount": 0,
+  "warningCount": 199,
+  "analyzerWarningCount": 0,
+  "elapsedSeconds": 910.2,
+  "signatureVerified": true,
+  "signatureVerification": "codesign --verify --deep --strict",
+  "binaryUUID": "4FA92CA0-B0BA-3814-AE5A-EBFB3F2337CF",
+  "architecture": "arm64",
+  "matchingDSYMVerified": true,
+  "bundleId": "co.opsapp.ops.OPS",
+  "version": "3.0.5",
+  "build": "3.0.5",
+  "installedOnPhone": false,
+  "appStoreReleased": false,
+  "currentMainAtCloseout": "1e244d9b",
+  "subsequentMainChangeExcluded": "A separate header-overlay repair merged after a2e0e55f; it is preserved but not included in this signed candidate."
+}

@@ -44,6 +44,13 @@ struct PhotoCommentViewer: View {
     /// can re-render without re-fetching.
     @State private var currentVisibilityState: Bool = false
 
+    /// Bug a290934f — this project's synced photo rows, cached alongside the
+    /// project for the same reason (this file deliberately does not `@Query`:
+    /// the viewer is a modal over a fixed photo list, and a fetch per body
+    /// render buys nothing). Refreshed on open and after an assignment.
+    @State private var syncedPhotos: [ProjectPhoto] = []
+    @State private var showingAssignTask = false
+
     // Remote annotation overlays keyed by photo URL
     @State private var loadedAnnotations: [String: PhotoAnnotationDTO] = [:]
     // Incremented after compositing to force ZoomablePhotoView to reload from cache
@@ -57,6 +64,36 @@ struct PhotoCommentViewer: View {
         self._currentIndex = State(initialValue: initialIndex)
         let url = initialIndex < photos.count ? photos[initialIndex] : ""
         self._viewModel = StateObject(wrappedValue: PhotoCommentsViewModel(photoURL: url, projectId: projectId))
+    }
+
+    // MARK: - Task link (bug a290934f)
+
+    private var currentURL: String? {
+        guard currentIndex < photos.count else { return nil }
+        return photos[currentIndex]
+    }
+
+    private var taskIndex: ProjectPhotoTaskIndex {
+        ProjectPhotoTaskIndex(photos: syncedPhotos, tasks: cachedProject?.tasks ?? [])
+    }
+
+    private var currentTask: ProjectPhotoTask? {
+        guard let currentURL else { return nil }
+        return taskIndex.task(forURL: currentURL)
+    }
+
+    /// Whether this operator may point THIS photo at a task. Mirrors the
+    /// server's write guard exactly, so the viewer never offers a write the
+    /// database will refuse — see `AssignTaskAvailability`.
+    private var canAssignTask: Bool {
+        guard let currentURL else { return false }
+        return AssignTaskAvailability.canAssign(
+            hasSyncedRow: syncedPhotos.contains { $0.url == currentURL },
+            hasProjectTasks: !taskIndex.tasks.isEmpty,
+            uploader: ProjectPhotoUploaderAttribution.byURL(Array(syncedPhotos))[currentURL] ?? .unattributed,
+            currentUserID: ProjectPhotoUploaderIdentity.canonicalUserID(dataController.currentUser?.id),
+            hasFullProjectEdit: PermissionStore.shared.hasFullAccess("projects.edit")
+        )
     }
 
     var body: some View {
@@ -190,6 +227,16 @@ struct PhotoCommentViewer: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .projectPhotoAnnotationsChanged)) { _ in
             Task { await refreshProjectAnnotationComposites() }
+        }
+        // Bug a290934f — assign in place. A half sheet keeps the photo on
+        // screen behind the choice: the thing being tagged stays visible.
+        .sheet(isPresented: $showingAssignTask) {
+            AssignTaskSheet(
+                tasks: taskIndex.tasks,
+                selectedTaskID: currentTask?.id,
+                onSelect: assignTask
+            )
+            .opsSheet(detents: [.medium])
         }
         .onDisappear {
             cancelAutoHide()
@@ -741,7 +788,22 @@ struct PhotoCommentViewer: View {
             predicate: #Predicate<Project> { $0.id == id }
         )
         cachedProject = try? context.fetch(descriptor).first
+        loadSyncedPhotos()
         refreshVisibilityState()
+    }
+
+    /// Bug a290934f — the project's live photo rows. Fetched predicate-free and
+    /// filtered in Swift: the house rule on this path, and one project's
+    /// gallery is small enough that the filter costs nothing.
+    private func loadSyncedPhotos() {
+        guard let context = dataController.modelContext else {
+            syncedPhotos = []
+            return
+        }
+        let rows = (try? context.fetch(FetchDescriptor<ProjectPhoto>())) ?? []
+        syncedPhotos = rows
+            .filter { $0.projectId == projectId && $0.deletedAt == nil }
+            .sorted { $0.createdAt > $1.createdAt }
     }
 
     /// Sync the local visibility mirror from the cached Project. Called
@@ -794,6 +856,23 @@ struct PhotoCommentViewer: View {
                     Spacer()
                 }
 
+                // Bug a290934f — which task this photo documents. The label
+                // carries the answer, so the state is readable without opening
+                // anything; the action opens the sheet that changes it.
+                if canAssignTask {
+                    OPSActionBarButton(
+                        icon: OPSStyle.Icons.taskType,
+                        label: currentTask?.title.uppercased() ?? "TASK",
+                        iconColor: currentTask?.color ?? OPSStyle.Colors.tertiaryText,
+                        labelColor: currentTask == nil
+                            ? OPSStyle.Colors.secondaryText
+                            : OPSStyle.Colors.primaryText,
+                        action: { showingAssignTask = true }
+                    )
+
+                    Spacer()
+                }
+
                 OPSActionBarButton(
                     icon: "pencil.tip",
                     label: "ANNOTATE",
@@ -803,6 +882,61 @@ struct PhotoCommentViewer: View {
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3)
         .padding(.bottom, OPSStyle.Layout.spacing2)
+    }
+
+    // MARK: - Task Assignment (Bug a290934f)
+
+    /// Commit the photo's task link. Optimistic, like the visibility toggle:
+    /// the local row flips first so the badge and the strip update on the tap,
+    /// then the server write goes out. A rejection reverts — a stale local
+    /// value is worse than a stale optimistic one, because the next sync would
+    /// silently re-flip it.
+    private func assignTask(_ taskID: String?) {
+        guard canAssignTask,
+              let url = currentURL,
+              let project = cachedProject,
+              let imageSyncManager = dataController.imageSyncManager,
+              let context = dataController.modelContext else {
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            return
+        }
+
+        let rows = syncedPhotos.filter { $0.url == url }
+        guard !rows.isEmpty else {
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            return
+        }
+
+        // One statement covers every row on the url, so every row moves.
+        let previous = rows.map { ($0, $0.taskId) }
+        for row in rows { row.applyTaskLink(taskID) }
+        try? context.save()
+
+        loadSyncedPhotos()
+        ToastCenter.shared.present(
+            taskID == nil ? Feedback.Photo.taskCleared : Feedback.Photo.taskAssigned
+        )
+
+        Task {
+            do {
+                try await imageSyncManager.setPhotoTask(
+                    url: url,
+                    taskId: taskID,
+                    projectId: project.id
+                )
+            } catch {
+                await MainActor.run {
+                    for (row, original) in previous { row.applyTaskLink(original) }
+                    try? context.save()
+                    loadSyncedPhotos()
+                    UINotificationFeedbackGenerator().notificationOccurred(.error)
+                    ToastCenter.shared.present(
+                        Toast(label: Feedback.Err.operationFailed, tone: .error)
+                    )
+                }
+                print("[PHOTO_TASK] Failed to set task for \(url): \(error)")
+            }
+        }
     }
 
     // MARK: - Client Visibility Toggle (Bug 7b43be32)

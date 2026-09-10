@@ -1166,7 +1166,6 @@ struct SettingsView: View {
     /// per-visit: they ran on every mount back when a tab switch rebuilt this
     /// view, and they still run on every visit now.
     private func beginVisit() {
-        AnalyticsManager.shared.trackScreenView(screenName: .settings, screenClass: "SettingsView")
         AnalyticsService.shared.trackScreenView(screenName: "settings")
         refreshPendingWorkCount()
     }
@@ -1320,5 +1319,7 @@ struct SettingsView: View {
     SettingsView()
         .environmentObject(DataController())
         .environmentObject(AppState())
+        .environmentObject(SubscriptionManager.shared)
+        .environmentObject(SyncStatusIndicatorModel())
         .preferredColorScheme(.dark)
 }

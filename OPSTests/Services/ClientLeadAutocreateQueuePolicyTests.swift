@@ -294,6 +294,9 @@ final class ClientLeadAutocreateQueuePolicyTests: XCTestCase {
         )
         context.insert(draft)
         try context.save()
+        let draftId = draft.id
+        let visitId = visit.id
+        let committedAt = Date(timeIntervalSince1970: 1_788_732_345)
 
         let bound = expectation(description: "SiteVisitLeadBound posted for visit-1")
         let observer = NotificationCenter.default.addObserver(
@@ -317,16 +320,26 @@ final class ClientLeadAutocreateQueuePolicyTests: XCTestCase {
                 )
             }
         )
+        queue.now = { committedAt }
         queue.configure(modelContext: context, activeCompanyId: { "company-1" })
         queue.enqueue(makeClient(id: "client-1"), companyId: "company-1")
 
         await queue.drain()
 
         XCTAssertEqual(queue.pendingCount, 0)
-        XCTAssertEqual(draft.opportunityId, "opp-77")
-        XCTAssertNotNil(draft.lastCommittedAt)
-        XCTAssertEqual(visit.opportunityId, "opp-77")
         await fulfillment(of: [bound], timeout: 1)
+        // Delivery owns its writing context. Assert the durable identities from
+        // a fresh reader; the original registered objects are stale snapshots.
+        let readback = ModelContext(container)
+        let savedDraft = try XCTUnwrap(try readback.fetch(FetchDescriptor<SiteVisitIdentityDraft>(
+            predicate: #Predicate { $0.id == draftId }
+        )).first)
+        let savedVisit = try XCTUnwrap(try readback.fetch(FetchDescriptor<SiteVisit>(
+            predicate: #Predicate { $0.id == visitId }
+        )).first)
+        XCTAssertEqual(savedDraft.opportunityId, "opp-77")
+        XCTAssertEqual(savedDraft.lastCommittedAt, committedAt)
+        XCTAssertEqual(savedVisit.opportunityId, "opp-77")
     }
 
     // MARK: - Fixtures

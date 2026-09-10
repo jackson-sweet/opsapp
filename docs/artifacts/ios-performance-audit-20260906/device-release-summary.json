@@ -1,0 +1,14 @@
+{
+  "result": "Passed",
+  "xcodebuildExitCode": 0,
+  "elapsedSeconds": 854.0,
+  "sourceHead": "8ef739cde6f25c2ee422d614be1977ea65867824",
+  "configuration": "Release",
+  "destination": "generic/platform=iOS",
+  "codeSigningAllowed": false,
+  "installed": false,
+  "bundleVersion": "3.0.5",
+  "marketingVersion": "3.0.5",
+  "platform": "iphoneos",
+  "binaryDescription": "/private/tmp/ops-ios-performance-integration-deriveddata/Build/Products/Release-iphoneos/OPS.app/OPS: Mach-O 64-bit executable arm64"
+}

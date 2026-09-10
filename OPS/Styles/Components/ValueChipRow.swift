@@ -62,6 +62,7 @@ struct ValueChipRow: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(PlainButtonStyle())
+        .bugReportPickable(.chip, label: label(option))
         .accessibilityLabel(label(option))
         .accessibilityAddTraits(isActive ? [.isSelected] : [])
     }

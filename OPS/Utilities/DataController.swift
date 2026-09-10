@@ -163,7 +163,12 @@ class DataController: ObservableObject {
 
     /// Background SwiftData actor — owns all sync/cleanup/background writes.
     /// Created once in setModelContext. Gated behind FeatureFlags.useDataActor.
-    private(set) var dataActor: DataActor?
+    @Published private(set) var dataActor: DataActor?
+    private var dataActorStartup: DataActorStartup?
+    private var dataActorBindingTask: Task<Void, Never>?
+    private var legacyBootstrapTask: Task<Void, Never>?
+    private var configuredSyncContext: ModelContext?
+    private let dataActorPreparation: DataActorStartup.Preparation
 
     /// Bridges DataActor.didSave → main context @Query refresh.
     /// Created alongside dataActor; published for views to observe.
@@ -204,7 +209,12 @@ class DataController: ObservableObject {
     @Published var simplePINManager = SimplePINManager()
     
     // MARK: - Initialization
-    init() {
+    init(
+        dataActorPreparation: @escaping DataActorStartup.Preparation = { actor, isCurrent in
+            try await actor.prepareForFirstSync(isCurrent: isCurrent)
+        }
+    ) {
+        self.dataActorPreparation = dataActorPreparation
         // Create dependencies in a predictable order
         self.keychainManager = KeychainManager()
         self.authManager = AuthManager()
@@ -312,6 +322,10 @@ class DataController: ObservableObject {
     
     @MainActor
     func setModelContext(_ context: ModelContext) {
+        if self.modelContext !== context {
+            invalidateDataActorStartup()
+            syncEngine?.stopForLogoutSync()
+        }
         self.modelContext = context
 
         // Rehydrate the V25 sibling projection before any screen can read the
@@ -356,16 +370,6 @@ class DataController: ObservableObject {
             AutoBugReporter.shared.configure(connectivity: self.connectivity)
         }
 
-        // Create the DataActor + refresh bridge SYNCHRONOUSLY (flag-gated).
-        //
-        // Must happen before any other code path can race to sync. Specifically:
-        //   - DataController.fetchUserFromAPI calls initializeSyncManager at
-        //     line 843 during auth check — configure() must see a non-nil
-        //     self.dataActor.
-        //   - ConnectivityManager.onStateChanged callbacks can trigger a sync
-        //     immediately upon connectivity restore; SyncEngine.dataActor
-        //     must be bound before that happens.
-        //
         // Route inbound merge signals (Realtime / delta / full sync) to the
         // calendar's existing refresh chains. Created on BOTH the actor and
         // legacy paths — every inbound merge site posts the same signal.
@@ -401,79 +405,96 @@ class DataController: ObservableObject {
             )
         }
 
-        // The @ModelActor-synthesized init runs synchronously; only configure()
-        // is async. Actor methods are FIFO-serialized, so scheduling configure()
-        // first guarantees it runs before any queued cleanup/sync method.
-        if FeatureFlags.useDataActor && self.dataActor == nil {
-            let actor = DataActor(modelContainer: context.container)
-
-            let bridge = MainContextRefreshBridge(
-                mainContext: context,
-                listeningTo: .dataActorDidSave
-            )
-
-            self.dataActor = actor
-            self.refreshBridge = bridge
-
-            // Bind the actor to SyncEngine synchronously so the first sync
-            // trigger (network reconnect, auth completion) sees the actor path.
-            self.syncEngine.setDataActor(actor)
-
-            // configure() sets autosave off and installs the didSave → main
-            // rebroadcast observer. Runs async on the actor's executor; any
-            // subsequent actor method queues behind it.
-            Task { await actor.configure() }
-
-            print("[DATA_CONTROLLER] DataActor created — actor path is active for this session")
-        }
-
-        // Cleanup + initializeSyncManager remain in a Task because cleanup is
-        // async and we don't want to block setModelContext's caller.
-        Task { @MainActor in
-            if FeatureFlags.useDataActor, let actor = self.dataActor {
-                // Canonicalize task UUIDs to lowercase BEFORE dedup so
-                // `7F7C90FF-...` and `7f7c90ff-...` (same underlying task)
-                // group together in `cleanupDuplicateTasks`. Must run before
-                // any sync so outbound pushes use canonicalized ids too.
-                await actor.normalizeTaskIdsToLowercase()
-
-                // Same casing fix for task types: collapse uppercase/lowercase id
-                // variants onto one id BEFORE cleanupDuplicateTaskTypes so its
-                // exact-id grouping sees the case-variant duplicate as one group.
-                await actor.normalizeTaskTypeIdsToLowercase()
-
-                await actor.cleanupDuplicateUsers()
+        if FeatureFlags.useDataActor {
+            // Register pending readiness before setModelContext returns. Any
+            // auth/reconnect sync waits for it instead of selecting legacy.
+            ensureDataActorStartup(for: context)
+        } else {
+            legacyBootstrapTask?.cancel()
+            legacyBootstrapTask = Task { @MainActor [weak self] in
+                guard let self else { return }
+                func isCurrent() -> Bool {
+                    !Task.isCancelled && self.modelContext === context
+                }
+                guard isCurrent() else { return }
+                await self.cleanupDuplicateUsers()
                 #if DEBUG
-                await actor.cleanupDuplicateProjects()
+                guard isCurrent() else { return }
+                await self.cleanupDuplicateProjects()
                 #endif
-                await actor.cleanupDuplicateTasks()
-                await actor.cleanupDuplicateClients()
-                await actor.cleanupDuplicateTaskTypes()
-
-                // After dedup, rewire relationships from the stored id-string
-                // columns (Project.teamMemberIdsString, ProjectTask.teamMemberIdsString,
-                // ProjectTask.taskTypeId, etc.) into `@Relationship` arrays. The
-                // dedup's `pickFreshestIndex` may retain the copy that was
-                // inserted via a realtime echo — which never had its `[User]`
-                // relationship wired (DTO→model only copies the id string).
-                // Without this pass the UI would show no avatars until the
-                // next full/delta sync runs, which could be minutes or a
-                // foreground-resume away.
-                await actor.rewireRelationships()
-            } else {
-                await cleanupDuplicateUsers()
-                #if DEBUG
-                await cleanupDuplicateProjects()
-                #endif
-                await cleanupDuplicateTasks()
-                await cleanupDuplicateClients()
-                await cleanupDuplicateTaskTypes()
-            }
-
-            if isAuthenticated || currentUser != nil {
-                initializeSyncManager()
+                guard isCurrent() else { return }
+                await self.cleanupDuplicateTasks()
+                guard isCurrent() else { return }
+                await self.cleanupDuplicateClients()
+                guard isCurrent() else { return }
+                await self.cleanupDuplicateTaskTypes()
+                guard isCurrent() else { return }
+                if self.isAuthenticated || self.currentUser != nil {
+                    self.initializeSyncManager()
+                }
             }
         }
+    }
+
+    /// Await the current container's configured and prepared actor. A cancelled
+    /// or replaced session returns nil; callers must not manufacture a legacy
+    /// model actor while this one is still starting.
+    @MainActor
+    func readyDataActor() async -> DataActor? {
+        guard FeatureFlags.useDataActor, let context = modelContext,
+              let startup = dataActorStartup else { return nil }
+        let userID = currentUser?.id
+        let companyID = currentUser?.companyId
+        guard let actor = await startup.value(), !Task.isCancelled,
+              self.dataActorStartup === startup, self.modelContext === context,
+              currentUser?.id == userID, currentUser?.companyId == companyID,
+              startup.matches(context.container) else { return nil }
+        if self.dataActor !== actor { self.dataActor = actor }
+        return actor
+    }
+
+    @MainActor
+    private func ensureDataActorStartup(for context: ModelContext) {
+        guard FeatureFlags.useDataActor else { return }
+        if let startup = dataActorStartup,
+           startup.isCurrent, startup.matches(context.container) {
+            return
+        }
+        invalidateDataActorStartup()
+        // Install the listener before preparation can save anything.
+        self.refreshBridge = MainContextRefreshBridge(
+            mainContext: context, listeningTo: .dataActorDidSave
+        )
+        let startup = DataActorStartup(
+            modelContainer: context.container, prepare: dataActorPreparation
+        )
+        self.dataActorStartup = startup
+        self.syncEngine.setDataActorStartup(startup)
+        dataActorBindingTask = Task { @MainActor [weak self] in
+            guard let actor = await startup.value(), !Task.isCancelled,
+                  let self, self.dataActorStartup === startup,
+                  self.modelContext === context else { return }
+            if self.dataActor !== actor { self.dataActor = actor }
+            if self.isAuthenticated || self.currentUser != nil {
+                self.initializeSyncManager()
+            }
+        }
+    }
+
+    @MainActor
+    private func invalidateDataActorStartup() {
+        imageSyncManager?.invalidate()
+        imageSyncManager = nil
+        dataActorStartup?.invalidate()
+        dataActorBindingTask?.cancel()
+        legacyBootstrapTask?.cancel()
+        dataActor?.retireAndDrainModelWork()
+        dataActorStartup = nil
+        dataActorBindingTask = nil
+        legacyBootstrapTask = nil
+        dataActor = nil
+        refreshBridge = nil
+        configuredSyncContext = nil
     }
     
     @MainActor
@@ -481,6 +502,23 @@ class DataController: ObservableObject {
         guard let modelContext = modelContext else {
             print("[DATA_CONTROLLER] ⚠️ Cannot initialize sync system - no modelContext")
             return
+        }
+
+        // Authentication may complete after a cancelled startup on the same
+        // container. Install its new readiness boundary before any sync setup.
+        ensureDataActorStartup(for: modelContext)
+
+        // Engine configuration belongs to a context, independently of the
+        // older image-manager sentinel. Replacement and reauthentication must
+        // rebind sync even when an image manager already exists.
+        if configuredSyncContext !== modelContext {
+            syncEngine.configure(
+                modelContext: modelContext,
+                connectivity: connectivity,
+                dataActor: self.dataActor
+            )
+            configuredSyncContext = modelContext
+            syncEngine.registerBackgroundTasks()
         }
 
         // Skip if already configured (syncEngine.isSyncing is observable after configure)
@@ -496,16 +534,6 @@ class DataController: ObservableObject {
             modelContext: modelContext,
             connectivity: connectivity
         )
-
-        // Configure the sync engine (already created eagerly). Pass dataActor when
-        // the feature flag is on and the actor has been created in setModelContext;
-        // SyncEngine routes fullSync/pullDelta/pushPending/etc. through the actor.
-        syncEngine.configure(
-            modelContext: modelContext,
-            connectivity: connectivity,
-            dataActor: self.dataActor
-        )
-        syncEngine.registerBackgroundTasks()
 
         // Calibrate the photo storage budget on first authenticated launch.
         // Idempotent — a StorageProfiler already-calibrated guard makes subsequent
@@ -534,6 +562,12 @@ class DataController: ObservableObject {
     // Method to perform sync on app launch
     func performAppLaunchSync() {
         print("[APP_LAUNCH_SYNC] 🚀 Starting app launch sync")
+        // Bug eed3f552 — any task create recorded without its required fields
+        // is rebuilt from the local row before the first push.
+        let repairedCreates = repairStrandedProjectTaskCreates()
+        if repairedCreates > 0 {
+            print("[APP_LAUNCH_SYNC] 🔧 Rebuilt \(repairedCreates) stranded task create(s)")
+        }
         print("[APP_LAUNCH_SYNC] - isConnected: \(isConnected)")
         print("[APP_LAUNCH_SYNC] - isAuthenticated: \(isAuthenticated)")
         print("[APP_LAUNCH_SYNC] - currentUser: \(currentUser != nil ? currentUser!.fullName : "nil")")
@@ -799,8 +833,6 @@ class DataController: ObservableObject {
                 if let user = currentUser {
                     UserDefaults.standard.set(user.hasCompletedAppOnboarding, forKey: "onboarding_completed")
 
-                    // Track login conversion for Google Ads
-                    AnalyticsManager.shared.trackLogin(userType: user.userType, method: .email)
                     AnalyticsService.shared.track(eventType: .lifecycle, eventName: "login", properties: ["method": "email"])
                     AnalyticsManager.shared.setUserType(user.userType)
                     AnalyticsManager.shared.setUserId(userId)
@@ -945,7 +977,6 @@ class DataController: ObservableObject {
                     AnalyticsManager.shared.trackSignUp(userType: user.userType, method: .apple)
                     AnalyticsService.shared.track(eventType: .lifecycle, eventName: "sign_up", properties: ["method": "apple"])
                 } else {
-                    AnalyticsManager.shared.trackLogin(userType: user.userType, method: .apple)
                     AnalyticsService.shared.track(eventType: .lifecycle, eventName: "login", properties: ["method": "apple"])
                 }
                 AnalyticsManager.shared.setUserType(user.userType)
@@ -1066,7 +1097,6 @@ class DataController: ObservableObject {
                     AnalyticsManager.shared.trackSignUp(userType: user.userType, method: .google)
                     AnalyticsService.shared.track(eventType: .lifecycle, eventName: "sign_up", properties: ["method": "google"])
                 } else {
-                    AnalyticsManager.shared.trackLogin(userType: user.userType, method: .google)
                     AnalyticsService.shared.track(eventType: .lifecycle, eventName: "login", properties: ["method": "google"])
                 }
                 AnalyticsManager.shared.setUserType(user.userType)
@@ -1535,6 +1565,7 @@ class DataController: ObservableObject {
         // timer could fire mid-wipe and crash accessing invalidated SwiftData
         // models, and connectivity/permission observers could re-arm sync
         // activity while deletions are in flight.
+        invalidateDataActorStartup()
         syncEngine.stopForLogoutSync()
         // Fire-and-forget the realtime teardown; it doesn't block logout.
         Task { @MainActor [weak self] in
@@ -1668,6 +1699,7 @@ class DataController: ObservableObject {
 
         // Belt-and-suspenders: re-halt the sync engine in case logout() ran
         // before stopForLogoutSync landed, or something rearmed it.
+        invalidateDataActorStartup()
         syncEngine.stopForLogoutSync()
 
         print("[LOGOUT] Deleting all SwiftData models...")
@@ -1850,7 +1882,9 @@ class DataController: ObservableObject {
         print("[LOGOUT] All caches cleared")
     }
     
+    @MainActor
     private func clearAuthentication() {
+        invalidateDataActorStartup()
         isAuthenticated = false
         currentUser = nil
         
@@ -3025,16 +3059,27 @@ class DataController: ObservableObject {
         }
     }
     
-    func getAllClients(for companyId: String) -> [Client] {
+    /// Every client a company still has.
+    ///
+    /// Tombstoned rows are excluded by default: a deleted client is not a client
+    /// any more, and every list, picker and duplicate check that reads this
+    /// wants only live ones. The filter runs in Swift rather than the predicate
+    /// so the fetch itself is unchanged.
+    ///
+    /// - Parameter includingDeleted: pass `true` only to resolve a name for a
+    ///   historical row (an invoice against a since-deleted client should still
+    ///   render that client's name). Never for anything the operator can pick.
+    func getAllClients(for companyId: String, includingDeleted: Bool = false) -> [Client] {
         guard let context = modelContext else { return [] }
-        
+
         do {
             let descriptor = FetchDescriptor<Client>(
                 predicate: #Predicate<Client> { client in
                     client.companyId == companyId
                 }
             )
-            return try context.fetch(descriptor)
+            let clients = try context.fetch(descriptor)
+            return includingDeleted ? clients : clients.filter { $0.deletedAt == nil }
         } catch {
             print("[DataController] Error fetching clients: \(error)")
             return []
@@ -3620,7 +3665,7 @@ class DataController: ObservableObject {
         }
     }
 
-    /// Delete a client from both server and local storage
+    /// Soft delete a client by setting deletedAt timestamp
     /// - Parameter client: The client to delete
     /// - Throws: API or database errors
     /// - Note: Caller is responsible for handling associated projects (reassignment or deletion)
@@ -3631,17 +3676,32 @@ class DataController: ObservableObject {
         }
 
         let clientId = client.id
+        let deletionDate = Date()
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
 
-        // Record delete for async sync
+        // SOFT DELETE: tombstone locally so the client lands in Settings > Trash
+        // and stays restorable — the same shape as deleteProject above.
+        //
+        // This used to `modelContext.delete(client)`: a HARD delete of the local
+        // row, which is why a deleted client never appeared in Trash (TrashView
+        // selects on `deletedAt != nil`, and there was no row left to carry one)
+        // and reappeared in the app on the next inbound sync, because the server
+        // row had not been tombstoned either — the delete op was refused 42501 by
+        // row security and parked. The user was told the client was gone twice
+        // over, and it was gone from neither place. Bug 2a55c78f.
+        client.deletedAt = deletionDate
+        client.needsSync = true
+
+        // `deleted_at` rather than `id`: matches deleteProject's tombstone
+        // convention so the queued op says what it changed.
         syncEngine.recordOperation(
             entityType: .client,
             entityId: clientId,
             operationType: "delete",
-            changedFields: ["id": clientId]
+            changedFields: ["deleted_at": formatter.string(from: deletionDate)]
         )
 
-        // Delete client from local SwiftData
-        modelContext.delete(client)
         try modelContext.save()
     }
 
@@ -4010,6 +4070,7 @@ class DataController: ObservableObject {
     enum DurableSyncMutationError: LocalizedError, Equatable {
         case contextUnavailable
         case invalidProjectContact
+        case taskUnavailable
         case syncQueueFailed
         case persistenceFailed(String)
 
@@ -4019,6 +4080,8 @@ class DataController: ObservableObject {
                 return "Local storage is unavailable."
             case .invalidProjectContact:
                 return "That contact is no longer available for this project."
+            case .taskUnavailable:
+                return "This task is unavailable. Check Settings > Trash before editing it."
             case .syncQueueFailed:
                 return "The change could not be secured for sync."
             case .persistenceFailed(let message):
@@ -4057,6 +4120,7 @@ class DataController: ObservableObject {
         guard let context = modelContext else {
             throw DurableSyncMutationError.contextUnavailable
         }
+        try requireAvailableTask(task)
         let oldStatus = task.status
         let project = task.project
         let predecessorId = task.id
@@ -4104,11 +4168,7 @@ class DataController: ObservableObject {
             await cascadeCancelToPaired(predecessorId: predecessorId)
         }
 
-        // Track task status change for analytics
-        AnalyticsManager.shared.trackTaskStatusChanged(
-            oldStatus: oldStatus.rawValue,
-            newStatus: newStatus.rawValue
-        )
+        // Track task status change in first-party product analytics.
         AnalyticsService.shared.track(
             eventType: .action,
             eventName: "task_status_changed",
@@ -4120,7 +4180,6 @@ class DataController: ObservableObject {
 
         // Track task completion as high-value event
         if newStatus == .completed {
-            AnalyticsManager.shared.trackTaskCompleted(taskType: task.taskType?.display)
             AnalyticsService.shared.track(
                 eventType: .action,
                 eventName: "task_completed",
@@ -4408,11 +4467,7 @@ class DataController: ObservableObject {
             changedFields: changedFields
         )
 
-        // Track project status change for analytics
-        AnalyticsManager.shared.trackProjectStatusChanged(
-            oldStatus: previousStatus.rawValue,
-            newStatus: newStatus.rawValue
-        )
+        // Track project status change in first-party product analytics.
         AnalyticsService.shared.track(
             eventType: .action,
             eventName: "project_status_changed",
@@ -4452,11 +4507,43 @@ class DataController: ObservableObject {
         }
     }
 
+    /// Reject stale retained references as well as the normal deleted-row case.
+    /// UUID casing cannot allow a live duplicate to edit a known tombstone.
+    @MainActor
+    private func requireAvailableTask(_ task: ProjectTask) throws {
+        guard task.isAvailableForWork else { throw DurableSyncMutationError.taskUnavailable }
+        guard let context = modelContext else { throw DurableSyncMutationError.contextUnavailable }
+        let ids = [task.id.lowercased(), task.id.uppercased()]
+        let rows = try context.fetch(FetchDescriptor<ProjectTask>(predicate: #Predicate { ids.contains($0.id) }))
+        guard !rows.contains(where: {
+            $0.companyId.lowercased() == task.companyId.lowercased() && $0.deletedAt != nil
+        }) else { throw DurableSyncMutationError.taskUnavailable }
+        let projectIDs = [task.projectId.lowercased(), task.projectId.uppercased()]
+        let parents = try context.fetch(FetchDescriptor<Project>(predicate: #Predicate { projectIDs.contains($0.id) }))
+        guard !parents.contains(where: {
+            $0.companyId.lowercased() == task.companyId.lowercased() && $0.deletedAt != nil
+        }) else { throw DurableSyncMutationError.taskUnavailable }
+    }
+
     // MARK: - Task Schedule Operations
 
     /// Update task schedule dates - SINGLE SOURCE OF TRUTH for task scheduling updates
     @MainActor
     func updateTaskSchedule(task: ProjectTask, startDate: Date, endDate: Date, manualEdit: Bool = true, deferBroadcast: Bool = false) async throws {
+        guard let syncEngine else { throw DurableSyncMutationError.contextUnavailable }
+        try await updateTaskSchedule(task: task, startDate: startDate, endDate: endDate,
+            manualEdit: manualEdit, deferBroadcast: deferBroadcast,
+            stagingOperationsWith: { specs, context in
+                try syncEngine.stageOperationsForTransaction(specs, in: context)
+            })
+    }
+
+    @MainActor
+    func updateTaskSchedule(task: ProjectTask, startDate: Date, endDate: Date,
+        manualEdit: Bool = true, deferBroadcast: Bool = false,
+        stagingOperationsWith stageOperations: DurableSyncOperationStager) async throws {
+        try requireAvailableTask(task)
+        guard let context = modelContext else { throw DurableSyncMutationError.contextUnavailable }
         let commitInterval = scheduleSignposter.beginInterval("updateTaskSchedule", id: scheduleSignposter.makeSignpostID())
         defer { scheduleSignposter.endInterval("updateTaskSchedule", commitInterval) }
 
@@ -4469,17 +4556,29 @@ class DataController: ObservableObject {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime]
 
-        // Apply locally
-        task.startDate = startDate
-        task.endDate = endDate
         let daysDiff = Calendar.current.dateComponents([.day], from: startDate, to: endDate).day ?? 0
-        task.duration = daysDiff + 1
-        // Manual edits lock the cascade — predecessor movements no longer
-        // touch this task. System-driven calls (auto-schedule, cascade
-        // application) pass manualEdit: false to preserve auto-tracking.
-        if manualEdit { task.scheduleLocked = true }
-        task.needsSync = true
-        try? modelContext?.save()
+        let duration = daysDiff + 1
+        var changedFields: [String: Any] = [
+            "start_date": formatter.string(from: startDate),
+            "end_date": formatter.string(from: endDate),
+            "duration": duration
+        ]
+        if manualEdit { changedFields["schedule_locked"] = true }
+        try persistDurableSyncMutation(
+            spec: .init(entityType: .projectTask, entityId: task.id,
+                operationType: "update", changedFields: changedFields),
+            in: context, stagingOperationsWith: stageOperations,
+            apply: {
+                task.startDate = startDate
+                task.endDate = endDate
+                task.duration = duration
+                if manualEdit { task.scheduleLocked = true }
+                task.needsSync = true
+                self.refreshLocalProjectScheduleCache(for: task)
+            }, rematerializeAfterRollback: {
+                let id = task.id
+                _ = try? context.fetch(FetchDescriptor<ProjectTask>(predicate: #Predicate { $0.id == id }))
+            })
 
         // Mirror to iPhone Calendar
         let mirrorTaskId = task.id
@@ -4494,21 +4593,6 @@ class DataController: ObservableObject {
         if !deferBroadcast {
             notifyScheduledTasksChanged()
         }
-
-        // Record for async sync
-        var changedFields: [String: Any] = [
-            "start_date": formatter.string(from: startDate),
-            "end_date": formatter.string(from: endDate),
-            "duration": task.duration
-        ]
-        if manualEdit { changedFields["schedule_locked"] = true }
-
-        syncEngine.recordOperation(
-            entityType: .projectTask,
-            entityId: task.id,
-            operationType: "update",
-            changedFields: changedFields
-        )
 
         // Announce the move only if the dates actually changed and the task can
         // still be worked (a completed or cancelled task moving shouldn't ping
@@ -4540,6 +4624,17 @@ class DataController: ObservableObject {
                 print("[UPDATE_TASK_SCHEDULE] ⚠️ Failed to recalculate task indices: \(error)")
             }
         }
+    }
+
+    /// Derived display cache only. Task writes own the schedule; updating this
+    /// projection must not require a separate project-edit grant or enqueue a
+    /// project write based on a potentially partial, scope-filtered task list.
+    private func refreshLocalProjectScheduleCache(for task: ProjectTask) {
+        guard let project = task.project, project.deletedAt == nil,
+              project.companyId.lowercased() == task.companyId.lowercased(),
+              project.id.lowercased() == task.projectId.lowercased() else { return }
+        project.startDate = project.computedStartDate
+        project.endDate = project.computedEndDate
     }
 
     // MARK: - Push & Cascade Scheduling
@@ -4949,7 +5044,7 @@ class DataController: ObservableObject {
         let indexInterval = scheduleSignposter.beginInterval("recalculateTaskIndices", id: scheduleSignposter.makeSignpostID())
         defer { scheduleSignposter.endInterval("recalculateTaskIndices", indexInterval) }
 
-        let allTasks = project.tasks
+        let allTasks = project.liveTasks
 
         // Separate scheduled and unscheduled tasks
         var scheduledTasks: [(task: ProjectTask, startDate: Date)] = []
@@ -5063,6 +5158,7 @@ class DataController: ObservableObject {
     /// 5. Sending push notifications to newly assigned members
     @MainActor
     func updateTaskTeamMembers(task: ProjectTask, memberIds: [String]) async throws {
+        try requireAvailableTask(task)
         print("[UPDATE_TASK_TEAM] 🔄 Starting comprehensive task team update...")
         print("[UPDATE_TASK_TEAM] Task ID: \(task.id)")
         print("[UPDATE_TASK_TEAM] New member IDs: \(memberIds)")
@@ -5424,21 +5520,27 @@ class DataController: ObservableObject {
         ProjectNoteChangeSignal.post(projectId: note.projectId)
     }
 
-    /// Replace a project note's content and authoritative mentions locally,
-    /// then append its immutable server event and dependent delivery work.
+    /// Replace a project note's content, authoritative mentions and — when the
+    /// edit moved them — its attachments locally, then append its immutable
+    /// server event and dependent delivery work.
+    ///
+    /// Bug f5f57917 — `attachments` is `nil` for a text-only edit, which leaves
+    /// the note's photos untouched all the way through to the RPC.
     @discardableResult
     @MainActor
     func updateProjectNoteContent(
         note: ProjectNote,
         content: String,
         mentionedUserIds: [String],
-        mentionEventId: String
+        mentionEventId: String,
+        attachments: [String]? = nil
     ) -> Bool {
         syncEngine.recordProjectNoteMentionEdit(
             note: note,
             content: content,
             mentionedUserIds: mentionedUserIds,
-            mentionEventId: mentionEventId
+            mentionEventId: mentionEventId,
+            attachments: attachments
         )
     }
 
@@ -5662,18 +5764,20 @@ class DataController: ObservableObject {
     @MainActor
     func createTask(task: ProjectTask) async throws {
         // Apply locally
+        if task.createdAt == nil { task.createdAt = Date() }
         modelContext?.insert(task)
         task.needsSync = true
         try? modelContext?.save()
 
-        // Record for async sync
-        var changedFields: [String: Any] = [
-            "id": task.id,
-            "project_id": task.projectId,
-            "status": task.status.rawValue
-        ]
-        if let notes = task.taskNotes { changedFields["task_notes"] = notes }
-        if !task.taskTypeId.isEmpty { changedFields["task_type_id"] = task.taskTypeId }
+        // Bug eed3f552 — this path used to record only id / project_id /
+        // status / task_type_id. The outbound push decodes a create payload
+        // into `SupabaseProjectTaskDTO`, whose `company_id` is required, so
+        // every task added from the NEEDS TASKS review screen failed to decode
+        // ("The data couldn't be read because it is missing") and retried
+        // forever without ever reaching the server — five of the founder's
+        // tasks, twelve attempts each. Creates now record the same canonical
+        // DTO fields the sheet and quick-add paths record.
+        let changedFields = try Self.projectTaskCreateFields(for: task)
 
         syncEngine.recordOperation(
             entityType: .projectTask,
@@ -5683,6 +5787,97 @@ class DataController: ObservableObject {
         )
 
         await spawnPairsForPredecessor(task)
+    }
+
+    /// The canonical create payload for a task that already exists as a
+    /// model — the review screen's path. Built through the DTO so it can never
+    /// diverge from `createTask(dto:)`.
+    static func projectTaskCreateFields(for task: ProjectTask) throws -> [String: Any] {
+        try projectTaskCreateFields(for: projectTaskCreateDTO(for: task))
+    }
+
+    /// A faithful DTO of the task's current definition and schedule. Unlike
+    /// `ProjectTaskDuplication.makeDTO`, nothing is reset: this describes the
+    /// row the operator just made, not a copy of it.
+    static func projectTaskCreateDTO(
+        for task: ProjectTask,
+        createdAt: Date = Date()
+    ) throws -> SupabaseProjectTaskDTO {
+        let dependencyOverrides: [TaskTypeDependency]?
+        if let json = task.dependencyOverridesJSON, let data = json.data(using: .utf8) {
+            dependencyOverrides = try JSONDecoder().decode([TaskTypeDependency].self, from: data)
+        } else {
+            dependencyOverrides = nil
+        }
+        let teamMemberIds = task.getTeamMemberIds()
+        return SupabaseProjectTaskDTO(
+            id: task.id,
+            bubbleId: nil,
+            companyId: task.companyId,
+            projectId: task.projectId,
+            taskTypeId: task.taskTypeId.isEmpty ? nil : task.taskTypeId,
+            customTitle: task.customTitle,
+            taskNotes: task.taskNotes,
+            status: task.status.rawValue,
+            taskColor: task.taskColor,
+            displayOrder: task.displayOrder,
+            teamMemberIds: teamMemberIds.isEmpty ? nil : teamMemberIds,
+            sourceLineItemId: task.sourceLineItemId,
+            sourceEstimateId: task.sourceEstimateId,
+            startDate: task.startDate.map(SupabaseDate.format),
+            endDate: task.endDate.map(SupabaseDate.format),
+            duration: task.duration,
+            dependencyOverrides: dependencyOverrides,
+            startTime: nil,
+            endTime: nil,
+            pairedFromTaskId: task.pairedFromTaskId,
+            scheduleLocked: task.scheduleLocked,
+            deletedAt: nil,
+            createdAt: SupabaseDate.format(task.createdAt ?? createdAt)
+        )
+    }
+
+    /// Bug eed3f552 — rebuilds queued task creates that were recorded without
+    /// the DTO's required fields, from the task row that still exists locally.
+    /// Runs at launch before the first sync so an installed phone drains its
+    /// stranded tasks on its own; idempotent, and a healthy operation is never
+    /// touched. Returns the number of operations repaired.
+    @discardableResult
+    func repairStrandedProjectTaskCreates() -> Int {
+        guard let context = modelContext else { return 0 }
+        // Predicate-free on purpose: a #Predicate fetch of SyncOperation traps
+        // against a table that has never held a row.
+        let operations = (try? context.fetch(FetchDescriptor<SyncOperation>())) ?? []
+        var repaired = 0
+        for operation in operations
+        where operation.entityType == SyncEntityType.projectTask.rawValue
+            && operation.operationType == "create"
+            && ["pending", "failed"].contains(operation.status)
+            && Self.projectTaskCreatePayloadIsStranded(operation.payload) {
+            let taskId = operation.entityId
+            let descriptor = FetchDescriptor<ProjectTask>(predicate: #Predicate { $0.id == taskId })
+            guard let task = try? context.fetch(descriptor).first,
+                  let fields = try? Self.projectTaskCreateFields(for: task),
+                  let payload = try? JSONSerialization.data(withJSONObject: fields) else { continue }
+            operation.payload = payload
+            operation.changedFields = fields.keys.sorted().joined(separator: ",")
+            operation.retryCount = 0
+            operation.lastAttemptedAt = nil
+            operation.lastError = nil
+            operation.status = "pending"
+            repaired += 1
+        }
+        if repaired > 0 { try? context.save() }
+        return repaired
+    }
+
+    /// A create payload the outbound decoder cannot read: it lacks the
+    /// `company_id` every `SupabaseProjectTaskDTO` requires.
+    static func projectTaskCreatePayloadIsStranded(_ payload: Data) -> Bool {
+        guard let object = try? JSONSerialization.jsonObject(with: payload) as? [String: Any] else {
+            return true
+        }
+        return object["company_id"] == nil
     }
 
     /// Create task from DTO - SINGLE SOURCE OF TRUTH
@@ -6197,6 +6392,7 @@ class DataController: ObservableObject {
     /// Update task - SINGLE SOURCE OF TRUTH
     @MainActor
     func updateTask(task: ProjectTask) async throws {
+        try requireAvailableTask(task)
         // Apply locally
         task.needsSync = true
         try? modelContext?.save()
@@ -6902,31 +7098,60 @@ class DataController: ObservableObject {
     /// This replaces syncManager.updateTaskFields() calls.
     @MainActor
     func updateTaskFields(taskId: String, fields: [String: AnyJSON]) async throws {
-        guard let context = modelContext else { return }
+        guard let syncEngine else { throw DurableSyncMutationError.contextUnavailable }
+        try await updateTaskFields(taskId: taskId, fields: fields,
+            stagingOperationsWith: { specs, context in
+                try syncEngine.stageOperationsForTransaction(specs, in: context)
+            })
+    }
 
-        // Apply locally for known fields
-        let descriptor = FetchDescriptor<ProjectTask>(predicate: #Predicate { $0.id == taskId })
-        if let task = try? context.fetch(descriptor).first {
-            applyTaskFieldsLocally(task: task, fields: fields, context: context)
-            task.needsSync = true
-            try? context.save()
+    @MainActor
+    func updateTaskFields(taskId: String, fields: [String: AnyJSON],
+        stagingOperationsWith stageOperations: DurableSyncOperationStager) async throws {
+        guard let context = modelContext else {
+            throw DurableSyncMutationError.contextUnavailable
         }
-
-        // Convert AnyJSON to [String: Any]
-        let changedFields = anyJSONToDict(fields)
-
-        syncEngine.recordOperation(
-            entityType: .projectTask,
-            entityId: taskId,
-            operationType: "update",
-            changedFields: changedFields
-        )
+        let ids = [taskId.lowercased(), taskId.uppercased()]
+        let descriptor = FetchDescriptor<ProjectTask>(predicate: #Predicate { ids.contains($0.id) })
+        guard let task = try context.fetch(descriptor).first else {
+            throw DurableSyncMutationError.taskUnavailable
+        }
+        try requireAvailableTask(task)
+        // Restore and delete have their own explicit workflows, never a generic edit.
+        guard fields["deleted_at"] == nil else { throw DurableSyncMutationError.taskUnavailable }
+        try persistDurableSyncMutation(
+            spec: .init(entityType: .projectTask, entityId: task.id, operationType: "update",
+                changedFields: anyJSONToDict(fields)),
+            in: context,
+            stagingOperationsWith: stageOperations, apply: {
+                self.applyTaskFieldsLocally(task: task, fields: fields, context: context)
+                task.needsSync = true
+                if !Set(fields.keys).isDisjoint(with: TaskLifecycleSync.scheduleFields) {
+                    self.refreshLocalProjectScheduleCache(for: task)
+                }
+            }, rematerializeAfterRollback: { _ = try? context.fetch(descriptor) })
+        if !Set(fields.keys).isDisjoint(with: TaskLifecycleSync.scheduleFields) {
+            notifyScheduledTasksChanged()
+            Task { @MainActor in
+                await CalendarMirrorService.shared.mirrorEvent(opsId: task.id, source: .projectTask)
+            }
+        }
     }
 
     /// Apply AnyJSON field values to a local ProjectTask model
     private func applyTaskFieldsLocally(task: ProjectTask, fields: [String: AnyJSON], context: ModelContext) {
         for (key, value) in fields {
             switch key {
+            case "start_date":
+                if case .string(let v) = value { task.startDate = SupabaseDate.parse(v) }
+                if case .null = value { task.startDate = nil }
+            case "end_date":
+                if case .string(let v) = value { task.endDate = SupabaseDate.parse(v) }
+                if case .null = value { task.endDate = nil }
+            case "duration":
+                if case .integer(let v) = value { task.duration = v }
+            case "schedule_locked":
+                if case .bool(let v) = value { task.scheduleLocked = v }
             case "status":
                 if case .string(let v) = value { task.status = TaskStatus(rawValue: v) ?? task.status }
             case "task_notes":
@@ -8301,6 +8526,13 @@ extension DataController {
         push: TaskPushCopy?
     ) async -> [String] {
         await flushPendingWorkForNotifications()
+        // A timed-out drain or permanent rejection is not a saved schedule.
+        // Do not announce old server dates while the operator's new dates wait here.
+        guard let context = modelContext else { return [] }
+        let ids = [taskId.lowercased(), taskId.uppercased()]
+        guard let task = try? context.fetch(FetchDescriptor<ProjectTask>(predicate: #Predicate { ids.contains($0.id) })).first,
+              task.isAvailableForWork, !task.needsSync else { return [] }
+
 
         guard let recipients = try? await taskLifecycleSyncer.notifyTaskRescheduled(taskId: taskId),
               !recipients.isEmpty,

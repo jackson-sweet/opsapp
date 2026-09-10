@@ -343,6 +343,29 @@ final class TaskDetailSheetSnapshotTests: XCTestCase {
     /// to the type), with the task's colour carried beside it as a dot. Below:
     /// the document card — DATES with a real span, TEAM as three overlapping
     /// initials, NOTES — then the action ladder.
+    func testRenderPendingScheduleAndDeletedTaskList() throws {
+        let fixture = try makeFixture(status: .active, notes: populatedNotes, scheduled: true, assignedCount: 3)
+        fixture.task.needsSync = true
+        let project = try XCTUnwrap(fixture.task.project)
+        let deleted = ProjectTask(id: "deleted-task", projectId: project.id,
+            taskTypeId: fixture.task.taskTypeId, companyId: project.companyId)
+        deleted.customTitle = "Deleted glass task"
+        deleted.deletedAt = Date()
+        deleted.startDate = Date()
+        let context = try XCTUnwrap(fixture.task.modelContext)
+        context.insert(deleted)
+        project.tasks = [fixture.task, deleted]
+        withPermissions(schedulerGrants) {
+            snapshot("task_sheet_pending_schedule", view: hosted(fixture), height: sheetHeight)
+            let list = TaskListSection(tasks: project.tasks, selectedTask: nil, project: project,
+                canEdit: false, canDuplicate: false, userById: [:], onTaskTap: { _ in }, onAddTask: {})
+            XCTAssertEqual(list.visibleTasks.map(\.id), [fixture.task.id])
+            snapshot("project_tasks_pending_excludes_deleted",
+                view: list.padding(OPSStyle.Layout.spacing3)
+                    .modelContainer(fixture.container).environmentObject(DataController()), height: 260)
+        }
+    }
+
     func testRenderActiveFullyPopulated() throws {
         let fixture = try makeFixture(
             status: .active,

@@ -1,0 +1,49 @@
+{
+  "devicesAndConfigurations" : [
+    {
+      "device" : {
+        "architecture" : "arm64",
+        "deviceId" : "AB2A4B85-7B8E-4877-9DEF-DE3D4C8EDADC",
+        "deviceName" : "OPS audit 20260906",
+        "modelName" : "iPhone 17",
+        "osBuildNumber" : "23F77",
+        "osVersion" : "26.5",
+        "platform" : "iOS Simulator"
+      },
+      "expectedFailures" : 0,
+      "failedTests" : 1,
+      "passedTests" : 0,
+      "skippedTests" : 0,
+      "testPlanConfiguration" : {
+        "configurationId" : "1",
+        "configurationName" : "Test Scheme Action"
+      }
+    }
+  ],
+  "environmentDescription" : "OPS · Built with macOS 26.6.2",
+  "expectedFailures" : 0,
+  "failedTests" : 1,
+  "finishTime" : 1788713740.603,
+  "passedTests" : 0,
+  "result" : "Failed",
+  "skippedTests" : 0,
+  "startTime" : 1788713591.964,
+  "statistics" : [
+
+  ],
+  "testFailures" : [
+    {
+      "failureText" : "XCTAssertEqual failed: (\"[\"15.0.0\": \"mFW4cSIxny6ksYQ8VtN0+K4F6DUNqLzqZMwmzYPIQ4k=\", \"10.0.0\": \"D8haLrJCjg0Oi1Sf56HSP7+8WJa/Xjn2F02vSK6q67U=\", \"8.0.0\": \"JkCm+uv5TV1JPvSqYTWkrL7db+SaUKwwdVQv/iK+7Ac=\", \"21.0.0\": \"mbgIjlYquf8je6LgPlkgfw3536pw6BAX5ubeMtZJl3U=\", \"20.0.0\": \"On7Is3gdXMbisoWTGNpANFkq+4D3PkXgRU0qyRrzO9Y=\", \"18.0.0\": \"OllxSnd0wulXst2mF83yg4QlKidvcWAXq2ZJMoUTAbU=\", \"23.0.0\": \"ihC9+WPZR/TevgDdlqTHow8yAZkjltDAsnv37i9GG+s=\", \"1.0.0\": \"Zp6WziOzPt8vxYeM8QsgW3zArsRoQ46d884kul5I8so=\", \"16.0.0\": \"8GUi33sE1LoHF5ijmGq/1uwg40vM8+i+Z+D9wEoqw/g=\", \"19.0.0\": \"So+L6TttOYlXsIWOn++mF1byEgrx38NlxyVuCy3byO4=\", \"13.0.0\": \"kJlmNBYw0+3aPmyBf5mhVmLwpvTTDfcvfPOGtrY6guE=\", \"2.0.0\": \"B6UkwPBEVvYVVb5K31vYzN0gRzk9rZnt310GcAIoN10=\", \"17.0.0\": \"NDKirKq9RVI15xN35WZ1Zvc2VybLHKmTCGwBdrDCA7I=\", \"4.0.0\": \"5MIHlBGDgHtpIoYzWuGMTS2rRPN14UxPXDnKmEB1IzU=\", \"5.0.0\": \"vC15HLF5jIdpohgK7MWL5dDWZuvwArkTWOTKlQj9/Ss=\", \"3.0.0\": \"xcoq6HX48u0MoDwJHFBNgBqUuKW2WUUbuJ8rYWyOBFM=\", \"14.0.0\": \"WJlrumgUy2zz5/EwYCpC4H82Hwcq5vA6lFQFxh+y/fs=\", \"6.0.0\": \"cuJD9AKCOKmDPrFXy0SIPrD/dyw22Vdd658i3naEE0s=\", \"25.0.0\": \"W/BL26OkKY5G0Ed7qNE0Bc9SjxDXSTK+LsRyd/fTKy8=\", \"7.0.0\": \"8cvxdmF256/taxBf4+Kwddgs/4SIlr5DcjI29Xz0Mxw=\", \"22.0.0\": \"tedp2fwqxKGWrFf4qw9PO7niNASQ1xdIxqDWxAJSTG8=\", \"9.0.0\": \"Tih0bor3KCUxGavnsG3obpFJhsknd5xVE/4Va5M/2eo=\", \"12.0.0\": \"gqt1DQpfA2hWaXE7PerZxWA/Rif7mSvPOO+k1lenYXQ=\", \"11.0.0\": \"EtUVgvcwFIYMACpowSmgQ+AWmaHccj7a+wPJzxN1zkQ=\", \"24.0.0\": \"7zgM7C6+yhFbonrFIjGIu8rvmuW4ou8QUjJw73joMS0=\"]\") is not equal to (\"[\"15.0.0\": \"mFW4cSIxny6ksYQ8VtN0+K4F6DUNqLzqZMwmzYPIQ4k=\", \"20.0.0\": \"tTObVcTx355uIygjcb3etZWyVT6IxNZuxlFBFpnf9so=\", \"14.0.0\": \"WJlrumgUy2zz5/EwYCpC4H82Hwcq5vA6lFQFxh+y/fs=\", \"9.0.0\": \"Tih0bor3KCUxGavnsG3obpFJhsknd5xVE/4Va5M/2eo=\", \"19.0.0\": \"Sve9vBfB4DsOQj5Rpr58IUYySJIL8dmjuigs8GvXf38=\", \"21.0.0\": \"VHM9EhVOi1CbSgmB6NLaj6+t6axSMRwM10+KuHHp7Mk=\", \"22.0.0\": \"eC+SK6hnbDCpGUfTXLNa6HM8kbkyRDa2NJYo4AjpRac=\", \"7.0.0\": \"8cvxdmF256/taxBf4+Kwddgs/4SIlr5DcjI29Xz0Mxw=\", \"3.0.0\": \"xcoq6HX48u0MoDwJHFBNgBqUuKW2WUUbuJ8rYWyOBFM=\", \"24.0.0\": \"MRC17UrUeJf5F8UUA9R6PxyQGisAb6y/65ntfSBajlI=\", \"5.0.0\": \"vC15HLF5jIdpohgK7MWL5dDWZuvwArkTWOTKlQj9/Ss=\", \"25.0.0\": \"oDrDy3ePGUW2ZiuwOISzdvuUZ8yf5LtXt42AFLxtTrs=\", \"6.0.0\": \"cuJD9AKCOKmDPrFXy0SIPrD/dyw22Vdd658i3naEE0s=\", \"17.0.0\": \"4LuaDMBeYwjIqHccTve1ovFx7pxujCm6BqUE+v6PfmA=\", \"11.0.0\": \"EtUVgvcwFIYMACpowSmgQ+AWmaHccj7a+wPJzxN1zkQ=\", \"12.0.0\": \"gqt1DQpfA2hWaXE7PerZxWA/Rif7mSvPOO+k1lenYXQ=\", \"18.0.0\": \"XNnekbvP0lF+NiRGsydY0jD+lfBBeNgaVEntWqN1mG0=\", \"8.0.0\": \"JkCm+uv5TV1JPvSqYTWkrL7db+SaUKwwdVQv/iK+7Ac=\", \"23.0.0\": \"xMfw9OVEefQ7H2zeJ23H1Nenc5gen9oTdCDzhkHq2IQ=\", \"13.0.0\": \"kJlmNBYw0+3aPmyBf5mhVmLwpvTTDfcvfPOGtrY6guE=\", \"4.0.0\": \"5MIHlBGDgHtpIoYzWuGMTS2rRPN14UxPXDnKmEB1IzU=\", \"1.0.0\": \"Zp6WziOzPt8vxYeM8QsgW3zArsRoQ46d884kul5I8so=\", \"16.0.0\": \"bl7j0QKqc1l2ysvyPW8XjfFZzWT6xib83kVUTe80PJ4=\", \"10.0.0\": \"D8haLrJCjg0Oi1Sf56HSP7+8WJa/Xjn2F02vSK6q67U=\", \"2.0.0\": \"B6UkwPBEVvYVVb5K31vYzN0gRzk9rZnt310GcAIoN10=\"]\") - Declared SwiftData schemas are immutable. Freeze a changed model under its released shape, then add a new schema and adjacent migration stage.",
+      "targetName" : "OPSTests",
+      "testIdentifier" : 1,
+      "testIdentifierString" : "AppUpdateMigrationTests/testDeclaredSchemaChecksumsStayImmutable()",
+      "testIdentifierURL" : "test://com.apple.xcode/OPS/OPSTests/AppUpdateMigrationTests/testDeclaredSchemaChecksumsStayImmutable",
+      "testName" : "testDeclaredSchemaChecksumsStayImmutable()"
+    }
+  ],
+  "title" : "Test - OPS",
+  "topInsights" : [
+
+  ],
+  "totalTestCount" : 1
+}

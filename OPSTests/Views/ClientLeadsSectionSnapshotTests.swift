@@ -108,7 +108,10 @@ final class ClientLeadsSectionSnapshotTests: XCTestCase {
         }
     }
 
-    /// No leads yet, create-enabled → the "No leads yet / Create one?" empty state.
+    /// No leads yet, create-enabled → the NEW LEAD / BOOK VISIT verbs over a
+    /// bare "No leads" (bug 9a49bd47 moved the invitation out of the empty
+    /// state and onto two named buttons that are there whether or not the
+    /// section is empty).
     func testRenderEmptyCreate() {
         snapshot("client_leads_section_empty_create", size: CGSize(width: 393, height: 360)) {
             host([])

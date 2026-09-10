@@ -156,6 +156,68 @@ final class VinylOrderConfigPersistenceTests: XCTestCase {
         XCTAssertEqual(restored.color, "Slate Grey")
     }
 
+    // MARK: - Vinyl settings persist (bug 9f4aeaf8)
+
+    /// The sheet wrote `drawingData.vinylOrderSettings` through a private
+    /// helper with no save boundary, and its `onDisappear` only persisted the
+    /// free-text colour — and only when no catalog product was configured. With
+    /// a product selected, dismissing the sheet saved nothing at all.
+    func testVinylOrderSettings_writeSchedulesASave() {
+        let viewModel = makeViewModel()
+
+        var settings = viewModel.drawingData.vinylOrderSettings ?? .default
+        settings.seamOverlapInches += 1
+        viewModel.applyVinylOrderSettings(settings)
+
+        XCTAssertTrue(viewModel.hasPendingSave)
+        viewModel.flushPendingSave()
+        XCTAssertEqual(viewModel.drawingData.vinylOrderSettings, settings)
+    }
+
+    func testVinylOrderMode_writeSchedulesASave() {
+        let viewModel = makeViewModel()
+        let current = viewModel.drawingData.materialsSettings?.orderMode ?? DeckMaterialsSettings().orderMode
+        let flipped: VinylOrderMode = current == .cutList ? .fullRolls : .cutList
+
+        viewModel.setVinylOrderMode(flipped)
+
+        XCTAssertTrue(viewModel.hasPendingSave)
+        XCTAssertEqual(viewModel.drawingData.materialsSettings?.orderMode, flipped)
+    }
+
+    func testVinylFullRollLength_writeSchedulesASave() {
+        let viewModel = makeViewModel()
+
+        viewModel.setVinylFullRollLength(125)
+
+        XCTAssertTrue(viewModel.hasPendingSave)
+        XCTAssertEqual(viewModel.drawingData.materialsSettings?.fullRollLengthFeet, 125)
+    }
+
+    /// MARK ORDERED / CLEAR ORDERED merge the service's frozen snapshot back
+    /// into the editor's working copy. That merge is an edit and must be written.
+    func testMergedOrderedSnapshot_commitSchedulesASave() {
+        let viewModel = makeViewModel()
+
+        var merged = viewModel.drawingData
+        merged.config.gridVisible = !merged.config.gridVisible
+        viewModel.commitMergedOrderedSnapshot(merged)
+
+        XCTAssertTrue(viewModel.hasPendingSave)
+    }
+
+    /// Re-applying settings already in place must not churn a write.
+    func testVinylSettings_reapplyingTheSameValuesSchedulesNothing() {
+        let viewModel = makeViewModel()
+        viewModel.setVinylFullRollLength(125)
+        viewModel.flushPendingSave()
+
+        viewModel.setVinylFullRollLength(125)
+        viewModel.setVinylOrderMode(viewModel.drawingData.materialsSettings?.orderMode ?? .cutList)
+
+        XCTAssertFalse(viewModel.hasPendingSave)
+    }
+
     // MARK: - Helpers
 
     private func makeViewModel() -> DeckBuilderViewModel {

@@ -9,6 +9,7 @@
 import CoreGraphics
 import SceneKit
 import simd
+import SwiftData
 import UIKit
 import XCTest
 @testable import OPS
@@ -1107,6 +1108,7 @@ final class DeckBuilderRegressionTests: XCTestCase {
         XCTAssertEqual(design.drawingData.edges.count, 2)
         XCTAssertTrue(design.needsSync)
         XCTAssertNotNil(thumbnailWork)
+        viewModel.flushBeforeExit() // the view's actual onDisappear boundary
         await fulfillment(of: [uploadStarted], timeout: 1)
         XCTAssertNil(
             design.thumbnailURL,
@@ -1117,6 +1119,275 @@ final class DeckBuilderRegressionTests: XCTestCase {
         await thumbnailWork?.value
 
         XCTAssertEqual(design.thumbnailURL, "https://cdn.ops.test/decks/lead.jpg")
+    }
+
+    // MARK: - Autosave is unconditional (bug 9f4aeaf8)
+
+    func testAutosave_isArmedForAnExistingDrawingWithoutAnyPrompt() {
+        var data = DeckDrawingData()
+        data.scaleFactor = 1
+        data.vertices = [
+            DeckVertex(id: "v1", position: CGPoint(x: 0, y: 0)),
+            DeckVertex(id: "v2", position: CGPoint(x: 10, y: 0))
+        ]
+        data.edges = [DeckEdge(id: "e1", startVertexId: "v1", endVertexId: "v2")]
+
+        let viewModel = DeckBuilderViewModel(deckDesign: deckDesign(drawingData: data))
+
+        XCTAssertTrue(
+            viewModel.autosaveEnabled,
+            "an existing drawing must autosave without the user opting in — crash recovery is not a preference"
+        )
+    }
+
+    /// The tick used to be gated on `hasAnyCommittedGeometry`, which silently
+    /// discarded every session spent on config, labels or materials — the exact
+    /// work the settings and vinyl sheets produce.
+    func testAutosaveTick_persistsConfigOnlyWorkOnAPersistedDesign() throws {
+        let container = try makeDeckContainer()
+        let design = DeckDesign(companyId: "c1", title: "T")
+        container.mainContext.insert(design)
+        try container.mainContext.save()
+
+        let viewModel = DeckBuilderViewModel(
+            deckDesign: design,
+            modelContext: container.mainContext
+        )
+        viewModel.drawingData.config.gridVisible = false
+
+        viewModel.performAutosaveTickForTesting()
+
+        XCTAssertTrue(
+            design.drawingDataJSON.contains("\"gridVisible\":false")
+                || design.drawingDataJSON.contains("\"gridVisible\": false"),
+            "config-only work on a persisted design must reach disk on an autosave tick"
+        )
+    }
+
+    /// Bug 14555d2c must survive: a blank canvas the user never committed and
+    /// that was never inserted must not create an orphan row on a tick.
+    func testAutosaveTick_doesNotPersistAnUninsertedBlankCanvas() {
+        var blank = DeckDrawingData()
+        blank.scaleFactor = 1
+        let design = deckDesign(drawingData: blank)
+        let viewModel = DeckBuilderViewModel(deckDesign: design)
+
+        viewModel.performAutosaveTickForTesting()
+
+        XCTAssertFalse(
+            viewModel.hasPendingSave,
+            "an uninserted blank canvas must not schedule work"
+        )
+        XCTAssertNil(design.modelContext, "no orphan row may be created by a tick")
+    }
+
+    // MARK: - The editor never claims a save it did not make (bug 9f4aeaf8)
+
+    /// `saveForExit` presented DESIGN SAVED whenever the drawing had geometry,
+    /// even when the `save()` above it threw — and the only failure signal was
+    /// an 8pt dot whose amber also meant "saving". A rejected store must leave
+    /// a failure the UI can act on, not a green result.
+    func testSaveFailure_isRecordedRatherThanReportedAsSuccess() throws {
+        let container = try makeSaveRejectingContainer()
+        let context = ModelContext(container)
+        let design = DeckDesign(companyId: "c1", title: "T")
+        context.insert(design)
+
+        let viewModel = DeckBuilderViewModel(deckDesign: design, modelContext: context)
+        viewModel.drawingData = closedSquareDrawingData()
+        viewModel.save()
+
+        let failure = try XCTUnwrap(
+            viewModel.saveFailure,
+            "a store that refuses the write must leave a failure behind"
+        )
+        XCTAssertFalse(failure.message.isEmpty, "the failure carries the store's own cause")
+        XCTAssertFalse(viewModel.isLocallySaved)
+    }
+
+    /// The failure clears the moment a write succeeds, so the affordance can
+    /// never outlive the problem it reports.
+    func testSaveFailure_clearsOnTheNextSuccessfulWrite() throws {
+        let container = try makeSaveRejectingContainer()
+        let context = ModelContext(container)
+        let design = DeckDesign(companyId: "c1", title: "T")
+        context.insert(design)
+
+        let viewModel = DeckBuilderViewModel(deckDesign: design, modelContext: context)
+        viewModel.drawingData = closedSquareDrawingData()
+        viewModel.save()
+        XCTAssertNotNil(viewModel.saveFailure)
+
+        let writable = try makeDeckContainer()
+        let healthy = DeckDesign(companyId: "c1", title: "T")
+        writable.mainContext.insert(healthy)
+        let recovered = DeckBuilderViewModel(
+            deckDesign: healthy,
+            modelContext: writable.mainContext
+        )
+        recovered.drawingData = closedSquareDrawingData()
+        recovered.retrySave()
+
+        XCTAssertNil(recovered.saveFailure)
+        XCTAssertTrue(recovered.isLocallySaved)
+    }
+
+    /// A store that refuses the write must reopen read-only over a file that a
+    /// writable container has already materialized — an in-memory
+    /// `allowsSave: false` configuration no longer loads at all.
+    private func makeSaveRejectingContainer() throws -> ModelContainer {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("deck-save-readonly-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        addTeardownBlock {
+            try? FileManager.default.removeItem(at: directory)
+        }
+        let url = directory.appendingPathComponent("store.sqlite")
+        let schema = Schema([DeckDesign.self, SyncOperation.self])
+        do {
+            // Loading a writable container materializes the store file.
+            let writable = ModelConfiguration(schema: schema, url: url, allowsSave: true)
+            _ = try ModelContainer(for: schema, configurations: [writable])
+        }
+        let readOnly = ModelConfiguration(schema: schema, url: url, allowsSave: false)
+        let container = try ModelContainer(for: schema, configurations: [readOnly])
+        retainedContainers.append(container)
+        return container
+    }
+
+    // MARK: - Surface reconcile is a write (bug 9f4aeaf8)
+
+    /// Tapping a face the persisted store does not know yet creates a persisted
+    /// surface entry — and could clear legacy footprint items and labels — with
+    /// no save on the path. Silent dirty state, picked up only by the autosave
+    /// tick or the editor exit.
+    func testSurfaceTap_schedulesASaveWhenItCreatesAPersistedSurface() throws {
+        let viewModel = DeckBuilderViewModel(deckDesign: deckDesign(drawingData: closedSquareDrawingData()))
+        let detected = try XCTUnwrap(
+            viewModel.drawingData.detectedSurfaces.first,
+            "fixture must produce a detectable face"
+        )
+
+        // The state a freshly drawn face is in: detected, but with no persisted
+        // entry yet. `init` reconciles, so it has to be dropped deliberately.
+        viewModel.drawingData.surfaces = []
+        viewModel.flushPendingSave()
+        XCTAssertFalse(viewModel.hasPendingSave, "fixture must start clean")
+
+        _ = viewModel.persistedSurfaceId(for: detected)
+
+        XCTAssertFalse(
+            viewModel.drawingData.surfaces.isEmpty,
+            "the tap must have created the persisted entry"
+        )
+        XCTAssertTrue(
+            viewModel.hasPendingSave,
+            "a tap that reconciles surfaces must not leave unwritten model state"
+        )
+    }
+
+    /// A reconcile that changes nothing must report no change — otherwise every
+    /// read of the vinyl order inputs would schedule a pointless write.
+    func testReconcileSurfaces_reportsChangeOnlyWhenItMutatesTheDrawing() {
+        let viewModel = DeckBuilderViewModel(deckDesign: deckDesign(drawingData: closedSquareDrawingData()))
+
+        XCTAssertFalse(
+            viewModel.reconcileSurfaces(),
+            "init already reconciled — a repeat pass over stable geometry changes nothing"
+        )
+
+        viewModel.drawingData.surfaces = []
+        XCTAssertTrue(
+            viewModel.reconcileSurfaces(),
+            "a dropped persisted surface must be re-created, and reported"
+        )
+    }
+
+    private func closedSquareDrawingData() -> DeckDrawingData {
+        var data = DeckDrawingData()
+        data.scaleFactor = 1
+        data.vertices = [
+            DeckVertex(id: "s1", position: CGPoint(x: 0, y: 0)),
+            DeckVertex(id: "s2", position: CGPoint(x: 120, y: 0)),
+            DeckVertex(id: "s3", position: CGPoint(x: 120, y: 120)),
+            DeckVertex(id: "s4", position: CGPoint(x: 0, y: 120))
+        ]
+        data.edges = [
+            DeckEdge(id: "se1", startVertexId: "s1", endVertexId: "s2"),
+            DeckEdge(id: "se2", startVertexId: "s2", endVertexId: "s3"),
+            DeckEdge(id: "se3", startVertexId: "s3", endVertexId: "s4"),
+            DeckEdge(id: "se4", startVertexId: "s4", endVertexId: "s1")
+        ]
+        return data
+    }
+
+    // MARK: - Settings controls persist (bug 9f4aeaf8)
+
+    /// Measurement system, snapping, snap radius and grid were two-way bindings
+    /// straight into `drawingData.config` with no save boundary on the path.
+    func testCanvasSettings_everyControlSchedulesASave() {
+        var data = DeckDrawingData()
+        data.scaleFactor = 1
+        let viewModel = DeckBuilderViewModel(deckDesign: deckDesign(drawingData: data))
+
+        viewModel.setMeasurementSystem(.metric)
+        XCTAssertTrue(viewModel.hasPendingSave, "measurement system must schedule a save")
+        viewModel.flushPendingSave()
+
+        viewModel.setSnappingEnabled(false)
+        XCTAssertTrue(viewModel.hasPendingSave, "snapping toggle must schedule a save")
+        viewModel.flushPendingSave()
+
+        viewModel.setEndpointSnapRadius(35)
+        XCTAssertTrue(viewModel.hasPendingSave, "snap radius must schedule a save")
+        viewModel.flushPendingSave()
+
+        viewModel.setGridVisible(false)
+        XCTAssertTrue(viewModel.hasPendingSave, "grid toggle must schedule a save")
+        viewModel.flushPendingSave()
+
+        XCTAssertEqual(viewModel.drawingData.config.measurementSystem, .metric)
+        XCTAssertFalse(viewModel.drawingData.config.snappingEnabled)
+        XCTAssertEqual(viewModel.drawingData.config.endpointSnapRadius, 35)
+        XCTAssertFalse(viewModel.drawingData.config.gridVisible)
+    }
+
+    /// Re-applying the value already in place must not churn a write.
+    func testCanvasSettings_settingTheSameValueSchedulesNothing() {
+        var data = DeckDrawingData()
+        data.scaleFactor = 1
+        let viewModel = DeckBuilderViewModel(deckDesign: deckDesign(drawingData: data))
+        let current = viewModel.drawingData.config
+
+        viewModel.setMeasurementSystem(current.measurementSystem)
+        viewModel.setSnappingEnabled(current.snappingEnabled)
+        viewModel.setEndpointSnapRadius(current.endpointSnapRadius)
+        viewModel.setGridVisible(current.gridVisible)
+
+        XCTAssertFalse(viewModel.hasPendingSave)
+    }
+
+    private var retainedContainers: [ModelContainer] = []
+
+    override func tearDown() {
+        retainedContainers.removeAll()
+        super.tearDown()
+    }
+
+    /// The container is retained for the case's lifetime on purpose: a
+    /// `ModelContext` does not keep its `ModelContainer` alive, and inserting
+    /// into a context whose container has been released traps inside SwiftData
+    /// before the first assertion runs.
+    private func makeDeckContainer() throws -> ModelContainer {
+        let schema = Schema([DeckDesign.self, SyncOperation.self])
+        let configuration = ModelConfiguration(
+            schema: schema,
+            isStoredInMemoryOnly: true,
+            allowsSave: true
+        )
+        let container = try ModelContainer(for: schema, configurations: [configuration])
+        retainedContainers.append(container)
+        return container
     }
 
     private func deckDesign(drawingData: DeckDrawingData) -> DeckDesign {

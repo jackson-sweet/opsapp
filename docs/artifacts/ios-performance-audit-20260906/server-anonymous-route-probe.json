@@ -1,0 +1,16 @@
+[
+  {
+    "rpc": "read_site_visit_stage_snapshot",
+    "httpStatus": 401,
+    "sqlCode": "42501",
+    "deniedBeforeInvocation": true,
+    "missingSchemaCache": false
+  },
+  {
+    "rpc": "apply_site_visit_stage_command",
+    "httpStatus": 401,
+    "sqlCode": "42501",
+    "deniedBeforeInvocation": true,
+    "missingSchemaCache": false
+  }
+]

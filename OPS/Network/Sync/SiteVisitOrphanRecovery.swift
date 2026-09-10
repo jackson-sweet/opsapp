@@ -62,13 +62,14 @@ enum SiteVisitOrphanRecovery {
         let completionOperation: SyncOperation?
     }
 
-    /// Runs safely before every outbound drain. The version marker is only an
-    /// optimization elsewhere; correctness comes from re-scanning for missing
-    /// parents, making this heal both one-time legacy data and later corruption.
+    /// Explicit historical recovery. Ordinary edits never enter this path.
+    /// Background discovery supplies a bounded candidate set; every identity
+    /// and custody decision is revalidated in the owning mutation context.
     static func recover(
         in modelContext: ModelContext,
         activeUserId: String,
         activeCompanyId: String,
+        siteVisitIds: Set<String>? = nil,
         quarantine: QuarantineRecorder
     ) throws -> Result {
         let activeCompany = canonicalText(activeCompanyId)
@@ -77,18 +78,32 @@ enum SiteVisitOrphanRecovery {
             return Result(reconstructedVisitIds: [], quarantinedIds: [], operationIds: [])
         }
 
-        let visits = try modelContext.fetch(FetchDescriptor<SiteVisit>())
+        if let siteVisitIds, siteVisitIds.isEmpty {
+            return Result(reconstructedVisitIds: [], quarantinedIds: [], operationIds: [])
+        }
+        let ids = RecoveryStoreQueries.caseVariants(siteVisitIds ?? [])
+        let scoped = siteVisitIds != nil
+        let visits = try modelContext.fetch(FetchDescriptor<SiteVisit>(predicate: #Predicate {
+            !scoped || ids.contains($0.id)
+        }))
         let existingParentKeys = Set(visits.map {
             GroupKey(
                 companyId: canonicalText($0.companyId),
                 siteVisitId: canonicalText($0.id)
             )
         })
-        let operations = try modelContext.fetch(FetchDescriptor<SyncOperation>())
+        var operations = try RecoveryStoreQueries.activeOperations(in: modelContext, includeStopped: true)
+        if try modelContext.fetchCount(FetchDescriptor<SyncOperation>()) > 0 {
+            let completionType = SiteVisitSyncOperation.completionOperationType
+            operations += try modelContext.fetch(FetchDescriptor<SyncOperation>(predicate: #Predicate {
+                $0.operationType == completionType && $0.status == "completed"
+            }))
+        }
         let groups = try missingParentGroups(
             in: modelContext,
             existingParentKeys: existingParentKeys,
-            operations: operations
+            operations: operations,
+            siteVisitIds: siteVisitIds
         )
 
         var reconstructable: [CandidateGroup] = []
@@ -161,7 +176,7 @@ enum SiteVisitOrphanRecovery {
                 visit.updatedAt = group.children.map(\.eventAt).max() ?? eventAt
                 visit.needsSync = true
                 modelContext.insert(visit)
-                canonicalizeChildren(for: group.key, in: modelContext)
+                canonicalizeChildren(for: group.key, childIds: group.children.map(\.id), in: modelContext)
                 reconstructed.append(group.key.siteVisitId)
             }
         }
@@ -169,7 +184,7 @@ enum SiteVisitOrphanRecovery {
         let queued = try SiteVisitPersistenceCoordinator(
             modelContext: modelContext,
             companyId: activeCompany
-        ).recoverOrphanedWrites()
+        ).recoverOrphanedWrites(siteVisitIds: siteVisitIds)
 
         return Result(
             reconstructedVisitIds: reconstructed.sorted(),
@@ -181,10 +196,15 @@ enum SiteVisitOrphanRecovery {
     private static func missingParentGroups(
         in modelContext: ModelContext,
         existingParentKeys: Set<GroupKey>,
-        operations: [SyncOperation]
+        operations: [SyncOperation],
+        siteVisitIds: Set<String>?
     ) throws -> [CandidateGroup] {
+        let ids = RecoveryStoreQueries.caseVariants(siteVisitIds ?? [])
+        let scoped = siteVisitIds != nil
         var evidence: [ChildEvidence] = []
-        evidence += try modelContext.fetch(FetchDescriptor<SiteVisitCaptureArtifact>())
+        evidence += try modelContext.fetch(FetchDescriptor<SiteVisitCaptureArtifact>(predicate: #Predicate {
+            !scoped || ids.contains($0.siteVisitId)
+        }))
             .filter { $0.needsSync || $0.lastSyncedAt == nil }
             .map {
                 ChildEvidence(
@@ -197,7 +217,9 @@ enum SiteVisitOrphanRecovery {
                     address: nil
                 )
             }
-        evidence += try modelContext.fetch(FetchDescriptor<SiteVisitChecklistAnswer>())
+        evidence += try modelContext.fetch(FetchDescriptor<SiteVisitChecklistAnswer>(predicate: #Predicate {
+            !scoped || ids.contains($0.siteVisitId)
+        }))
             .filter { $0.needsSync || $0.lastSyncedAt == nil }
             .map {
                 ChildEvidence(
@@ -210,7 +232,9 @@ enum SiteVisitOrphanRecovery {
                     address: nil
                 )
             }
-        evidence += try modelContext.fetch(FetchDescriptor<SiteVisitIdentityDraft>())
+        evidence += try modelContext.fetch(FetchDescriptor<SiteVisitIdentityDraft>(predicate: #Predicate {
+            !scoped || ids.contains($0.siteVisitId)
+        }))
             .filter { $0.needsSync || $0.lastSyncedAt == nil }
             .map {
                 ChildEvidence(
@@ -268,9 +292,11 @@ enum SiteVisitOrphanRecovery {
 
     private static func canonicalizeChildren(
         for key: GroupKey,
+        childIds: [String],
         in modelContext: ModelContext
     ) {
-        let artifacts = (try? modelContext.fetch(FetchDescriptor<SiteVisitCaptureArtifact>())) ?? []
+        let ids = RecoveryStoreQueries.caseVariants([key.siteVisitId])
+        let artifacts = (try? modelContext.fetch(FetchDescriptor<SiteVisitCaptureArtifact>(predicate: #Predicate { ids.contains($0.siteVisitId) || childIds.contains($0.id) }))) ?? []
         for child in artifacts where
             canonicalText(child.companyId) == key.companyId
                 && canonicalText(child.siteVisitId) == key.siteVisitId
@@ -278,7 +304,7 @@ enum SiteVisitOrphanRecovery {
             child.companyId = key.companyId
             child.siteVisitId = key.siteVisitId
         }
-        let answers = (try? modelContext.fetch(FetchDescriptor<SiteVisitChecklistAnswer>())) ?? []
+        let answers = (try? modelContext.fetch(FetchDescriptor<SiteVisitChecklistAnswer>(predicate: #Predicate { ids.contains($0.siteVisitId) || childIds.contains($0.id) }))) ?? []
         for child in answers where
             canonicalText(child.companyId) == key.companyId
                 && canonicalText(child.siteVisitId) == key.siteVisitId
@@ -286,7 +312,7 @@ enum SiteVisitOrphanRecovery {
             child.companyId = key.companyId
             child.siteVisitId = key.siteVisitId
         }
-        let drafts = (try? modelContext.fetch(FetchDescriptor<SiteVisitIdentityDraft>())) ?? []
+        let drafts = (try? modelContext.fetch(FetchDescriptor<SiteVisitIdentityDraft>(predicate: #Predicate { ids.contains($0.siteVisitId) || childIds.contains($0.id) }))) ?? []
         for child in drafts where
             canonicalText(child.companyId) == key.companyId
                 && canonicalText(child.siteVisitId) == key.siteVisitId
@@ -300,7 +326,10 @@ enum SiteVisitOrphanRecovery {
         _ key: GroupKey,
         in modelContext: ModelContext
     ) -> Bool {
-        ((try? modelContext.fetch(FetchDescriptor<SiteVisit>())) ?? []).contains {
+        let ids = RecoveryStoreQueries.caseVariants([key.siteVisitId])
+        return ((try? modelContext.fetch(FetchDescriptor<SiteVisit>(predicate: #Predicate {
+            ids.contains($0.id)
+        }))) ?? []).contains {
             canonicalText($0.companyId) == key.companyId
                 && canonicalText($0.id) == key.siteVisitId
         }

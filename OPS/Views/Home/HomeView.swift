@@ -81,10 +81,22 @@ struct HomeView: View {
             // Same defect class as the load path: the detector faults tasks
             // for every project, so the count rides the DataActor too.
             let visibleProjects = dataController.getProjectsForCurrentUser(for: nil)
-            if let actor = dataController.dataActor {
+            if FeatureFlags.useDataActor {
                 let ids = visibleProjects.map(\.id)
+                let context = dataController.modelContext
+                let userID = dataController.currentUser?.id
+                let companyID = dataController.currentUser?.companyId
                 Task {
-                    projectsNeedingTasksCount = await actor.projectsNeedingTasksCount(projectIds: ids)
+                    guard let actor = await dataController.readyDataActor(),
+                          dataController.modelContext === context,
+                          dataController.currentUser?.id == userID,
+                          dataController.currentUser?.companyId == companyID,
+                          let count = try? await actor.projectsNeedingTasksCount(projectIds: ids),
+                          !Task.isCancelled, dataController.dataActor === actor,
+                          dataController.modelContext === context,
+                          dataController.currentUser?.id == userID,
+                          dataController.currentUser?.companyId == companyID else { return }
+                    projectsNeedingTasksCount = count
                 }
             } else {
                 projectsNeedingTasksCount = ProjectsWithoutTasksDetector
@@ -290,7 +302,6 @@ struct HomeView: View {
     /// concerns: they start when Home comes on screen and stop when it leaves,
     /// exactly as they did when a tab switch tore the view down.
     private func beginVisit() {
-        AnalyticsManager.shared.trackScreenView(screenName: .home, screenClass: "HomeView")
         AnalyticsService.shared.trackScreenView(screenName: "home")
         if appState.isInProjectMode {
             startRouteRefreshTimer()
@@ -309,6 +320,15 @@ struct HomeView: View {
         if !silent { isLoading = true }
 
         Task {
+            let context = dataController.modelContext
+            let userID = dataController.currentUser?.id
+            let companyID = dataController.currentUser?.companyId
+            let isCurrent: @MainActor () -> Bool = {
+                !Task.isCancelled && dataController.modelContext === context
+                    && dataController.currentUser?.id == userID
+                    && dataController.currentUser?.companyId == companyID
+            }
+            defer { if !silent, isCurrent() { isLoading = false } }
             let today = Calendar.current.startOfDay(for: Date())
 
             // Get scheduled tasks for today (tasks with dates spanning today)
@@ -364,11 +384,14 @@ struct HomeView: View {
             // legacy path.
             let billableRollup: HomeBillableThisWeekRollup
             let needsTasksCount: Int
-            if let actor = dataController.dataActor {
-                let snapshot = await actor.computeHomeRollup(
+            var snapshotActor: DataActor?
+            if FeatureFlags.useDataActor {
+                guard let actor = await dataController.readyDataActor(), isCurrent(),
+                      let snapshot = try? await actor.computeHomeRollup(
                     projectIds: everyProject.map(\.id),
-                    companyId: dataController.currentUser?.companyId
-                )
+                    companyId: companyID
+                ), isCurrent(), dataController.dataActor === actor else { return }
+                snapshotActor = actor
                 billableRollup = snapshot.rollup
                 needsTasksCount = tutorialMode ? 0 : snapshot.projectsNeedingTasksCount
             } else {
@@ -380,6 +403,7 @@ struct HomeView: View {
             }
 
             await MainActor.run {
+                guard isCurrent(), snapshotActor == nil || dataController.dataActor === snapshotActor else { return }
                 self.todaysScheduledTasks = scheduledTasks
                 self.todaysProjects = uniqueProjects
                 self.allProjects = everyProject

@@ -1,0 +1,53 @@
+Source-only verification; no build baton. No build, typecheck, test, simulator, package resolution, or device work executed.
+
+Swift frontend parse: 29 changed Swift files; exit 0
+
+Whitespace check preserving existing CRLF: exit 0
+
+Parsed files:
+OPS/DeckBuilder/DeckBuilderViewModel.swift
+OPS/DeckBuilder/Rendering/DeckThumbnailWorker.swift
+OPS/DeckBuilder/Views/DeckBuilderView.swift
+OPS/Network/Sync/CapturePerformanceTrace.swift
+OPS/Network/Sync/DeckEditingSessionRegistry.swift
+OPS/Network/Sync/OutboundProcessor.swift
+OPS/Network/Sync/RecoveryAttentionSummary.swift
+OPS/Network/Sync/RecoveryInventory.swift
+OPS/Network/Sync/RecoveryStoreQueries.swift
+OPS/Network/Sync/SiteVisitCommandRecoveryPolicy.swift
+OPS/Network/Sync/SiteVisitOrphanRecovery.swift
+OPS/Network/Sync/SiteVisitRecoveryVault.swift
+OPS/Network/Sync/SyncEngine.swift
+OPS/Network/Sync/SyncRecoveryCandidates.swift
+OPS/Network/Sync/SyncStatusCopy.swift
+OPS/Utilities/DataActor.swift
+OPS/Views/Components/Sync/SyncStatusIndicator.swift
+OPS/Views/MainTabView.swift
+OPSTests/DeckBuilder/DeckBuilderRegressionTests.swift
+OPSTests/DeckBuilder/DeckExitResponsivenessTests.swift
+OPSTests/Sync/DeckEditingSessionTests.swift
+OPSTests/Sync/RecoveryAttentionSummaryTests.swift
+OPSTests/Sync/RecoveryStoreQueriesTests.swift
+OPSTests/Sync/RecoveryVaultHeaderTests.swift
+OPSTests/Sync/SiteVisitCommandRecoveryTests.swift
+OPSTests/Sync/SiteVisitInboundSyncTests.swift
+OPSTests/Sync/SiteVisitOrphanRecoveryTests.swift
+OPSTests/Sync/SiteVisitRecoveryVaultTests.swift
+OPSTests/Sync/SyncRecoverySchedulingTests.swift
+
+Parent compile follow-up: qualified nested DeckRenderer.DeckRendererError. Changed worker frontend parse exit 0; whitespace check exit 0. Symbol declarations were inspected directly. Combined compilation/tests remain pending with PM; no worker build baton.
+
+Combined core03 lifecycle follow-up, 2026-09-06:
+xcrun swiftc -frontend -parse OPS/Network/Sync/OutboundProcessor.swift OPS/Network/Sync/OutboundSessionLifetime.swift OPS/Network/Sync/SyncEngine.swift OPS/Utilities/DataActor.swift OPSTests/Sync/OutboundLifecycleTests.swift
+Exit 0, no diagnostics.
+git -c core.whitespace=cr-at-eol diff --check
+Exit 0, no diagnostics.
+Seven authored OutboundLifecycleTests cases are UNRUN. Integrate P1-2 bad6ad3a for the typed executor validity/isolation API. No build baton or runtime proof claimed.
+
+Combined core04 fixture corrections, 2026-09-06:
+PM runtime evidence: 306/309 passed; original two lead-capture crashes resolved; 6/7 lifecycle cases passed. Reset case final readback trapped after stores were removed; mention retarget fixture allowed live connectivity to claim its pending dispatch. See HANDOFF.md for exact artifacts and diagnosis.
+xcrun swiftc -frontend -parse OPSTests/Sync/OutboundLifecycleTests.swift OPSTests/ProjectNoteMentionEditTests.swift
+Exit 0, no diagnostics.
+git -c core.whitespace=cr-at-eol diff --check
+Exit 0, no diagnostics.
+Corrected fixtures still require PM rerun; no worker build/typecheck/test/simulator/package/device work.

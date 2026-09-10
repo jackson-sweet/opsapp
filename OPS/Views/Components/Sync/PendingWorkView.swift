@@ -112,10 +112,12 @@ enum PendingWorkDecline {
         siteVisitId: String,
         in modelContext: ModelContext
     ) -> Bool {
+        let packetContext = ModelContext(modelContext.container)
+        packetContext.autosaveEnabled = false
         let visitDescriptor = FetchDescriptor<SiteVisit>(
             predicate: #Predicate<SiteVisit> { $0.id == siteVisitId }
         )
-        guard let visit = (try? modelContext.fetch(visitDescriptor))?.first else {
+        guard let visit = (try? packetContext.fetch(visitDescriptor))?.first else {
             return false
         }
         let artifactDescriptor = FetchDescriptor<SiteVisitCaptureArtifact>(
@@ -127,12 +129,12 @@ enum PendingWorkDecline {
         let draftDescriptor = FetchDescriptor<SiteVisitIdentityDraft>(
             predicate: #Predicate<SiteVisitIdentityDraft> { $0.siteVisitId == siteVisitId }
         )
-        let artifacts = (try? modelContext.fetch(artifactDescriptor)) ?? []
-        let answers = (try? modelContext.fetch(answerDescriptor)) ?? []
-        let drafts = (try? modelContext.fetch(draftDescriptor)) ?? []
+        let artifacts = (try? packetContext.fetch(artifactDescriptor)) ?? []
+        let answers = (try? packetContext.fetch(answerDescriptor)) ?? []
+        let drafts = (try? packetContext.fetch(draftDescriptor)) ?? []
         let coordinator = SiteVisitPersistenceCoordinator(
-            modelContext: modelContext,
-            companyId: visit.companyId
+            modelContext: packetContext,
+            companyId: visit.companyId, ownsContext: true
         )
         let wasNeverSynced = visit.lastSyncedAt == nil
             && artifacts.allSatisfy { $0.lastSyncedAt == nil }

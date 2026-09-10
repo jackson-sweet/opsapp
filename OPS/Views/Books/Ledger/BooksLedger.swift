@@ -268,9 +268,10 @@ struct BooksLedger: View {
                 BooksLedgerEmpty(value: "—", label: "NO EXPENSES", hint: "LOG WHAT YOU SPEND ON JOBS",
                                  ctaTitle: "LOG EXPENSE", onCreate: { showCreateExpense = true })
             } else {
-                BooksLedgerEmpty(value: "—", label: "NOTHING TO REVIEW", hint: "EVERY EXPENSE HAS A RECEIPT + OK")
+                BooksLedgerEmpty(value: "—", label: "NO MISSING RECEIPTS", hint: "EVERY EXPENSE HAS A RECEIPT")
             }
         } else {
+            let batchStatuses = BooksExpenseBatchStatusResolver.index(expenseVM.batches)
             LazyVStack(spacing: 0) {
                 ForEach(expenseRows) { expense in
                     BooksSwipeRow(
@@ -278,7 +279,14 @@ struct BooksLedger: View {
                         trailing: expenseTrailingActions(expense),
                         openRowID: $openRowID
                     ) {
-                        BooksExpenseRow(expense: expense, who: crewName(expense.submittedBy)) {
+                        BooksExpenseRow(
+                            expense: expense,
+                            who: crewName(expense.submittedBy),
+                            batchStatus: BooksExpenseBatchStatusResolver.status(
+                                for: expense,
+                                in: batchStatuses
+                            )
+                        ) {
                             editingExpense = expense
                         }
                     }
@@ -377,6 +385,24 @@ struct BooksLedger: View {
         let allowed = expense.submittedBy == user.id || user.role == .admin || user.role == .owner
         let status = ExpenseStatus(rawValue: expense.status)
         return allowed && status != .approved && status != .reimbursed
+    }
+}
+
+/// Builds the server-authoritative envelope lookup once per ledger render.
+/// Unknown or missing batch state intentionally resolves to the neutral fallback.
+enum BooksExpenseBatchStatusResolver {
+    static func index(_ batches: [ExpenseBatchDTO]) -> [String: ExpenseBatchStatus] {
+        batches.reduce(into: [:]) { result, batch in
+            guard let status = ExpenseBatchStatus(rawValue: batch.status) else { return }
+            result[batch.id] = status
+        }
+    }
+
+    static func status(
+        for expense: ExpenseDTO,
+        in index: [String: ExpenseBatchStatus]
+    ) -> ExpenseBatchStatus? {
+        expense.batchId.flatMap { index[$0] }
     }
 }
 

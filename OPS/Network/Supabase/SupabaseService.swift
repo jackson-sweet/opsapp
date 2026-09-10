@@ -2,6 +2,7 @@
 import Foundation
 import Supabase
 import FirebaseAuth
+import FirebaseCore
 
 /// Central Supabase data client that bridges Firebase Auth via the `accessToken` callback.
 ///
@@ -66,6 +67,7 @@ extension SupabaseService {
     /// `nonisolated` because `Auth.auth().currentUser` is thread-safe in the
     /// Firebase SDK — telemetry can read this from background tasks.
     nonisolated var currentUserId: String? {
-        Auth.auth().currentUser?.uid
+        guard FirebaseApp.app() != nil else { return nil }
+        return Auth.auth().currentUser?.uid
     }
 }

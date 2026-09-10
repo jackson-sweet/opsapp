@@ -23,11 +23,9 @@ struct OverdueProjectDetector {
             .filter { $0.deletedAt == nil }
             .filter { $0.status == .completed }
             .filter { project in
-                guard let completedAt = project.completedAt else {
-                    return false // No completedAt — can't determine if overdue
-                }
-                let daysSince = calendar.dateComponents([.day], from: completedAt, to: now).day ?? 0
-                return daysSince >= thresholdDays
+                ReviewEligibility.overduePayment(
+                    completedAt: project.completedAt, thresholdDays: thresholdDays, now: now, calendar: calendar
+                )
             }
             .sorted { ($0.completedAt ?? .distantPast) < ($1.completedAt ?? .distantPast) }
     }

@@ -11,6 +11,19 @@
 //  narrow-width wrapping, the read-only band, and both requirement states
 //  are visible.
 //
+//  ONE CANVAS PER TEST CASE, each on its own store. Both renders used to live
+//  in a single method against one container, and the second one died with
+//  "Test crashed with signal segv" — on a loaded machine and on an idle one
+//  alike. The cause was never the canvas: the console's open-visit lookup ran
+//  `assigneeIds.contains(user)` inside a `#Predicate`, which CoreData
+//  segfaults on. The first render survived only because the store was still
+//  empty, so the predicate had no row to evaluate; the second render met the
+//  visit the first had just created and the process died. Fixed in
+//  `SiteVisitCaptureViewModel.openVisits()`, pinned by
+//  `SiteVisitOpenVisitsTests` and `SwiftDataPredicateLintTests`. The split
+//  stands on its own merits: neither render can now inherit the other's rows,
+//  and only one 1_800 pt canvas is ever alive.
+//
 //  Run:  xcodebuild test -scheme OPS \
 //          -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' \
 //          -only-testing:OPSTests/SiteVisitFormSnapshotTests
@@ -38,10 +51,33 @@ final class SiteVisitFormSnapshotTests: XCTestCase {
         return try ModelContainer(for: schema, configurations: [config])
     }
 
+    /// Standard width and text size — the full numbered sequence is legible
+    /// end to end: 1 · LEAD → LEAD SUMMARY → 2 · CHECKLIST → 3 · NOTES.
     func testLeadFormNumberedStepsAndRequiredMarkers() throws {
+        try renderLeadForm("02_lead_form_summary_390", width: 390)
+    }
+
+    /// Narrowest supported width at the largest accessibility text size. The
+    /// form runs past the canvas here by design — what this proves is that
+    /// step 1's numbered header, the name group's DONE marker, and the
+    /// EMAIL / PHONE / ADDRESS REQUIRED markers all survive extreme wrapping,
+    /// and that the read-only summary band still reads.
+    func testLeadFormRequiredMarkersSurviveAccessibilityWrapping() throws {
+        try renderLeadForm(
+            "01_lead_form_summary_320_accessibility",
+            width: 320,
+            sizeCategory: .accessibilityExtraLarge
+        )
+    }
+
+    /// A bound lead with only a name — the name/company group satisfies
+    /// (DONE), contact + address groups stay outstanding (REQUIRED).
+    private func renderLeadForm(
+        _ name: String,
+        width: CGFloat,
+        sizeCategory: ContentSizeCategory = .large
+    ) throws {
         let container = try inMemoryContainer()
-        // A bound lead with only a name — name/company group satisfies (DONE),
-        // contact + address groups stay outstanding (REQUIRED).
         let lead = Opportunity(
             companyId: "a612edc0-5c18-4c4d-af97-55b9410dd077",
             contactName: "Dale Harmon",
@@ -53,26 +89,15 @@ final class SiteVisitFormSnapshotTests: XCTestCase {
             .environmentObject(DataController())
             .modelContainer(container)
 
-        try snapshot(
-            "01_lead_form_summary_320_accessibility",
-            width: 320,
-            height: 1_800,
-            settle: 3.0,
-            sizeCategory: .accessibilityExtraLarge
-        ) { view }
-        try snapshot(
-            "02_lead_form_summary_390",
-            width: 390,
-            height: 1_800,
-            settle: 3.0
-        ) { view }
+        try snapshot(name, width: width, height: 1_800, settle: 3.0, sizeCategory: sizeCategory) { view }
     }
 
     /// Renders via FixedSizeSnapshot (app-hosted window) — never a test-created
     /// UIWindow, which full-suite runs can render blank once the host drops out
     /// of the foreground pipeline. `settle` is the async view-model floor: the
     /// view shows a spinner until its `.task` finishes loading, and only then
-    /// does the quiescence capture start counting.
+    /// does the quiescence capture start counting. The render is pooled so the
+    /// full-size bitmap goes away before the PNG is retained for attachment.
     private func snapshot<V: View>(
         _ name: String,
         width: CGFloat,
@@ -81,15 +106,18 @@ final class SiteVisitFormSnapshotTests: XCTestCase {
         sizeCategory: ContentSizeCategory = .large,
         @ViewBuilder _ content: () -> V
     ) throws {
-        let image = try FixedSizeSnapshot.render(
-            content()
-                .environment(\.colorScheme, .dark)
-                .environment(\.sizeCategory, sizeCategory),
-            size: CGSize(width: width, height: height),
-            minimumSettle: settle,
-            settleDeadline: 3
-        )
-        guard let data = image.pngData() else {
+        let encoded: Data? = try autoreleasepool {
+            let image = try FixedSizeSnapshot.render(
+                content()
+                    .environment(\.colorScheme, .dark)
+                    .environment(\.sizeCategory, sizeCategory),
+                size: CGSize(width: width, height: height),
+                minimumSettle: settle,
+                settleDeadline: 3
+            )
+            return image.pngData()
+        }
+        guard let data = encoded else {
             XCTFail("Failed to render \(name)")
             return
         }

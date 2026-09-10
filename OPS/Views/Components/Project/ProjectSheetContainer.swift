@@ -37,7 +37,17 @@ struct ProjectSheetContainer: View {
             Color.clear // Empty view that doesn't affect layout
         }
         // Project details sheet - uses isPresented and item together for more reliable presentation
-        .sheet(isPresented: $appState.showProjectDetails) {
+        //
+        // Bug 030c82a9 — DONE dismisses through the environment, which only
+        // flips `showProjectDetails` via the binding. `isViewingDetailsOnly`
+        // and `activeProjectID` stayed armed, so `isProjectSurfacePresented`
+        // kept reporting a presented surface and Home's billable and
+        // needs-tasks cards never came back after viewing a job. Route every
+        // dismissal through AppState so the viewing flags clear (project mode
+        // is preserved by `dismissProjectDetails` itself).
+        .sheet(isPresented: $appState.showProjectDetails, onDismiss: {
+            appState.dismissProjectDetails()
+        }) {
             ProjectSheetResolver(projectID: appState.activeProjectID)
                 .environmentObject(dataController)
                 .environmentObject(appState)

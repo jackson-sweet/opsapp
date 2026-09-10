@@ -569,7 +569,10 @@ struct BooksARSheet: View {
         do {
             let dtos = try await repo.fetchAllInvoices()
             invoices = dtos.map { $0.toModel() }
-            let clients = dataController.getAllClients(for: companyId)
+            // Tombstones included on purpose: this is an id -> name lookup for
+            // invoices, and an invoice raised against a since-deleted client
+            // must still show whose invoice it was.
+            let clients = dataController.getAllClients(for: companyId, includingDeleted: true)
             clientNames = Dictionary(uniqueKeysWithValues: clients.map { ($0.id, $0.displayName) })
         } catch {
             // Non-fatal — the hero/ramp/buckets still render from the VM.

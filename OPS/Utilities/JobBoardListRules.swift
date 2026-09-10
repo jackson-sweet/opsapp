@@ -236,13 +236,20 @@ struct JobBoardProjectFiltering {
         )
     }
 
+    /// The status board's rows: the list's active/assigned/status/team filters,
+    /// then the list's ordering. Ordering lives here rather than in the view so
+    /// the cards inside an expanded bar follow the same "most recently touched
+    /// first" rule as the project list (bug 52b3ebe5 — they previously arrived
+    /// in store order). Filtering a sorted list by status preserves the order
+    /// within every bar.
     static func kanbanProjects(
         from projects: [Project],
         activeOnly: Bool = false,
         assignedToMe: Bool,
         currentUserId: String?,
         selectedStatuses: Set<Status>,
-        selectedTeamMemberIds: Set<String>
+        selectedTeamMemberIds: Set<String>,
+        sortOption: ProjectSortOption = .latestEdited
     ) -> [Project] {
         var filtered = projects.filter {
             $0.deletedAt == nil && $0.status != .closed && $0.status != .archived
@@ -266,7 +273,7 @@ struct JobBoardProjectFiltering {
             }
         }
 
-        return filtered
+        return sortedProjects(filtered, sortOption: sortOption)
     }
 
     /// Bug 70a4d9fd — "most recently touched" stamp for the latest/earliest

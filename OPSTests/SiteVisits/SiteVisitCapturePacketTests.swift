@@ -622,6 +622,9 @@ final class SiteVisitCapturePacketTests: XCTestCase {
         )
         viewModel.updateChecklistAnswer(gateCode, value: .text("4812"))
 
+        for answer in viewModel.missingRequiredChecklistAnswers {
+            viewModel.updateChecklistAnswer(answer, value: .text("Synthetic required scope"))
+        }
         XCTAssertTrue(viewModel.canComplete)
         XCTAssertTrue(viewModel.hasProjectEvidence)
         let result = await viewModel.completeVisit()
@@ -655,6 +658,9 @@ final class SiteVisitCapturePacketTests: XCTestCase {
         viewModel.noteDraft = "Existing stair nosing is damaged."
         viewModel.addNote()
 
+        for answer in viewModel.missingRequiredChecklistAnswers {
+            viewModel.updateChecklistAnswer(answer, value: .text("Synthetic required scope"))
+        }
         gate.shouldFail = true
         let result = await viewModel.completeVisit()
 
@@ -686,22 +692,27 @@ final class SiteVisitCapturePacketTests: XCTestCase {
             opportunity: opportunity,
             companyId: "company-1",
             userId: "user-1",
-            modelContext: context,
-            moveLeadToStage: { _, _ in
-                throw SiteVisitOutcomeTestError.forcedFailure
-            }
+            modelContext: context
         )
         viewModel.loadOrCreateVisit()
         viewModel.noteDraft = "Client confirmed the south elevation."
         viewModel.addNote()
 
+        for answer in viewModel.missingRequiredChecklistAnswers {
+            viewModel.updateChecklistAnswer(answer, value: .text("Synthetic required scope"))
+        }
         let result = await viewModel.saveVisit(movingLeadTo: PipelineStage.qualifying)
 
         XCTAssertEqual(result, SiteVisitSaveResult.committedStageUpdateFailed)
         XCTAssertTrue(result.visitWasCommitted)
         XCTAssertEqual(opportunity.stage, PipelineStage.newLead)
         XCTAssertEqual(viewModel.siteVisit?.status, .completed)
-        XCTAssertEqual(viewModel.errorMessage, "VISIT SAVED · STAGE NOT UPDATED")
+        XCTAssertNil(viewModel.errorMessage)
+        let stage = try XCTUnwrap(context.fetch(FetchDescriptor<SyncOperation>()).first {
+            $0.operationType == SiteVisitSyncOperation.stageOperationType
+        })
+        XCTAssertEqual(stage.status, "parked")
+        XCTAssertEqual(stage.lastError, "STAGE REVIEW REQUIRED · OPEN LEAD")
     }
 
     @MainActor

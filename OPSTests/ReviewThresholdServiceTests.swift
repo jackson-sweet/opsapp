@@ -140,9 +140,16 @@ final class ReviewThresholdServiceTests: XCTestCase {
         XCTAssertGreaterThan(expectedTask, 0, "fixture must produce overdue review tasks")
         XCTAssertGreaterThan(expectedUnscheduled, 0, "fixture must produce unscheduled review tasks")
 
+        let store = ReviewSnapshotStore(requestProvider: {
+            ReviewSnapshotRequest.capture(dataController: fixture.dataController, permissionStore: .shared)
+        }, reader: { request in
+            ReviewSnapshotCalculator.compute(tasks: fixture.dataController.getAllTasks(),
+                projects: fixture.dataController.getProjects(), request: request)
+        })
         let syncTask = ReviewThresholdService.evaluate(
             dataController: fixture.dataController,
-            syncer: spy
+            syncer: spy,
+            snapshotStore: store
         )
         await syncTask?.value
 

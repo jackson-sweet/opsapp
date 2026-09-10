@@ -462,6 +462,66 @@ final class SiteVisitMediaSyncManagerTests: XCTestCase {
         )
     }
 
+    func test_invalidatedSessionAfterPreparationDoesNotUpload() async throws {
+        try await assertInvalidationPreservesMedia(duringUpload: false)
+    }
+
+    func test_invalidatedSessionAfterUploadDoesNotReplaceLocalSource() async throws {
+        try await assertInvalidationPreservesMedia(duringUpload: true)
+    }
+
+    private func assertInvalidationPreservesMedia(duringUpload: Bool) async throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+        context.autosaveEnabled = false
+        let artifact = makeArtifact()
+        artifact.renderedAssetURL = nil
+        artifact.thumbnailURL = nil
+        context.insert(artifact)
+        let operation = try insertMediaOperation(for: artifact, in: context)
+        try context.save()
+        let operationId = operation.id
+        let source = artifact.localAssetURL
+        let gate = SiteVisitDeliveryTestGate()
+        var uploads = 0
+        let manager = SiteVisitMediaSyncManager(
+            uploader: { _, _, _, _, _ in
+                uploads += 1
+                if duringUpload { await gate.pause() }
+                return "https://cdn.ops.test/uploaded.jpg"
+            },
+            loader: { _ in (Data([1, 2, 3]), "image/jpeg") },
+            preparer: { asset in
+                if !duringUpload { await gate.pause() }
+                return asset
+            }
+        )
+        var current = true
+        let id = artifactId
+        let delivery = Task {
+            try await manager.uploadPendingMedia(artifactId: id,
+                mediaOperation: operation, context: context, isCurrent: { current })
+        }
+        defer { delivery.cancel(); gate.release() }
+        await fulfillment(of: [gate.started], timeout: 5)
+        current = false
+        gate.release()
+        do {
+            try await delivery.value
+            XCTFail("An invalidated session must abandon its response")
+        } catch is CancellationError {} catch {
+            XCTFail("Expected cancellation, received \(error)")
+        }
+        let readback = ModelContext(container)
+        let saved = try XCTUnwrap(try readback.fetch(FetchDescriptor<SiteVisitCaptureArtifact>()).first)
+        let operations = try readback.fetch(FetchDescriptor<SyncOperation>())
+        XCTAssertEqual(saved.localAssetURL, source)
+        XCTAssertEqual(operations.count, 1, "No follow-on URL write may be queued")
+        XCTAssertEqual(operations.first?.id, operationId)
+        XCTAssertEqual(operations.first?.status, "pending")
+        XCTAssertEqual(uploads, duringUpload ? 1 : 0)
+    }
+
     private func makeArtifact() -> SiteVisitCaptureArtifact {
         SiteVisitCaptureArtifact(
             id: artifactId,

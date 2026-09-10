@@ -202,30 +202,8 @@ final class VinylPreviewAnnotationPlannerTests: XCTestCase {
 
 final class VinylOrderViewportStateTests: XCTestCase {
 
-    func testFullscreenGeometryReservesHeaderControlRailAndFitBar() {
-        let geometry = VinylOrderFullscreenGeometry(
-            containerSize: CGSize(width: 390, height: 844)
-        )
-
-        XCTAssertEqual(
-            geometry.drawingSize.width,
-            390 - VinylOrderFullscreenGeometry.controlRailWidth,
-            accuracy: 0.001
-        )
-        XCTAssertEqual(
-            geometry.drawingSize.height,
-            844
-                - VinylOrderFullscreenGeometry.headerHeight
-                - VinylOrderFullscreenGeometry.fitBarHeight,
-            accuracy: 0.001
-        )
-        XCTAssertEqual(
-            geometry.drawingCenter.y,
-            VinylOrderFullscreenGeometry.headerHeight
-                + (geometry.drawingSize.height / 2),
-            accuracy: 0.001
-        )
-    }
+    // Workspace band geometry moved to VinylOrderWorkspaceGeometryTests when the
+    // zoom rail was retired (bug 317da29f) — this class owns the viewport model.
 
     func testZoomClampsAtBothBoundsAndRecentersAtFitScale() {
         var state = VinylOrderViewportState()
@@ -264,5 +242,82 @@ final class VinylOrderViewportStateTests: XCTestCase {
         state.fit()
 
         XCTAssertEqual(state, VinylOrderViewportState())
+    }
+
+    // MARK: - Double tap (the gesture that replaced the +/- rail)
+
+    /// The point under the finger stays under the finger. That is the whole
+    /// contract of an anchored zoom — anything else feels like the drawing
+    /// jumped away from the thing the operator was pointing at.
+    func testDoubleTapZoomsAboutTheTappedPoint() {
+        var state = VinylOrderViewportState()
+        let viewport = CGSize(width: 320, height: 640)
+        let tap = CGPoint(x: 240, y: 480)
+
+        state.toggleFit(at: tap, viewportSize: viewport)
+
+        XCTAssertEqual(state.scale, VinylOrderViewportState.doubleTapScale)
+        XCTAssertEqual(
+            projected(tap, in: state, viewportSize: viewport).x,
+            tap.x,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            projected(tap, in: state, viewportSize: viewport).y,
+            tap.y,
+            accuracy: 0.001
+        )
+    }
+
+    func testDoubleTapFromAnyZoomedStateReturnsToFit() {
+        var state = VinylOrderViewportState()
+        let viewport = CGSize(width: 320, height: 640)
+
+        state.toggleFit(at: CGPoint(x: 60, y: 120), viewportSize: viewport)
+        XCTAssertFalse(state.isFitted)
+
+        state.toggleFit(at: CGPoint(x: 300, y: 600), viewportSize: viewport)
+        XCTAssertEqual(state, VinylOrderViewportState())
+        XCTAssertTrue(state.isFitted)
+    }
+
+    /// A tap in the corner must not push the drawing off its own clamp — the
+    /// resulting offset is still inside the pan bounds for the new scale.
+    func testDoubleTapInACornerStaysWithinThePanClamp() {
+        var state = VinylOrderViewportState()
+        let viewport = CGSize(width: 320, height: 640)
+
+        state.toggleFit(at: CGPoint(x: 0, y: 0), viewportSize: viewport)
+
+        let limit = CGSize(
+            width: viewport.width * (state.scale - 1) / 2,
+            height: viewport.height * (state.scale - 1) / 2
+        )
+        XCTAssertLessThanOrEqual(abs(state.offset.width), limit.width + 0.001)
+        XCTAssertLessThanOrEqual(abs(state.offset.height), limit.height + 0.001)
+    }
+
+    // MARK: - FIT chip visibility follows the viewport
+
+    func testIsFittedIsTrueOnlyAtTheRestState() {
+        XCTAssertTrue(VinylOrderViewportState().isFitted)
+        XCTAssertFalse(VinylOrderViewportState(scale: 2).isFitted)
+        XCTAssertFalse(
+            VinylOrderViewportState(offset: CGSize(width: 10, height: 0)).isFitted
+        )
+    }
+
+    /// Where a viewport point lands on screen: the drawing is scaled about the
+    /// viewport centre, then offset.
+    private func projected(
+        _ point: CGPoint,
+        in state: VinylOrderViewportState,
+        viewportSize: CGSize
+    ) -> CGPoint {
+        let center = CGPoint(x: viewportSize.width / 2, y: viewportSize.height / 2)
+        return CGPoint(
+            x: center.x + ((point.x - center.x) * state.scale) + state.offset.width,
+            y: center.y + ((point.y - center.y) * state.scale) + state.offset.height
+        )
     }
 }

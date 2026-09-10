@@ -188,12 +188,20 @@ struct CrewCodeShareView: View {
                 showCopyFeedback = false
             }
         }
-        AnalyticsManager.shared.trackCrewCodeAction(variant: variant.rawValue, action: "copied")
+        trackCrewCodeAction("copied")
     }
 
     private func handleContinue() {
-        AnalyticsManager.shared.trackCrewCodeAction(variant: variant.rawValue, action: "continued")
+        trackCrewCodeAction("continued")
         onContinue()
+    }
+
+    private func trackCrewCodeAction(_ action: String) {
+        AnalyticsService.shared.track(
+            eventType: .action,
+            eventName: "crew_code_action",
+            properties: ["variant": variant.rawValue, "action": action]
+        )
     }
 }
 

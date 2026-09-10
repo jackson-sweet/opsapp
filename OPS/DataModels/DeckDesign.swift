@@ -62,6 +62,16 @@ final class DeckDesign: Identifiable {
     var syncPriority: Int = 1
     var deletedAt: Date?
 
+    /// The `drawing_data` payload the server and this device last agreed on —
+    /// the merge base for inbound conflict resolution. Set ONLY when a push is
+    /// confirmed or a server snapshot is accepted; a local edit never moves it.
+    ///
+    /// Local SwiftData V26 field; V16–V25 use the frozen released shape.
+    /// Migration leaves it nil (unknown). A clean legacy row seeds its base
+    /// from the pre-edit payload on the first write; an already-dirty legacy
+    /// row keeps its unknown base until the server confirms. Bug 9f4aeaf8.
+    var syncedDrawingJSON: String?
+
     // Timestamps
     var createdAt: Date
     var updatedAt: Date?
@@ -106,10 +116,40 @@ final class DeckDesign: Identifiable {
     /// save boundary. This avoids repeating the full encoder pass for the model
     /// setter and outbound sync payload.
     func storeDrawingData(_ drawing: DeckDrawingData, json: String) {
+        // A clean row's pre-edit payload is its known server snapshot (or the
+        // empty default of a brand-new design). A dirty legacy row can already
+        // hold unsent geometry from BEFORE V26: seeding that content as the base
+        // would turn an unchanged save into a false acknowledgement. Keep its
+        // base unknown and needsSync authoritative until a confirmed push.
+        if syncedDrawingJSON == nil && !needsSync {
+            syncedDrawingJSON = drawingDataJSON
+        }
         drawingDataJSON = json
         drawingDataCache.store(drawing, json: json)
         updatedAt = Date()
         needsSync = true
+    }
+
+    /// True when the local drawing holds content the server has not confirmed.
+    ///
+    /// With a recorded merge base this is a pure content comparison — the only
+    /// honest signal, and the reason this exists: the timestamps it replaced
+    /// compared a server trigger clock against a device clock and always
+    /// resolved for the server (bug 9f4aeaf8).
+    ///
+    /// With no recorded base, `needsSync` remains the authorship signal. This
+    /// includes dirty rows upgraded from V25, even after another local save.
+    /// Clean legacy rows still accept inbound geometry; dirty legacy rows stay
+    /// protected until a confirmed push establishes their server baseline.
+    var hasUnsyncedDrawing: Bool {
+        guard let syncedDrawingJSON else { return needsSync }
+        return syncedDrawingJSON != drawingDataJSON
+    }
+
+    /// Records that the current local drawing is now what the server holds.
+    /// Called on a confirmed outbound push and on an accepted inbound snapshot.
+    func markDrawingSynced() {
+        syncedDrawingJSON = drawingDataJSON
     }
 
     // MARK: - Convenience

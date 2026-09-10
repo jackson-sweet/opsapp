@@ -195,7 +195,9 @@ class ProjectDetailsViewModel: ObservableObject {
 
     init(project: Project, initialSelectedTask: ProjectTask? = nil) {
         self.project = project
-        self.selectedTask = initialSelectedTask
+        self.selectedTask = initialSelectedTask.flatMap { selected in
+            project.liveTasks.first { $0.id.lowercased() == selected.id.lowercased() }
+        }
 
         let notes = project.notes ?? ""
         self.noteText = notes
@@ -277,7 +279,7 @@ class ProjectDetailsViewModel: ObservableObject {
     // MARK: - Map Computed Properties
 
     var projectTaskColorHexes: [String] {
-        project.tasks
+        project.liveTasks
             .filter { $0.deletedAt == nil && $0.status == .active }
             .map { $0.effectiveColor }
     }
@@ -400,7 +402,7 @@ class ProjectDetailsViewModel: ObservableObject {
         }
 
         let nextDisplayOrder = (
-            project.tasks
+            project.liveTasks
                 .filter { $0.deletedAt == nil }
                 .map(\.displayOrder)
                 .max() ?? -1
@@ -473,7 +475,7 @@ class ProjectDetailsViewModel: ObservableObject {
         impactFeedback.impactOccurred()
 
         Task { @MainActor in
-            let incompleteTasks = project.tasks.filter { $0.status != .completed && $0.status != .cancelled && $0.deletedAt == nil }
+            let incompleteTasks = project.liveTasks.filter { $0.status != .completed && $0.status != .cancelled && $0.deletedAt == nil }
             for task in incompleteTasks {
                 do {
                     try await dataController?.updateTaskStatus(task: task, to: .completed)
@@ -955,7 +957,7 @@ class ProjectDetailsViewModel: ObservableObject {
                     task: task, startDate: startDate, endDate: endDate
                 )
             } catch {
-                print("[PROJECT_DETAILS] Failed to sync task schedule update: \(error)")
+                self.networkError = error.localizedDescription
             }
         }
     }

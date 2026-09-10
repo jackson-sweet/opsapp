@@ -106,6 +106,7 @@ struct ScheduleView: View {
                             showFilterSheet = true
                         },
                         onMonthTapped: { viewModel.toggleMonthExpanded() },
+                        isMonthExpanded: viewModel.isMonthExpanded,
                         // Bug 294ea224 — quick in-place ALL/MINE flip. The
                         // legacy ScheduleTeamScopeSheet was removed; team
                         // member multi-select lives in the unified filter
@@ -526,7 +527,6 @@ struct ScheduleView: View {
     /// wizard trigger are all per-visit: they ran on every mount back when a tab
     /// switch rebuilt this view, and they still run on every visit now.
     private func beginVisit() {
-        AnalyticsManager.shared.trackScreenView(screenName: .schedule, screenClass: "ScheduleView")
         AnalyticsService.shared.trackScreenView(screenName: "schedule")
 
         // Phase-C suggested events (item 63144953) — dormant on empty/error.

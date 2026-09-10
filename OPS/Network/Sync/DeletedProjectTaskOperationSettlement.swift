@@ -27,8 +27,10 @@ enum DeletedProjectTaskOperationSettlement {
         let company = canonical(activeCompanyId)
         guard !company.isEmpty else { return .empty }
 
+        let tasks = try modelContext.fetch(FetchDescriptor<ProjectTask>())
+        let allOperations = try modelContext.fetch(FetchDescriptor<SyncOperation>())
         let tombstoneIds = Set(
-            try modelContext.fetch(FetchDescriptor<ProjectTask>())
+            tasks
                 .filter {
                     canonical($0.companyId) == company && $0.deletedAt != nil
                 }
@@ -36,7 +38,10 @@ enum DeletedProjectTaskOperationSettlement {
         )
         guard !tombstoneIds.isEmpty else { return .empty }
 
-        let operations = try modelContext.fetch(FetchDescriptor<SyncOperation>())
+        let conflictingLiveIds = Set(tasks.filter {
+            canonical($0.companyId) == company && $0.deletedAt == nil
+        }.map { canonical($0.id) })
+        let operations = allOperations
             .filter {
                 $0.entityType == SyncEntityType.projectTask.rawValue
                     && $0.operationType == "update"
@@ -45,6 +50,10 @@ enum DeletedProjectTaskOperationSettlement {
                         SyncError.serverRowMissingMarker
                     ) == true)
                     && tombstoneIds.contains(canonical($0.entityId))
+                    && !conflictingLiveIds.contains(canonical($0.entityId))
+                    && !TaskLifecycleSync.carriesSchedule($0)
+                    && !TaskLifecycleSync.isLifecycle($0)
+                    && !TaskLifecycleSync.hasUnresolvedCreationOrRestore(taskId: $0.entityId, in: allOperations)
             }
             .sorted {
                 if $0.createdAt != $1.createdAt { return $0.createdAt < $1.createdAt }

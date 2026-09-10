@@ -229,6 +229,35 @@ final class SiteVisitOrphanRecoveryTests: XCTestCase {
     }
 
     @MainActor
+    func testScopedRecoveryDoesNotReconstructOrRequeueAnotherVisit() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let otherId = "6e7d78d0-ce44-49cd-9906-b63103151ed8"
+        let first = makeArtifact(siteVisitID: visitID, capturedAt: Date())
+        let other = makeArtifact(siteVisitID: otherId, capturedAt: Date())
+        context.insert(first)
+        context.insert(other)
+        let stopped = SyncOperation(entityType: SyncEntityType.siteVisitArtifact.rawValue, entityId: other.id,
+            operationType: SiteVisitSyncOperation.mediaOperationType, payload: Data("{}".utf8), changedFields: [])
+        stopped.status = "declined"
+        stopped.retryCount = 7
+        stopped.lastError = "Operator stopped this send"
+        context.insert(stopped)
+        try context.save()
+
+        let result = try SiteVisitOrphanRecovery.recover(
+            in: context, activeUserId: userID, activeCompanyId: companyID,
+            siteVisitIds: [visitID], quarantine: { _ in XCTFail("Valid identities") }
+        )
+        XCTAssertEqual(result.reconstructedVisitIds, [visitID])
+        XCTAssertEqual(try context.fetch(FetchDescriptor<SiteVisit>()).map(\.id), [visitID])
+        XCTAssertEqual(stopped.status, "declined")
+        XCTAssertEqual(stopped.retryCount, 7)
+        XCTAssertEqual(stopped.lastError, "Operator stopped this send")
+        XCTAssertEqual(other.siteVisitId, otherId)
+    }
+
+    @MainActor
     private func makeContainer() throws -> ModelContainer {
         let schema = Schema([
             SiteVisit.self,

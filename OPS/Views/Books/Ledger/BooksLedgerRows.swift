@@ -185,7 +185,21 @@ struct BooksExpenseRow: View {
     let expense: ExpenseDTO
     /// Pre-resolved crew name (uppercased) or nil.
     let who: String?
+    /// Server-authoritative envelope phase. Approval happens at this level.
+    let batchStatus: ExpenseBatchStatus?
     var onTap: () -> Void
+
+    init(
+        expense: ExpenseDTO,
+        who: String?,
+        batchStatus: ExpenseBatchStatus? = nil,
+        onTap: @escaping () -> Void
+    ) {
+        self.expense = expense
+        self.who = who
+        self.batchStatus = batchStatus
+        self.onTap = onTap
+    }
 
     private var hasReceipt: Bool { !(expense.receiptImageUrl?.isEmpty ?? true) }
 
@@ -217,7 +231,7 @@ struct BooksExpenseRow: View {
                     .font(.custom("JetBrainsMono-Regular", size: 14))
                     .foregroundColor(OPSStyle.Colors.text)
                     .monospacedDigit()
-                BooksPillView(pill: BooksLedgerStatus.expense(expense))
+                BooksPillView(pill: BooksLedgerStatus.expense(expense, batchStatus: batchStatus))
             }
         }
         .ledgerRow(onTap: onTap)
@@ -326,17 +340,35 @@ enum BooksLedgerStatus {
         }
     }
 
-    // Expense approval pill — missing receipt overrides status.
-    static func expense(_ exp: ExpenseDTO) -> BooksPill {
+    // Expense lifecycle pill — missing receipt overrides envelope phase.
+    static func expense(_ exp: ExpenseDTO, batchStatus: ExpenseBatchStatus? = nil) -> BooksPill {
         if exp.receiptImageUrl?.isEmpty ?? true {
             return BooksPill(text: "NO RECEIPT", color: OPSStyle.Colors.rose)
         }
         switch ExpenseStatus(rawValue: exp.status) {
-        case .submitted:            return BooksPill(text: "NEEDS OK", color: OPSStyle.Colors.tan)
-        case .approved, .reimbursed: return BooksPill(text: "APPROVED", color: OPSStyle.Colors.olive)
-        case .rejected:             return BooksPill(text: "REJECTED", color: OPSStyle.Colors.rose)
-        case .draft:                return BooksPill(text: "DRAFT", color: OPSStyle.Colors.textMute)
-        case nil:                   return BooksPill(text: "PENDING", color: OPSStyle.Colors.textMute)
+        case .draft:
+            return BooksPill(text: "UNFINISHED", color: OPSStyle.Colors.textMute)
+        case .rejected:
+            return BooksPill(text: "NEEDS FIX", color: OPSStyle.Colors.rose)
+        case .approved:
+            return BooksPill(text: "APPROVED", color: OPSStyle.Colors.olive)
+        case .reimbursed:
+            return BooksPill(text: "PAID", color: OPSStyle.Colors.olive)
+        case .submitted:
+            switch batchStatus {
+            case .some(.open):
+                return BooksPill(text: "FILLING", color: OPSStyle.Colors.text3)
+            case .some(.pendingReview), .some(.submitted):
+                return BooksPill(text: "WITH OFFICE", color: OPSStyle.Colors.text3)
+            case .some(.approved), .some(.autoApproved), .some(.partiallyApproved):
+                return BooksPill(text: "APPROVED", color: OPSStyle.Colors.olive)
+            case .some(.rejected):
+                return BooksPill(text: "NEEDS FIX", color: OPSStyle.Colors.rose)
+            case nil:
+                return BooksPill(text: "PENDING", color: OPSStyle.Colors.text3)
+            }
+        case nil:
+            return BooksPill(text: "PENDING", color: OPSStyle.Colors.textMute)
         }
     }
 

@@ -64,7 +64,9 @@ struct ExpensesListView: View {
 
     /// Bulk-approve working set: clean (unflagged) review batches only.
     private var cleanReviewBatches: [ExpenseBatchDTO] {
-        split.review.filter { (viewModel.consoleLineStats[$0.id]?.flagged ?? 0) == 0 }
+        split.review.filter {
+            viewModel.canApproveBatch($0) && (viewModel.consoleLineStats[$0.id]?.flagged ?? 0) == 0
+        }
     }
 
     private var approveConfirmTitle: String {
@@ -119,7 +121,7 @@ struct ExpensesListView: View {
         ) {
             Button("Approve \(pendingApproveBatches.count) Batch\(pendingApproveBatches.count == 1 ? "" : "es")") {
                 let batches = pendingApproveBatches
-                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                 Task { await viewModel.approveBatches(batches) }
             }
             Button("Cancel", role: .cancel) {}
@@ -256,7 +258,7 @@ struct ExpensesListView: View {
                         split: split,
                         lineStats: viewModel.consoleLineStats,
                         autoSubmitGraceDays: viewModel.settings?.autoSubmitGraceDays ?? 7,
-                        canApprove: canApprove,
+                        canApprove: canApprove && !viewModel.isApprovingBatches,
                         nameFor: resolveCrewName,
                         onOpen: { selectedBatch = $0 },
                         onApprove: { batch in
@@ -269,14 +271,16 @@ struct ExpensesListView: View {
                         },
                         onApproveGroup: { group in
                             pendingApproveBatches = group.batches.filter {
-                                (viewModel.consoleLineStats[$0.id]?.flagged ?? 0) == 0
+                                viewModel.canApproveBatch($0) && (viewModel.consoleLineStats[$0.id]?.flagged ?? 0) == 0
                             }
                             showApproveConfirm = !pendingApproveBatches.isEmpty
                         },
                         onPayGroup: { group in
                             pendingPayBatches = group.batches
                             showPayConfirm = !pendingPayBatches.isEmpty
-                        }
+                        },
+                        approvalLockedBatchIds: viewModel.confirmedApprovedBatchIds,
+                        approvalInFlightBatchIds: viewModel.approvalInFlightBatchIds
                     )
                     .opacity(hasAppeared ? 1 : 0)
                     .animation(reduceMotion ? nil : OPSStyle.Animation.panel, value: selectedBucket)
@@ -298,7 +302,14 @@ struct ExpensesListView: View {
 
     @ViewBuilder
     private var bulkCTA: some View {
-        if canApprove {
+        if viewModel.isApprovingBatches {
+            ExpenseBulkCTABar(
+                label: viewModel.approvalProgressLabel,
+                bottomInset: isPushed ? 0 : 100
+            ) {}
+            .disabled(true)
+            .accessibilityValue("Approval in progress")
+        } else if canApprove {
             switch selectedBucket {
             case .review where cleanReviewBatches.count > 1:
                 ExpenseBulkCTABar(

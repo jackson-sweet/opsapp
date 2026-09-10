@@ -1548,7 +1548,7 @@ final class InboundProcessor {
                 entityType: .projectPhoto,
                 entityId: id,
                 fields: [
-                    "url", "thumbnailURL", "renderedURL", "source", "uploadedBy", "caption",
+                    "url", "thumbnailURL", "renderedURL", "source", "taskId", "uploadedBy", "caption",
                     "isClientVisible", "takenAt", "updatedAt", "deletedAt"
                 ],
                 context: context
@@ -1558,6 +1558,7 @@ final class InboundProcessor {
             if accept.contains("thumbnailURL") { existing.thumbnailURL = dto.thumbnailURL }
             if accept.contains("renderedURL") { existing.renderedURL = dto.renderedURL }
             if accept.contains("source") { existing.source = dto.source ?? existing.source }
+            if accept.contains("taskId") { existing.applyTaskLink(dto.taskId) }
             existing.applyInboundUploader(dto.uploadedBy, isProtected: !accept.contains("uploadedBy"))
             if accept.contains("caption") { existing.caption = dto.caption }
             if accept.contains("isClientVisible") { existing.isClientVisible = dto.isClientVisible ?? existing.isClientVisible }
@@ -1690,7 +1691,11 @@ final class InboundProcessor {
             existing.applyServerSnapshot(dto, accepting: accept)
             existing.lastSyncedAt = Date()
             let hasPending = hasPendingOperations(entityType: .deckDesign, entityId: existing.id, context: context)
-            if !hasPending {
+            // Never clear the flag on a row still holding content the server has
+            // not confirmed: a parked or failed op is "not pending", and
+            // clearing here disarmed the conflict guard for an edit that was
+            // never delivered. Bug 9f4aeaf8.
+            if !hasPending, !existing.hasUnsyncedDrawing {
                 existing.needsSync = false
             }
         } else {

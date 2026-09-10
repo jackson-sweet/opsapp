@@ -42,9 +42,6 @@ struct LeadsQueueBand: View {
     /// the top on the gained edge (addendum §15.3).
     var onSearchFocusChange: (Bool) -> Void = { _ in }
 
-    /// The dim applied to a control that search has stood down.
-    private static let suspendedOpacity: Double = 0.4
-
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: OPSStyle.Layout.spacing2) {
@@ -57,7 +54,7 @@ struct LeadsQueueBand: View {
                     counts: crewCounts,
                     showsCrew: showsCrew
                 )
-                .opacity(controls.isSearching ? Self.suspendedOpacity : 1)
+                .opacity(controls.isSearching ? OPSStyle.Layout.suspendedOpacity : 1)
                 .allowsHitTesting(!controls.isSearching)
             }
             .padding(.horizontal, OPSStyle.Layout.spacing3_5)
@@ -66,7 +63,7 @@ struct LeadsQueueBand: View {
             TacticalChipRow(chips: chips, selectedId: $selectedChipId)
                 .padding(.top, OPSStyle.Layout.spacing2)
                 .padding(.bottom, OPSStyle.Layout.spacing2)
-                .opacity(controls.isSearching ? Self.suspendedOpacity : 1)
+                .opacity(controls.isSearching ? OPSStyle.Layout.suspendedOpacity : 1)
                 .allowsHitTesting(!controls.isSearching)
 
             Rectangle()

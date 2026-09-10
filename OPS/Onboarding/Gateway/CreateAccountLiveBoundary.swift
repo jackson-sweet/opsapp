@@ -68,6 +68,11 @@ struct CreateAccountLiveBoundary: CreateAccountSignupBoundary {
             case .none:  nil
             }
             AnalyticsManager.shared.trackSignUp(userType: userType, method: .email)
+            AnalyticsService.shared.track(
+                eventType: .lifecycle,
+                eventName: "sign_up",
+                properties: ["method": "email"]
+            )
             return .created
         } catch OnboardingManagerError.existingUserLoggedIn {
             // Existing + complete account — createAccount already logged them in.

@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftData
 
 struct CatalogSetupNotificationRoute: Equatable {
     let missingMappingKey: String?
@@ -291,6 +292,14 @@ struct NotificationListView: View {
     }
 
     @State private var notifications: [NotificationDTO] = []
+    /// Email-thread → lead answers for this list's lifetime. The cache does the
+    /// batching and remembers what it asked; `threadLeads` is the value copy the
+    /// body reads, so a resolution actually redraws the rows (bug 589e3b1e).
+    @State private var threadLeadCache = NotificationThreadLeadCache()
+    @State private var threadLeads: [String: String?] = [:]
+    /// Lead names for the appointment-review rows, resolved from the local
+    /// store. The server's copy for those rows names nobody (bug 74bbb5b7).
+    @State private var leadNames: [String: String] = [:]
     @State private var isLoading = true
     @State private var showingOlder = false
     // VIEW ALL → PENDING WORK recovery screen (SYNC RECOVERY · T6)
@@ -398,7 +407,7 @@ struct NotificationListView: View {
                                     .environmentObject(dataController)
                             }
 
-                            if filteredNotifications.isEmpty {
+                            if filteredItems.isEmpty {
                                 emptyState
                                     .padding(.top, 60)
                             } else {
@@ -546,6 +555,16 @@ struct NotificationListView: View {
         }
     }
 
+    /// The rows the rail actually renders. Grouping runs AFTER filtering so the
+    /// inbox group's count is the count of what this filter shows — under
+    /// UNREAD it counts unread replies, never the whole pile (bug 589e3b1e).
+    private var filteredItems: [NotificationListItem] {
+        NotificationInboxGrouping.items(
+            for: filteredNotifications,
+            threadLeads: threadLeads
+        )
+    }
+
     /// Buckets used to group notifications in the list.
     private enum NotificationBucket {
         case today
@@ -557,22 +576,22 @@ struct NotificationListView: View {
     /// Groups notifications by date bucket (today / this week / last week / older).
     /// Calendar-week semantics: "this week" = current calendar week excluding today;
     /// "last week" = the previous calendar week.
-    private var groupedNotifications: (today: [NotificationDTO], thisWeek: [NotificationDTO], lastWeek: [NotificationDTO], older: [NotificationDTO]) {
-        var today: [NotificationDTO] = []
-        var thisWeek: [NotificationDTO] = []
-        var lastWeek: [NotificationDTO] = []
-        var older: [NotificationDTO] = []
+    private var groupedNotifications: (today: [NotificationListItem], thisWeek: [NotificationListItem], lastWeek: [NotificationListItem], older: [NotificationListItem]) {
+        var today: [NotificationListItem] = []
+        var thisWeek: [NotificationListItem] = []
+        var lastWeek: [NotificationListItem] = []
+        var older: [NotificationListItem] = []
 
-        for notification in filteredNotifications {
-            guard let date = parseCreatedAt(notification.createdAt) else {
-                older.append(notification)
+        for item in filteredItems {
+            guard let date = parseCreatedAt(item.createdAt) else {
+                older.append(item)
                 continue
             }
             switch bucket(for: date) {
-            case .today:    today.append(notification)
-            case .thisWeek: thisWeek.append(notification)
-            case .lastWeek: lastWeek.append(notification)
-            case .older:    older.append(notification)
+            case .today:    today.append(item)
+            case .thisWeek: thisWeek.append(item)
+            case .lastWeek: lastWeek.append(item)
+            case .older:    older.append(item)
             }
         }
         return (today, thisWeek, lastWeek, older)
@@ -727,12 +746,21 @@ struct NotificationListView: View {
         }
     }
 
-    private func sectionRows(_ items: [NotificationDTO]) -> some View {
+    private func sectionRows(_ items: [NotificationListItem]) -> some View {
         // Bug G2 — each row is now a glass surface card with its own border,
         // so the inter-row dividers have been removed; the row's internal
         // horizontal padding handles edge breathing room.
-        ForEach(items, id: \.id) { notif in
-            notificationRow(notif)
+        ForEach(items, id: \.id) { item in
+            switch item {
+            case .single(let notification):
+                if AppointmentReviewPresentation.applies(to: notification) {
+                    appointmentReviewRow(notification)
+                } else {
+                    notificationRow(notification)
+                }
+            case .unlinkedInbox(let group):
+                unlinkedInboxRow(group)
+            }
         }
     }
 
@@ -746,7 +774,7 @@ struct NotificationListView: View {
         reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .top))
     }
 
-    private func collapsibleOlderSection(_ items: [NotificationDTO]) -> some View {
+    private func collapsibleOlderSection(_ items: [NotificationListItem]) -> some View {
         VStack(spacing: 0) {
             if showingOlder {
                 // Expanded: section header on left, COLLAPSE label + chevron-up on right.
@@ -827,14 +855,119 @@ struct NotificationListView: View {
         .padding(.top, OPSStyle.Layout.spacing3_5)
     }
 
+    // MARK: - Appointment review (bug 74bbb5b7)
+
+    /// The `phase_c_appointment_review` row, rewritten to name the customer and
+    /// offer the one remedy a phone has: put a time on this lead's calendar.
+    private func appointmentReviewRow(_ notification: NotificationDTO) -> some View {
+        let isExpanded = expandedId == notification.id
+        let opportunityId = AppointmentReviewPresentation.opportunityId(for: notification)
+        return AppointmentReviewRow(
+            notification: notification,
+            leadName: opportunityId.flatMap { leadNames[$0] },
+            timestamp: relativeTime(notification.createdAt),
+            isExpanded: isExpanded,
+            canSetTime: opportunityId != nil,
+            onToggle: {
+                withAnimation(collapseAnimation) {
+                    if isExpanded {
+                        expandedId = nil
+                    } else {
+                        expandedId = notification.id
+                        markAsRead(notification)
+                    }
+                }
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            },
+            onSetTime: {
+                guard let opportunityId else { return }
+                openVisitBooking(opportunityId: opportunityId)
+            }
+        )
+    }
+
+    /// Dismiss the rail, then post the booking relay once the sheet is gone so
+    /// the LEADS-tab swap and the booking sheet don't race the dismissal — the
+    /// same ordering every other rail deep link uses.
+    private func openVisitBooking(opportunityId: String) {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        dismiss()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            NotificationCenter.default.post(
+                name: AppointmentReviewPresentation.bookingRelayName,
+                object: nil,
+                userInfo: ["leadId": opportunityId]
+            )
+        }
+    }
+
+    // MARK: - Unlinked inbox group (bug 589e3b1e)
+
+    /// The one row standing in for every inbox notification whose email thread
+    /// carries no lead. Expanding it does not mark anything read: its members
+    /// are persistent incident rows, and `NotificationReadPolicy` reserves
+    /// "read" for condition recovery, which nothing on this phone can perform.
+    private func unlinkedInboxRow(_ group: UnlinkedInboxGroup) -> some View {
+        let isExpanded = expandedId == group.id
+        return UnlinkedInboxRow(
+            group: group,
+            timestamp: relativeTime(group.newestCreatedAt),
+            isExpanded: isExpanded,
+            onToggle: {
+                withAnimation(collapseAnimation) {
+                    expandedId = isExpanded ? nil : group.id
+                }
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            },
+            onMarkRead: { markGroupAsRead(group) }
+        )
+    }
+
+    /// Marks every member of the inbox group read — offered only when the group
+    /// holds no persistent row (`UnlinkedInboxGroup.isMarkReadPermitted`). One
+    /// batched update, then the row collapses so it leaves the UNREAD filter
+    /// the moment it is cleared rather than lingering at zero.
+    private func markGroupAsRead(_ group: UnlinkedInboxGroup) {
+        let ids = group.memberIds.filter { id in
+            notifications.first(where: { $0.id == id }).map { !$0.isRead } ?? false
+        }
+        guard !ids.isEmpty else { return }
+
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        withAnimation(collapseAnimation) {
+            for id in ids {
+                guard let index = notifications.firstIndex(where: { $0.id == id }) else { continue }
+                notifications[index].isRead = true
+            }
+            expandedId = nil
+        }
+        appState.unreadNotificationCount = max(0, appState.unreadNotificationCount - ids.count)
+
+        Task {
+            let repo = NotificationRepository()
+            try? await repo.markAsRead(ids: ids)
+        }
+    }
+
     // MARK: - Row
 
     private func notificationRow(_ notification: NotificationDTO) -> some View {
         let isExpanded = expandedId == notification.id
 
-        return VStack(alignment: .leading, spacing: 0) {
-            // Collapsed header — always visible
-            Button(action: {
+        return NotificationRowChrome(
+            title: notification.title,
+            bodyText: Text(notification.body)
+                .font(OPSStyle.Typography.smallBody)
+                .foregroundStyle(
+                    notification.isRead
+                        ? OPSStyle.Colors.tertiaryText
+                        : OPSStyle.Colors.secondaryText
+                ),
+            bodyAccessibilityLabel: notification.body,
+            timestamp: relativeTime(notification.createdAt),
+            isRead: notification.isRead,
+            isExpanded: isExpanded,
+            onToggle: {
                 withAnimation(collapseAnimation) {
                     if isExpanded {
                         expandedId = nil
@@ -845,70 +978,12 @@ struct NotificationListView: View {
                     }
                 }
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            }) {
-                HStack(alignment: .top, spacing: OPSStyle.Layout.spacing2_5) {
-                    // Leading accent column: unread dot + icon
-                    VStack(spacing: 6) {
-                        Circle()
-                            .fill(notification.isRead ? Color.clear : OPSStyle.Colors.primaryAccent)
-                            .frame(width: 6, height: 6)
-
-                        notificationIcon(for: notification.type)
-                    }
-                    .padding(.top, 2)
-
-                    VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
-                        HStack(alignment: .firstTextBaseline, spacing: OPSStyle.Layout.spacing2) {
-                            Text(notification.title.uppercased())
-                                .font(OPSStyle.Typography.bodyBold)
-                                .foregroundColor(
-                                    notification.isRead
-                                        ? OPSStyle.Colors.secondaryText
-                                        : OPSStyle.Colors.primaryText
-                                )
-                                .tracking(0.5)
-                                .lineLimit(1)
-
-                            Spacer(minLength: OPSStyle.Layout.spacing2)
-
-                            Text(relativeTime(notification.createdAt))
-                                .font(OPSStyle.Typography.smallCaption)
-                                .foregroundColor(OPSStyle.Colors.tertiaryText)
-                                .lineLimit(1)
-                                .fixedSize(horizontal: true, vertical: false)
-                        }
-
-                        Text(notification.body)
-                            .font(OPSStyle.Typography.smallBody)
-                            .foregroundColor(
-                                notification.isRead
-                                    ? OPSStyle.Colors.tertiaryText
-                                    : OPSStyle.Colors.secondaryText
-                            )
-                            .lineLimit(isExpanded ? nil : 1)
-                            .truncationMode(.tail)
-                    }
-
-                    Image(systemName: isExpanded ? OPSStyle.Icons.chevronUp : OPSStyle.Icons.chevronDown)
-                        .font(.system(size: OPSStyle.Layout.IconSize.xs))
-                        .foregroundColor(OPSStyle.Colors.tertiaryText)
-                        .padding(.top, OPSStyle.Layout.spacing1)
-                }
-                .padding(.horizontal, OPSStyle.Layout.spacing3)
-                .padding(.vertical, OPSStyle.Layout.spacing2_5)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .frame(minHeight: OPSStyle.Layout.touchTargetMin)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(PlainButtonStyle())
-
-            // Expanded detail — full body + deep-link action button
-            if isExpanded {
+            },
+            icon: { notificationIcon(for: notification.type) },
+            detail: {
+                // Expanded detail — full body + deep-link action button
                 VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-                    Rectangle()
-                        .fill(OPSStyle.Colors.cardBorderSubtle)
-                        .frame(height: 1)
-                        .padding(.horizontal, OPSStyle.Layout.spacing3)
+                    NotificationDetailDivider()
 
                     Text(notification.body)
                         .font(OPSStyle.Typography.body)
@@ -1004,34 +1079,15 @@ struct NotificationListView: View {
                             }
                         }()
 
-                        Button(action: {
+                        NotificationActionButton(label: actionLabel) {
                             handleNotificationTap(notification)
-                        }) {
-                            HStack(spacing: OPSStyle.Layout.spacing1) {
-                                Image(systemName: "arrow.right.circle")
-                                    .font(.system(size: OPSStyle.Layout.IconSize.sm))
-                                Text(actionLabel)
-                                    .font(OPSStyle.Typography.captionBold)
-                                    .tracking(0.5)
-                            }
-                            .foregroundColor(OPSStyle.Colors.primaryAccent)
                         }
-                        .buttonStyle(PlainButtonStyle())
-                        .padding(.horizontal, OPSStyle.Layout.spacing3)
                     }
 
                     Spacer().frame(height: OPSStyle.Layout.spacing2)
                 }
-                .transition(collapseTransition)
             }
-        }
-        .glassSurface(
-            borderColor: isExpanded
-                ? OPSStyle.Colors.primaryAccent.opacity(0.25)
-                : OPSStyle.Colors.glassBorder
         )
-        .padding(.horizontal, OPSStyle.Layout.spacing3)
-        .padding(.vertical, OPSStyle.Layout.spacing1)
     }
 
     /// Mark a notification as read in local state and sync to server.
@@ -1172,17 +1228,14 @@ struct NotificationListView: View {
                 return ("person.badge.plus", OPSStyle.Colors.primaryAccent)
             case "time_off_booked":
                 return ("calendar.badge.checkmark", OPSStyle.Colors.primaryAccent)
+            case "analytics_source_failed":
+                return (OPSStyle.Icons.alert, OPSStyle.Colors.errorStatus)
             default:
                 return (OPSStyle.Icons.bell, OPSStyle.Colors.secondaryText)
             }
         }()
 
-        return Image(systemName: iconName)
-            .font(OPSStyle.Typography.smallCaption)
-            .foregroundColor(color)
-            .frame(width: 28, height: 28)
-            .background(OPSStyle.Colors.fillNeutral)
-            .clipShape(Circle())
+        return NotificationIconBadge(systemName: iconName, tint: color)
     }
 
     // MARK: - Actions
@@ -1199,13 +1252,52 @@ struct NotificationListView: View {
             await MainActor.run {
                 notifications = result
                 isLoading = false
+                resolveLeadNames(for: result)
             }
+            await resolveThreadLeads(for: result)
         } catch {
             print("[NOTIFICATIONS] Failed to load: \(error)")
             await MainActor.run {
                 isLoading = false
             }
         }
+    }
+
+    /// Batch-resolve the email threads these rows would have to open, once per
+    /// thread id for the life of the list (bug 589e3b1e). Rows whose thread
+    /// comes back with no lead fold into one honest group; a failed read groups
+    /// nothing and the rail behaves exactly as it did.
+    private func resolveThreadLeads(for notifications: [NotificationDTO]) async {
+        guard let companyId = dataController.currentUser?.companyId, !companyId.isEmpty else { return }
+        let cache = threadLeadCache
+        await cache.resolve(
+            for: notifications,
+            using: OpportunityRepository(companyId: companyId)
+        )
+        await MainActor.run {
+            threadLeads = cache.resolved
+        }
+    }
+
+    /// Names for the leads the appointment-review rows are about, read from the
+    /// local store only (bug 74bbb5b7). A lead the device has never synced
+    /// simply yields the name-free sentence — the row stays honest and costs no
+    /// network. Fetches are id-scoped: at most a handful per list.
+    private func resolveLeadNames(for notifications: [NotificationDTO]) {
+        guard let context = dataController.modelContext else { return }
+        let ids = Set(notifications.compactMap {
+            AppointmentReviewPresentation.opportunityId(for: $0)
+        })
+        guard !ids.isEmpty else { return }
+
+        var names = leadNames
+        for id in ids where names[id] == nil {
+            var descriptor = FetchDescriptor<Opportunity>(predicate: #Predicate { $0.id == id })
+            descriptor.fetchLimit = 1
+            guard let lead = try? context.fetch(descriptor).first else { continue }
+            names[id] = lead.displayContactName
+        }
+        leadNames = names
     }
 
     /// Routes an expense notification to its specific batch review when the row

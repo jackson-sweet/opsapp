@@ -534,12 +534,12 @@ final class DeckDesignSyncTests: XCTestCase {
         )
     }
 
-    /// Recovery sweep for decks stranded by the pre-fix conversion handoff:
-    /// needsSync = true, projectId set, but no SyncOperation ever recorded —
-    /// the link exists only on the capturing phone. The sweep re-records a
-    /// durable {project_id, updated_at} update so the link finally lands.
+    /// Recovery sweep for decks stranded with work the server never received.
+    /// It used to require a projectId — skipping every lead deck and standalone
+    /// sketch, the two kinds most likely to be stranded — and pushed the link
+    /// alone, bumping the server updated_at without delivering a single vertex.
     @MainActor
-    func test_enqueueStrandedDeckDesignLinks_recordsLinkUpdateOnce() throws {
+    func test_enqueueStrandedDeckDesigns_recordsAFullRevisionForEveryStrandedDeck() throws {
         let container = try makeSyncOperationContainer()
         let context = container.mainContext
 
@@ -552,7 +552,8 @@ final class DeckDesignSyncTests: XCTestCase {
         )
         stranded.markForSync()
 
-        // Dirty but unlinked — nothing to heal, must not be touched.
+        // Dirty and unlinked — a lead deck or standalone sketch. This is the
+        // case the old sweep skipped outright, stranding the drawing forever.
         let unlinkedDirty = DeckDesign(
             id: "11111111-1111-4111-8111-111111111111",
             companyId: "a612edc0-5c18-4c4d-af97-55b9410dd077",
@@ -581,32 +582,53 @@ final class DeckDesignSyncTests: XCTestCase {
             connectivity: ConnectivityManager()
         )
 
-        syncEngine.enqueueStrandedDeckDesignLinks()
+        syncEngine.enqueueStrandedDeckDesigns()
 
         let ops = try context.fetch(FetchDescriptor<SyncOperation>())
             .filter { $0.entityType == SyncEntityType.deckDesign.rawValue }
-        XCTAssertEqual(ops.count, 1, "exactly the stranded linked deck gets a recovery op")
-        let op = try XCTUnwrap(ops.first)
-        XCTAssertEqual(op.entityId, stranded.id)
-        XCTAssertEqual(op.operationType, "update")
+        XCTAssertEqual(
+            ops.count, 2,
+            "both stranded decks get a recovery op — the converged one does not"
+        )
+        XCTAssertEqual(
+            Set(ops.map(\.entityId)), Set([stranded.id, unlinkedDirty.id]),
+            "an unlinked deck holding unpushed work must be swept, not skipped"
+        )
+
+        let linkedOp = try XCTUnwrap(ops.first { $0.entityId == stranded.id })
+        XCTAssertEqual(linkedOp.operationType, "update")
         let payload = try XCTUnwrap(
-            try JSONSerialization.jsonObject(with: op.payload) as? [String: Any]
+            try JSONSerialization.jsonObject(with: linkedOp.payload) as? [String: Any]
         )
         XCTAssertEqual(payload["project_id"] as? String, "5f90388c-69af-4bb9-ba26-f8d74487d344")
         XCTAssertNotNil(payload["updated_at"])
+        XCTAssertNotNil(
+            payload["drawing_data"],
+            "the sweep must deliver the drawing, not just bump the server timestamp"
+        )
+
+        let unlinkedOp = try XCTUnwrap(ops.first { $0.entityId == unlinkedDirty.id })
+        let unlinkedPayload = try XCTUnwrap(
+            try JSONSerialization.jsonObject(with: unlinkedOp.payload) as? [String: Any]
+        )
+        XCTAssertNil(
+            unlinkedPayload["project_id"],
+            "an unlinked deck must not push an explicit null project link"
+        )
+        XCTAssertNotNil(unlinkedPayload["drawing_data"])
 
         // A pending op suppresses re-recording — the sweep runs every push
-        // cycle and must not stack duplicate link ops.
-        syncEngine.enqueueStrandedDeckDesignLinks()
+        // cycle and must not stack duplicate ops.
+        syncEngine.enqueueStrandedDeckDesigns()
         let opsAfterSecondSweep = try context.fetch(FetchDescriptor<SyncOperation>())
             .filter { $0.entityType == SyncEntityType.deckDesign.rawValue }
-        XCTAssertEqual(opsAfterSecondSweep.count, 1)
+        XCTAssertEqual(opsAfterSecondSweep.count, 2)
     }
 
     /// A deck whose op just completed is mid-convergence (needsSync clears on
     /// the next inbound merge) — the sweep must not spam link updates for it.
     @MainActor
-    func test_enqueueStrandedDeckDesignLinks_skipsDecksWithRecentOperations() throws {
+    func test_enqueueStrandedDeckDesigns_skipsDecksWithRecentOperations() throws {
         let container = try makeSyncOperationContainer()
         let context = container.mainContext
 
@@ -638,7 +660,7 @@ final class DeckDesignSyncTests: XCTestCase {
             connectivity: ConnectivityManager()
         )
 
-        syncEngine.enqueueStrandedDeckDesignLinks()
+        syncEngine.enqueueStrandedDeckDesigns()
 
         let pendingOps = try context.fetch(FetchDescriptor<SyncOperation>())
             .filter { $0.entityType == SyncEntityType.deckDesign.rawValue && $0.status == "pending" }
@@ -646,6 +668,538 @@ final class DeckDesignSyncTests: XCTestCase {
             pendingOps.isEmpty,
             "a deck with recent op lifecycle is converging through the normal pipeline — no recovery op"
         )
+    }
+
+    // MARK: - Content-based conflict resolution (bug 9f4aeaf8)
+
+    /// THE BUG. The server row is stamped by a Postgres BEFORE UPDATE trigger
+    /// (`NEW.updated_at = now()`), the local row by the device clock before the
+    /// push — so the server ALWAYS looks newer than the local row that produced
+    /// it. On the old code that made `serverIsNewer` true, which skipped the
+    /// protective subtract, which let a delta re-pull write pre-session server
+    /// geometry over the session's autosaved work. Bug 9f4aeaf8.
+    func test_applyServerSnapshot_keepsUnpushedLocalGeometryWhenServerClockIsAhead() throws {
+        var localDrawing = DeckDrawingData()
+        localDrawing.scaleFactor = 1
+        localDrawing.vertices = [
+            DeckVertex(id: "v1", position: CGPoint(x: 0, y: 0)),
+            DeckVertex(id: "v2", position: CGPoint(x: 120, y: 0)),
+            DeckVertex(id: "v3", position: CGPoint(x: 120, y: 120)),
+            DeckVertex(id: "v4", position: CGPoint(x: 0, y: 120))
+        ]
+        localDrawing.edges = [
+            DeckEdge(id: "e1", startVertexId: "v1", endVertexId: "v2"),
+            DeckEdge(id: "e2", startVertexId: "v2", endVertexId: "v3"),
+            DeckEdge(id: "e3", startVertexId: "v3", endVertexId: "v4"),
+            DeckEdge(id: "e4", startVertexId: "v4", endVertexId: "v1")
+        ]
+
+        // The merge base: what the server confirmed at the END of the LAST session.
+        let serverConfirmed = DeckDrawingData().toJSON()
+
+        let local = DeckDesign(
+            id: "deck-clock-skew",
+            companyId: "c1",
+            projectId: "p1",
+            title: "This session's work",
+            drawingDataJSON: localDrawing.toJSON()
+        )
+        local.syncedDrawingJSON = serverConfirmed      // server agreed on the EMPTY drawing
+        local.updatedAt = Date()                       // device clock, at save time
+        local.needsSync = false                        // a prior merge already cleared it
+
+        // Server snapshot: the pre-session (empty) geometry, stamped LATER by
+        // the server trigger — exactly what the trigger guarantees.
+        let dto = SupabaseDeckDesignDTO(
+            id: "deck-clock-skew",
+            companyId: "c1",
+            projectId: "p1",
+            opportunityId: nil,
+            title: "Untitled Deck",
+            drawingData: DeckDrawingData(),
+            thumbnailUrl: nil,
+            version: 1,
+            createdBy: nil,
+            createdAt: iso(Date().addingTimeInterval(-3600)),
+            updatedAt: iso(Date().addingTimeInterval(30)),   // server clock, AHEAD
+            deletedAt: nil
+        )
+
+        local.applyServerSnapshot(dto, accepting: Set(DeckDesign.serverMergeFields))
+
+        let survived = DeckDrawingData.fromJSON(local.drawingDataJSON)
+        XCTAssertEqual(
+            survived?.vertices.count, 4,
+            "unpushed local geometry must survive a server snapshot that is only newer by wall clock"
+        )
+        XCTAssertEqual(local.title, "This session's work")
+        XCTAssertTrue(local.needsSync, "the row still holds unpushed content and must be re-flagged")
+    }
+
+    /// A genuinely newer remote edit — one the server confirmed AFTER our merge
+    /// base — must still be applied. The fix must not freeze the row.
+    func test_applyServerSnapshot_appliesAGenuineRemoteEditWhenLocalIsClean() throws {
+        var remote = DeckDrawingData()
+        remote.scaleFactor = 1
+        remote.vertices = [
+            DeckVertex(id: "r1", position: CGPoint(x: 0, y: 0)),
+            DeckVertex(id: "r2", position: CGPoint(x: 60, y: 0))
+        ]
+        remote.edges = [DeckEdge(id: "re1", startVertexId: "r1", endVertexId: "r2")]
+
+        let baseline = DeckDrawingData().toJSON()
+        let local = DeckDesign(
+            id: "deck-remote-edit",
+            companyId: "c1",
+            projectId: "p1",
+            title: "Old",
+            drawingDataJSON: baseline
+        )
+        local.syncedDrawingJSON = baseline    // local holds nothing unpushed
+        local.updatedAt = Date().addingTimeInterval(-600)
+        local.needsSync = false
+
+        let dto = SupabaseDeckDesignDTO(
+            id: "deck-remote-edit", companyId: "c1", projectId: "p1", opportunityId: nil,
+            title: "Edited on another device", drawingData: remote, thumbnailUrl: nil,
+            version: 2, createdBy: nil,
+            createdAt: iso(Date().addingTimeInterval(-3600)), updatedAt: iso(Date()),
+            deletedAt: nil
+        )
+
+        local.applyServerSnapshot(dto, accepting: Set(DeckDesign.serverMergeFields))
+
+        XCTAssertEqual(DeckDrawingData.fromJSON(local.drawingDataJSON)?.vertices.count, 2)
+        XCTAssertEqual(local.title, "Edited on another device")
+        XCTAssertEqual(local.syncedDrawingJSON, local.drawingDataJSON,
+                       "accepting a server snapshot moves the merge base")
+    }
+
+    /// A row with no recorded base and no local write is a row the inbound merge
+    /// itself produced — it holds the server's own content, so it must keep
+    /// accepting server updates. Failing safe here instead would freeze every
+    /// pre-existing deck on every device the moment this shipped.
+    func test_applyServerSnapshot_appliesToALegacyRowThatHoldsNoLocalWork() throws {
+        var remote = DeckDrawingData()
+        remote.scaleFactor = 1
+        remote.vertices = [
+            DeckVertex(id: "r1", position: CGPoint(x: 0, y: 0)),
+            DeckVertex(id: "r2", position: CGPoint(x: 60, y: 0))
+        ]
+        remote.edges = [DeckEdge(id: "re1", startVertexId: "r1", endVertexId: "r2")]
+
+        let local = DeckDesign(
+            id: "deck-legacy-clean",
+            companyId: "c1",
+            title: "Old",
+            drawingDataJSON: DeckDrawingData().toJSON()
+        )
+        XCTAssertNil(local.syncedDrawingJSON, "the shape every row upgraded from an older build has")
+        local.needsSync = false
+        local.updatedAt = Date().addingTimeInterval(-600)
+
+        let dto = SupabaseDeckDesignDTO(
+            id: "deck-legacy-clean", companyId: "c1", projectId: nil, opportunityId: nil,
+            title: "Edited on another device", drawingData: remote, thumbnailUrl: nil,
+            version: 2, createdBy: nil,
+            createdAt: iso(Date().addingTimeInterval(-3600)), updatedAt: iso(Date()),
+            deletedAt: nil
+        )
+
+        local.applyServerSnapshot(dto, accepting: Set(DeckDesign.serverMergeFields))
+
+        XCTAssertEqual(DeckDrawingData.fromJSON(local.drawingDataJSON)?.vertices.count, 2)
+        XCTAssertEqual(local.title, "Edited on another device")
+    }
+
+    /// The same legacy row, but flagged for push: it holds local work with no
+    /// baseline to prove it against, so the local copy wins until its own push
+    /// confirms and records one.
+    func test_applyServerSnapshot_protectsALegacyRowThatIsStillFlaggedForPush() throws {
+        var localDrawing = DeckDrawingData()
+        localDrawing.scaleFactor = 1
+        localDrawing.vertices = [
+            DeckVertex(id: "v1", position: CGPoint(x: 0, y: 0)),
+            DeckVertex(id: "v2", position: CGPoint(x: 120, y: 0)),
+            DeckVertex(id: "v3", position: CGPoint(x: 120, y: 120)),
+            DeckVertex(id: "v4", position: CGPoint(x: 0, y: 120))
+        ]
+        localDrawing.edges = [
+            DeckEdge(id: "e1", startVertexId: "v1", endVertexId: "v2"),
+            DeckEdge(id: "e2", startVertexId: "v2", endVertexId: "v3"),
+            DeckEdge(id: "e3", startVertexId: "v3", endVertexId: "v4"),
+            DeckEdge(id: "e4", startVertexId: "v4", endVertexId: "v1")
+        ]
+
+        let local = DeckDesign(
+            id: "deck-legacy-dirty",
+            companyId: "c1",
+            title: "Local work",
+            drawingDataJSON: localDrawing.toJSON()
+        )
+        local.needsSync = true
+        local.updatedAt = Date()
+
+        let dto = SupabaseDeckDesignDTO(
+            id: "deck-legacy-dirty", companyId: "c1", projectId: nil, opportunityId: nil,
+            title: "Untitled Deck", drawingData: DeckDrawingData(), thumbnailUrl: nil,
+            version: 1, createdBy: nil,
+            createdAt: iso(Date().addingTimeInterval(-3600)),
+            updatedAt: iso(Date().addingTimeInterval(30)),
+            deletedAt: nil
+        )
+
+        local.applyServerSnapshot(dto, accepting: Set(DeckDesign.serverMergeFields))
+
+        XCTAssertEqual(DeckDrawingData.fromJSON(local.drawingDataJSON)?.vertices.count, 4)
+        XCTAssertEqual(local.title, "Local work")
+        XCTAssertTrue(local.needsSync)
+    }
+
+    /// Guard (a) must never be permanently disabled by a null server timestamp.
+    func test_applyServerSnapshot_neverNilsTheLocalUpdatedAt() throws {
+        let baseline = DeckDrawingData().toJSON()
+        let local = DeckDesign(id: "deck-null-ts", companyId: "c1", title: "T", drawingDataJSON: baseline)
+        local.syncedDrawingJSON = baseline
+        let stamped = Date().addingTimeInterval(-120)
+        local.updatedAt = stamped
+
+        let dto = SupabaseDeckDesignDTO(
+            id: "deck-null-ts", companyId: "c1", projectId: nil, opportunityId: nil,
+            title: "T", drawingData: DeckDrawingData(), thumbnailUrl: nil, version: 1,
+            createdBy: nil, createdAt: iso(Date()), updatedAt: nil, deletedAt: nil
+        )
+
+        local.applyServerSnapshot(dto, accepting: Set(DeckDesign.serverMergeFields))
+
+        XCTAssertEqual(local.updatedAt, stamped,
+                       "a null server timestamp must not erase the local one — that disables the stale guard forever")
+    }
+
+    // MARK: - Confirmed push moves the merge base (bug 9f4aeaf8)
+
+    @MainActor
+    func test_recordConfirmedPush_movesTheMergeBaseToThePushedPayload() throws {
+        let container = try makeSyncOperationContainer()
+        let context = container.mainContext
+
+        let pushed = closedSquare()
+        let design = DeckDesign(
+            id: "3c9d5f31-6d0e-4a1b-8f2c-5b7a1d0e4f88",
+            companyId: "a612edc0-5c18-4c4d-af97-55b9410dd077",
+            title: "Pushed deck",
+            drawingDataJSON: pushed.toJSON()
+        )
+        context.insert(design)
+
+        let operation = SyncOperation(
+            entityType: SyncEntityType.deckDesign.rawValue,
+            entityId: design.id,
+            operationType: "update",
+            payload: try payloadData(carrying: pushed),
+            changedFields: ["drawing_data"]
+        )
+        context.insert(operation)
+        try context.save()
+
+        try DeckDesignServerMerge.recordConfirmedPush(for: operation, in: context)
+
+        XCTAssertEqual(design.syncedDrawingJSON, design.drawingDataJSON)
+        XCTAssertFalse(design.hasUnsyncedDrawing)
+    }
+
+    /// If the user edited again while the push was in flight, the server has not
+    /// seen that edit — the base must stay where it was.
+    @MainActor
+    func test_recordConfirmedPush_leavesTheBaseWhenTheDesignMovedOnAfterThePush() throws {
+        let container = try makeSyncOperationContainer()
+        let context = container.mainContext
+
+        let pushed = closedSquare()
+        let design = DeckDesign(
+            id: "5a0b1c2d-3e4f-4506-8718-29a3b4c5d6e7",
+            companyId: "a612edc0-5c18-4c4d-af97-55b9410dd077",
+            title: "Edited again mid-flight",
+            drawingDataJSON: pushed.toJSON()
+        )
+        context.insert(design)
+
+        let operation = SyncOperation(
+            entityType: SyncEntityType.deckDesign.rawValue,
+            entityId: design.id,
+            operationType: "update",
+            payload: try payloadData(carrying: pushed),
+            changedFields: ["drawing_data"]
+        )
+        context.insert(operation)
+
+        var edited = closedSquare()
+        edited.config.gridVisible = false
+        design.storeDrawingData(edited, json: edited.toJSON())
+        try context.save()
+
+        try DeckDesignServerMerge.recordConfirmedPush(for: operation, in: context)
+
+        XCTAssertNotEqual(
+            design.syncedDrawingJSON, design.drawingDataJSON,
+            "the base must not advance past an edit the server has not seen"
+        )
+        XCTAssertTrue(design.hasUnsyncedDrawing)
+    }
+
+    /// Builds the queue payload shape `enqueueDeckDesignSync` produces — the
+    /// drawing as a re-parsed JSON object, not as a string.
+    private func payloadData(carrying drawing: DeckDrawingData) throws -> Data {
+        let drawingObject = try JSONSerialization.jsonObject(with: Data(drawing.toJSON().utf8))
+        return try JSONSerialization.data(withJSONObject: [
+            "title": "any",
+            "drawing_data": drawingObject,
+            "version": 2
+        ])
+    }
+
+    // MARK: - Mid-session durability (bug 9f4aeaf8)
+
+    /// Since 88edd771 the only path that put a deck edit on the wire was a
+    /// clean editor exit. A crash, an OOM kill or a force-quit therefore lost
+    /// the whole session server-side even though the 2-minute tick had written
+    /// it to disk — there was no SyncOperation for the session at all.
+    @MainActor
+    func test_autosaveTick_recordsDeferredSyncOperation() throws {
+        let container = try makeSyncOperationContainer()
+        let context = container.mainContext
+        let syncEngine = SyncEngine()
+        syncEngine.configure(modelContext: context, connectivity: ConnectivityManager())
+
+        let design = DeckDesign(
+            companyId: "a612edc0-5c18-4c4d-af97-55b9410dd077",
+            projectId: "1ad4822d-2a9f-4e0a-a9c1-2ccfa7b142d1",
+            title: "Mid-session deck",
+            drawingDataJSON: closedSquare().toJSON()
+        )
+        context.insert(design)
+        try context.save()
+
+        let viewModel = DeckBuilderViewModel(
+            deckDesign: design,
+            modelContext: context,
+            syncEngine: syncEngine
+        )
+        viewModel.drawingData.config.gridVisible = false
+        viewModel.performAutosaveTickForTesting()
+
+        let ops = try context.fetch(FetchDescriptor<SyncOperation>())
+            .filter { $0.entityType == SyncEntityType.deckDesign.rawValue }
+        XCTAssertFalse(
+            ops.isEmpty,
+            "the 2-minute tick must record a durable queue entry — exit is not the only cloud boundary"
+        )
+        XCTAssertTrue(
+            ops.contains { $0.getChangedFields().contains("drawing_data") },
+            "the queued revision must carry the drawing, not just a link"
+        )
+    }
+
+    /// Backgrounding used to record nothing at all — `flushLocallyForInterruption`
+    /// wrote to disk and stopped there, which is the worst possible moment to
+    /// stop: a suspended app is what the OS kills.
+    @MainActor
+    func test_backgrounding_recordsDeferredSyncOperation() throws {
+        let container = try makeSyncOperationContainer()
+        let context = container.mainContext
+        let syncEngine = SyncEngine()
+        syncEngine.configure(modelContext: context, connectivity: ConnectivityManager())
+
+        let design = DeckDesign(
+            companyId: "a612edc0-5c18-4c4d-af97-55b9410dd077",
+            projectId: "1ad4822d-2a9f-4e0a-a9c1-2ccfa7b142d1",
+            title: "Interrupted deck",
+            drawingDataJSON: closedSquare().toJSON()
+        )
+        context.insert(design)
+        try context.save()
+
+        let viewModel = DeckBuilderViewModel(
+            deckDesign: design,
+            modelContext: context,
+            syncEngine: syncEngine
+        )
+        viewModel.drawingData.config.gridVisible = false
+        viewModel.flushLocallyForInterruption()
+
+        let ops = try context.fetch(FetchDescriptor<SyncOperation>())
+            .filter { $0.entityType == SyncEntityType.deckDesign.rawValue }
+        XCTAssertFalse(
+            ops.isEmpty,
+            "backgrounding is where the OS kills a suspended app — it must leave a durable queue record"
+        )
+    }
+
+    /// The revision counter was inert: every production row read version 1
+    /// because nothing ever incremented it. Each enqueued revision must move it.
+    @MainActor
+    func test_enqueuedRevisionIncrementsTheVersionColumn() throws {
+        let container = try makeSyncOperationContainer()
+        let context = container.mainContext
+        let syncEngine = SyncEngine()
+        syncEngine.configure(modelContext: context, connectivity: ConnectivityManager())
+
+        let design = DeckDesign(
+            companyId: "a612edc0-5c18-4c4d-af97-55b9410dd077",
+            projectId: "1ad4822d-2a9f-4e0a-a9c1-2ccfa7b142d1",
+            title: "Versioned deck",
+            drawingDataJSON: closedSquare().toJSON()
+        )
+        design.lastSyncedAt = Date()
+        context.insert(design)
+        try context.save()
+        let startingVersion = design.version
+
+        let viewModel = DeckBuilderViewModel(
+            deckDesign: design,
+            modelContext: context,
+            syncEngine: syncEngine
+        )
+        viewModel.drawingData.config.gridVisible = false
+        viewModel.performAutosaveTickForTesting()
+
+        XCTAssertEqual(design.version, startingVersion + 1)
+
+        let op = try XCTUnwrap(
+            try context.fetch(FetchDescriptor<SyncOperation>())
+                .first { $0.entityType == SyncEntityType.deckDesign.rawValue }
+        )
+        let payload = try XCTUnwrap(
+            try JSONSerialization.jsonObject(with: op.payload) as? [String: Any]
+        )
+        XCTAssertEqual(payload["version"] as? Int, startingVersion + 1)
+    }
+
+    /// An editor left open on an unchanged design must enqueue nothing, or the
+    /// tick becomes a request storm — the failure 88edd771 was written to stop.
+    @MainActor
+    func test_repeatedTicksOnAnUnchangedDesignEnqueueOnlyOnce() throws {
+        let container = try makeSyncOperationContainer()
+        let context = container.mainContext
+        let syncEngine = SyncEngine()
+        syncEngine.configure(modelContext: context, connectivity: ConnectivityManager())
+
+        let design = DeckDesign(
+            companyId: "a612edc0-5c18-4c4d-af97-55b9410dd077",
+            projectId: "1ad4822d-2a9f-4e0a-a9c1-2ccfa7b142d1",
+            title: "Idle deck",
+            drawingDataJSON: closedSquare().toJSON()
+        )
+        design.lastSyncedAt = Date()
+        context.insert(design)
+        try context.save()
+
+        let viewModel = DeckBuilderViewModel(
+            deckDesign: design,
+            modelContext: context,
+            syncEngine: syncEngine
+        )
+        viewModel.drawingData.config.gridVisible = false
+        viewModel.performAutosaveTickForTesting()
+        viewModel.performAutosaveTickForTesting()
+        viewModel.performAutosaveTickForTesting()
+
+        let ops = try context.fetch(FetchDescriptor<SyncOperation>())
+            .filter { $0.entityType == SyncEntityType.deckDesign.rawValue }
+        XCTAssertEqual(
+            ops.count, 1,
+            "an idle editor must not stack a queue record on every tick"
+        )
+    }
+
+    /// Closed square (4 verts + 4 edges) so the geometry survives the JSON
+    /// round-trip — orphan (edgeless) vertices are pruned on decode.
+    private func closedSquare() -> DeckDrawingData {
+        var drawing = DeckDrawingData()
+        drawing.vertices = [
+            DeckVertex(id: "v1", position: CGPoint(x: 0, y: 0)),
+            DeckVertex(id: "v2", position: CGPoint(x: 120, y: 0)),
+            DeckVertex(id: "v3", position: CGPoint(x: 120, y: 120)),
+            DeckVertex(id: "v4", position: CGPoint(x: 0, y: 120))
+        ]
+        drawing.edges = [
+            DeckEdge(id: "e1", startVertexId: "v1", endVertexId: "v2"),
+            DeckEdge(id: "e2", startVertexId: "v2", endVertexId: "v3"),
+            DeckEdge(id: "e3", startVertexId: "v3", endVertexId: "v4"),
+            DeckEdge(id: "e4", startVertexId: "v4", endVertexId: "v1")
+        ]
+        drawing.scaleFactor = 1
+        return drawing
+    }
+
+    /// The stranding case the old sweep could never reach: a deck drawn on a
+    /// LEAD, so `projectId` is nil until conversion. The sweep skipped it, and
+    /// nothing else ever retried it — the drawing lived on one phone forever.
+    @MainActor
+    func test_strandedSweep_recoversALeadDeckWithItsGeometry() throws {
+        let container = try makeSyncOperationContainer()
+        let context = container.mainContext
+        let syncEngine = SyncEngine()
+        syncEngine.configure(modelContext: context, connectivity: ConnectivityManager())
+
+        let design = DeckDesign(
+            companyId: "a612edc0-5c18-4c4d-af97-55b9410dd077",
+            projectId: nil,                                   // lead deck — no project
+            opportunityId: "1ad4822d-2a9f-4e0a-a9c1-2ccfa7b142d1",
+            title: "Stranded lead deck",
+            drawingDataJSON: closedSquare().toJSON()
+        )
+        design.needsSync = true
+        design.syncedDrawingJSON = nil                        // never confirmed
+        design.updatedAt = Date().addingTimeInterval(-3600)
+        context.insert(design)
+        try context.save()
+
+        syncEngine.enqueueStrandedDeckDesigns()
+
+        let ops = try context.fetch(FetchDescriptor<SyncOperation>())
+            .filter { $0.entityType == SyncEntityType.deckDesign.rawValue }
+        XCTAssertTrue(
+            ops.contains { $0.getChangedFields().contains("drawing_data") },
+            "the recovery sweep must carry the user's geometry, not just a link"
+        )
+
+        let op = try XCTUnwrap(ops.first { $0.entityId == design.id })
+        let payload = try XCTUnwrap(
+            try JSONSerialization.jsonObject(with: op.payload) as? [String: Any]
+        )
+        let drawing = try XCTUnwrap(payload["drawing_data"] as? [String: Any])
+        let vertices = try XCTUnwrap(drawing["vertices"] as? [[String: Any]])
+        XCTAssertEqual(vertices.count, 4, "the swept payload carries the real drawing")
+    }
+
+    /// A deck whose content the server has already confirmed must not be swept —
+    /// re-pushing it would bump the server timestamp for nothing, which is the
+    /// pattern that arms the inbound clobber.
+    @MainActor
+    func test_strandedSweep_ignoresADeckWhoseContentIsAlreadyConfirmed() throws {
+        let container = try makeSyncOperationContainer()
+        let context = container.mainContext
+        let syncEngine = SyncEngine()
+        syncEngine.configure(modelContext: context, connectivity: ConnectivityManager())
+
+        let design = DeckDesign(
+            companyId: "a612edc0-5c18-4c4d-af97-55b9410dd077",
+            projectId: nil,
+            opportunityId: "1ad4822d-2a9f-4e0a-a9c1-2ccfa7b142d1",
+            title: "Converged lead deck",
+            drawingDataJSON: closedSquare().toJSON()
+        )
+        design.needsSync = false
+        design.markDrawingSynced()
+        context.insert(design)
+        try context.save()
+
+        syncEngine.enqueueStrandedDeckDesigns()
+
+        let ops = try context.fetch(FetchDescriptor<SyncOperation>())
+            .filter { $0.entityType == SyncEntityType.deckDesign.rawValue }
+        XCTAssertTrue(ops.isEmpty, "a converged deck must not be re-pushed")
     }
 
     private func makeInMemoryContainer() throws -> ModelContainer {

@@ -2089,9 +2089,17 @@ class OnboardingManager: ObservableObject {
         // Update local user
         dataController.currentUser?.hasCompletedAppTutorial = true
 
-        // Fire Firebase event for A/B test tracking
+        // Detailed experiment behaviour belongs to first-party analytics.
         let variant = UserDefaults.standard.string(forKey: "onboarding_variant")
-        AnalyticsManager.shared.trackTutorialCompleted(variant: variant, flowType: "company_creator", isPreSignup: false)
+        AnalyticsService.shared.track(
+            eventType: .lifecycle,
+            eventName: "tutorial_completed",
+            properties: [
+                "variant": variant ?? "unknown",
+                "flow_type": "company_creator",
+                "is_pre_signup": false
+            ]
+        )
 
         // Sync to Supabase
         guard let userId = state.userData.userId ?? dataController.currentUser?.id else {

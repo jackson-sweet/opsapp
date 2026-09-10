@@ -54,7 +54,7 @@ final class BugReportTriggerCoordinator {
     /// screenshot offer all use this method so their eligibility and capture
     /// ordering cannot drift.
     ///
-    /// - Parameter capturedScreenshot: A shot already taken at trigger time.
+    /// - Parameter capturedScreen: A screenshot already taken at trigger time.
     ///   The screenshot offer holds one (grabbed the instant the operator hit
     ///   the buttons, seconds before the tap that gets here); shake and
     ///   Settings pass `nil` and get a live capture.
@@ -63,7 +63,7 @@ final class BugReportTriggerCoordinator {
         source: Source,
         appState: AppState,
         dataController: DataController,
-        capturedScreenshot: UIImage? = nil
+        capturedScreen: UIImage? = nil
     ) -> Outcome {
         let outcome = trigger(
             source: source,
@@ -73,7 +73,7 @@ final class BugReportTriggerCoordinator {
                 isPresenterActive: BugReportPresenter.shared.isPresenting
             ),
             captureScreenshot: { () -> UIImage? in
-                Self.screenshotToPresent(held: capturedScreenshot) {
+                Self.screenshotToPresent(held: capturedScreen) {
                     BugReportCaptureService.shared.captureScreenshot()
                 }
             },

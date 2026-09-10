@@ -129,7 +129,7 @@ final class MoneyLeadsRedesignSnapshotTests: XCTestCase {
                 BooksPillView(pill: BooksPill(text: "PAID", color: OPSStyle.Colors.olive))
                 BooksPillView(pill: BooksPill(text: "WON", color: OPSStyle.Colors.olive, solid: true))
                 BooksPillView(pill: BooksPill(text: "NO RECEIPT", color: OPSStyle.Colors.rose))
-                BooksPillView(pill: BooksPill(text: "NEEDS OK", color: OPSStyle.Colors.tan))
+                BooksPillView(pill: BooksPill(text: "WITH OFFICE", color: OPSStyle.Colors.text3))
             }
             .padding(OPSStyle.Layout.spacing3_5)
         }
@@ -172,7 +172,12 @@ final class MoneyLeadsRedesignSnapshotTests: XCTestCase {
             VStack(spacing: 0) {
                 // Receipt URL present — AsyncImage can't resolve in the renderer,
                 // so this exercises the abstract-receipt placeholder path.
-                BooksExpenseRow(expense: .previewRow(merchant: "HOME DEPOT", amount: 184.22, status: .submitted, category: "Materials"), who: "DEVON", onTap: {})
+                BooksExpenseRow(
+                    expense: .previewRow(merchant: "HOME DEPOT", amount: 184.22, status: .submitted, category: "Materials"),
+                    who: "DEVON",
+                    batchStatus: .pendingReview,
+                    onTap: {}
+                )
                 BooksExpenseRow(expense: .previewRow(merchant: "SHELL", amount: 92.10, status: .approved, category: "Fuel"), who: nil, onTap: {})
                 BooksExpenseRow(expense: .previewRow(merchant: "SITEONE LANDSCAPE", amount: 412.80, status: .draft, category: "Materials", hasReceipt: false), who: "MARCO", onTap: {})
             }

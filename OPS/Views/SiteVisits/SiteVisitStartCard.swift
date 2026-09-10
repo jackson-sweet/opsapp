@@ -77,13 +77,14 @@ enum SiteVisitStartCardCandidates {
 
 // MARK: - Host
 
-/// The visit-day cards above the leads surfaces. @Query keeps the set live
-/// (booking, start, cancel, and inbound sync all mutate SiteVisit rows);
-/// `dismissalTick` re-evaluates after a dismissal since UserDefaults is not
-/// observable.
+/// Today's visits rail above the leads surfaces (f77d38fc — replaces the
+/// stacked START cards). @Query keeps the set live (booking, start, cancel,
+/// and inbound sync all mutate SiteVisit rows); `dismissalTick` re-evaluates
+/// after a dismissal since UserDefaults is not observable.
 struct SiteVisitStartCardsHost: View {
     let currentUserId: String?
     let onStart: (Opportunity) -> Void
+    let onOpen: (Opportunity) -> Void
 
     @Query private var allVisits: [SiteVisit]
     @Query private var allLeads: [Opportunity]
@@ -106,113 +107,186 @@ struct SiteVisitStartCardsHost: View {
         return allLeads.first { $0.id == opportunityId }
     }
 
+    private var entries: [(visit: SiteVisit, lead: Opportunity, entry: SiteVisitTodayRail.Entry)] {
+        candidates.compactMap { visit in
+            guard let lead = lead(for: visit), let scheduledAt = visit.scheduledAt else { return nil }
+            return (
+                visit,
+                lead,
+                SiteVisitTodayRail.Entry(
+                    id: visit.id,
+                    leadName: lead.displayContactName,
+                    address: lead.address,
+                    scheduledAt: scheduledAt
+                )
+            )
+        }
+    }
+
     var body: some View {
-        let cards = candidates
-        if !cards.isEmpty {
-            VStack(spacing: OPSStyle.Layout.spacing2) {
-                ForEach(cards, id: \.id) { visit in
-                    if let lead = lead(for: visit), let scheduledAt = visit.scheduledAt {
-                        SiteVisitStartCard(
-                            leadName: lead.displayContactName,
-                            address: lead.address,
-                            scheduledAt: scheduledAt,
-                            onStart: { onStart(lead) },
-                            onDismiss: {
-                                store.dismiss(visitId: visit.id)
-                                dismissalTick += 1
-                            }
-                        )
-                    }
+        let resolved = entries
+        if !resolved.isEmpty {
+            SiteVisitTodayRail(
+                entries: resolved.map { $0.entry },
+                onOpen: { id in
+                    guard let match = resolved.first(where: { $0.visit.id == id }) else { return }
+                    onOpen(match.lead)
+                },
+                onStart: { id in
+                    guard let match = resolved.first(where: { $0.visit.id == id }) else { return }
+                    onStart(match.lead)
+                },
+                onDismiss: { id in
+                    store.dismiss(visitId: id)
+                    dismissalTick += 1
                 }
-            }
+            )
             .padding(.horizontal, OPSStyle.Layout.spacing3_5)
             .padding(.top, OPSStyle.Layout.spacing2)
         }
     }
 }
 
-// MARK: - Card
+// MARK: - Rail
 
-struct SiteVisitStartCard: View {
-    let leadName: String
-    let address: String?
-    let scheduledAt: Date
-    let onStart: () -> Void
-    let onDismiss: () -> Void
+/// One compact panel for the day's booked visits: a mono header, time-led
+/// rows, and a small START chip as the only verb. Tapping a row opens the
+/// lead; dismissing for the day lives behind a long-press so it never
+/// competes with starting. Height for two visits is roughly half the old
+/// stacked cards.
+struct SiteVisitTodayRail: View {
+    struct Entry: Identifiable, Equatable {
+        let id: String
+        let leadName: String
+        let address: String?
+        let scheduledAt: Date
+    }
+
+    let entries: [Entry]
+    let onOpen: (String) -> Void
+    let onStart: (String) -> Void
+    let onDismiss: (String) -> Void
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(SiteVisitTodayRailCopy.header(count: entries.count))
+                .font(OPSStyle.Typography.miniLabelBold)
+                .tracking(1.2)
+                .foregroundColor(OPSStyle.Colors.text3)
+                .padding(.bottom, OPSStyle.Layout.spacing2)
+
+            ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
+                if index > 0 {
+                    Rectangle()
+                        .fill(OPSStyle.Colors.line)
+                        .frame(height: OPSStyle.Layout.Border.standard)
+                }
+                SiteVisitTodayRow(
+                    entry: entry,
+                    onOpen: { onOpen(entry.id) },
+                    onStart: { onStart(entry.id) },
+                    onDismiss: { onDismiss(entry.id) }
+                )
+                .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
+        .padding(.vertical, OPSStyle.Layout.spacing3)
+        .glassSurface()
+        .animation(reduceMotion ? nil : OPSStyle.Animation.standard, value: entries.map(\.id))
+        .accessibilityElement(children: .contain)
+    }
+}
+
+/// Header and time copy for the rail — pure, so the words are testable.
+enum SiteVisitTodayRailCopy {
+    static let start = "START"
+    static let dismissForToday = "DISMISS FOR TODAY"
+
+    static func header(count: Int) -> String {
+        "// TODAY · \(count) \(count == 1 ? "VISIT" : "VISITS")"
+    }
 
     private static let timeFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "h:mma"
+        formatter.dateFormat = "h:mm a"
         return formatter
     }()
 
-    private var timeToken: String {
-        Self.timeFormatter.string(from: scheduledAt).uppercased()
+    /// `2:00 PM` — mono, tabular, uppercase meridiem.
+    static func timeToken(_ date: Date) -> String {
+        timeFormatter.string(from: date).uppercased()
     }
+}
+
+// MARK: - Row
+
+struct SiteVisitTodayRow: View {
+    let entry: SiteVisitTodayRail.Entry
+    let onOpen: () -> Void
+    let onStart: () -> Void
+    let onDismiss: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("// SITE VISIT — \(timeToken)")
-                    .font(OPSStyle.Typography.miniLabelBold)
-                    .tracking(1.2)
-                    .foregroundColor(OPSStyle.Colors.text3)
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            onOpen()
+        } label: {
+            HStack(alignment: .center, spacing: OPSStyle.Layout.spacing3) {
+                Text(SiteVisitTodayRailCopy.timeToken(entry.scheduledAt))
+                    .font(OPSStyle.Typography.dataValue)
                     .monospacedDigit()
-
-                Spacer(minLength: 0)
-
-                Button {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    onDismiss()
-                } label: {
-                    Image(systemName: OPSStyle.Icons.close)
-                        .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .semibold))
-                        .foregroundColor(OPSStyle.Colors.text3)
-                        .frame(width: OPSStyle.Layout.touchTargetMin,
-                               height: OPSStyle.Layout.touchTargetMin,
-                               alignment: .topTrailing)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(PlainButtonStyle())
-                .accessibilityLabel("Dismiss visit card")
-            }
-
-            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
-                Text(leadName)
-                    .font(OPSStyle.Typography.bodyBold)
                     .foregroundColor(OPSStyle.Colors.text)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                if let address, !address.isEmpty {
-                    Text(address)
-                        .font(OPSStyle.Typography.smallCaption)
-                        .foregroundColor(OPSStyle.Colors.text3)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
+                    .fixedSize(horizontal: true, vertical: false)
+
+                // The chip shares the name line; the address takes the whole
+                // text column beneath it, so the street never truncates behind
+                // the verb — the "where" is the point of the row.
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+                    HStack(alignment: .center, spacing: OPSStyle.Layout.spacing2) {
+                        Text(entry.leadName)
+                            .font(OPSStyle.Typography.bodyBold)
+                            .foregroundColor(OPSStyle.Colors.text)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+
+                        Spacer(minLength: OPSStyle.Layout.spacing2)
+
+                        Button {
+                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                            onStart()
+                        } label: {
+                            Text(SiteVisitTodayRailCopy.start)
+                                .kerning(0.27)
+                        }
+                        .opsSecondaryCompactButtonStyle()
+                        .accessibilityLabel("Start site visit for \(entry.leadName)")
+                    }
+                    if let address = entry.address, !address.isEmpty {
+                        Text(address)
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.text3)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                    }
                 }
             }
-
-            Button {
-                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                onStart()
-            } label: {
-                Text("START")
-                    .font(OPSStyle.Typography.buttonLabel)
-                    .kerning(0.27)
-                    .foregroundColor(OPSStyle.Colors.invertedText)
-                    .frame(maxWidth: .infinity, minHeight: OPSStyle.Layout.touchTargetMin)
-                    .background(
-                        RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius, style: .continuous)
-                            .fill(OPSStyle.Colors.primaryText)
-                    )
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(PlainButtonStyle())
-            .accessibilityLabel("Start site visit for \(leadName)")
+            .padding(.vertical, OPSStyle.Layout.spacing2)
+            .frame(minHeight: OPSStyle.Layout.touchTargetStandard)
+            .contentShape(Rectangle())
         }
-        .padding(OPSStyle.Layout.spacing3)
-        .glassSurface()
-        .accessibilityElement(children: .contain)
+        .buttonStyle(.plain)
+        .accessibilityLabel("Open lead for \(entry.leadName)")
+        .contextMenu {
+            Button(role: .destructive) {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                onDismiss()
+            } label: {
+                Label(SiteVisitTodayRailCopy.dismissForToday, systemImage: OPSStyle.Icons.close)
+            }
+        }
     }
 }

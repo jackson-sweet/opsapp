@@ -90,6 +90,7 @@ struct FilterChipRow: View {
             )
         }
         .buttonStyle(PlainButtonStyle())
+        .bugReportPickable(.chip, label: chip.label)
         .opacity(chip.isDisabled ? 0.35 : 1)
         .allowsHitTesting(!chip.isDisabled)
         .accessibilityLabel("\(chip.label), \(chip.count) leads")

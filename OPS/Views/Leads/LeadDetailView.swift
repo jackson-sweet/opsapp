@@ -81,10 +81,14 @@ struct LeadDetailView: View {
     /// menu itself is the NOW/BOOK branch here, so no extra dialog hop.
     @State private var bookingRequest: BookSiteVisitRequest?
     @State private var showingAppointmentSheet = false
-    /// NEXT TOUCH's booking read. Refreshed on appear and on every
+    /// The visit banner's booking read. Refreshed on appear and on every
     /// SiteVisitBookingChanged — SwiftData writes don't re-render this view
     /// on their own (openBookingSnapshot is a lazy computed read).
     @State private var openVisitAt: Date?
+    /// The dossier banner's CANCEL, in flight. Booking is RPC-only, so this is
+    /// a real network wait the operator must not be able to double-press.
+    @State private var isCancellingVisit = false
+    @State private var cancelVisitConfirm: OPSConfirmConfig?
     @State private var showingAssignmentPicker = false
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var dataController: DataController
@@ -213,6 +217,48 @@ struct LeadDetailView: View {
         openVisitAt = openBookingSnapshot?.scheduledAt
     }
 
+    // MARK: - Visit banner verbs (bug 52cc8dae)
+
+    /// REBOOK — the same booking sheet, opened ON the existing appointment, so
+    /// two stacked bookings can never be offered.
+    @MainActor
+    private func requestVisitRebook() {
+        guard let snapshot = openBookingSnapshot else { return }
+        bookingRequest = BookSiteVisitRequest(lead: opportunity, existing: snapshot)
+    }
+
+    /// CANCEL — the confirm and the write both come from SiteVisitCancellation,
+    /// the one implementation the booking sheet also uses.
+    @MainActor
+    private func requestVisitCancel() {
+        guard let snapshot = openBookingSnapshot, !isCancellingVisit else { return }
+        cancelVisitConfirm = SiteVisitCancellation.confirm {
+            performVisitCancel(siteVisitId: snapshot.siteVisitId)
+        }
+    }
+
+    @MainActor
+    private func performVisitCancel(siteVisitId: String) {
+        isCancellingVisit = true
+        Task { @MainActor in
+            let failure = await SiteVisitCancellation.cancel(
+                siteVisitId: siteVisitId,
+                leadId: opportunity.id,
+                service: SiteVisitBookingService(),
+                modelContext: dataController.modelContext
+            )
+            isCancellingVisit = false
+            // A failed cancel leaves the appointment standing — the banner is
+            // still there, still cancellable, and the reason is stated rather
+            // than swallowed.
+            if let failure {
+                ToastCenter.shared.present(Toast(label: failure, tone: .error))
+            } else {
+                refreshOpenVisit()
+            }
+        }
+    }
+
     private var canChangeAssignee: Bool {
         guard leadAccessPolicy.can(.assign, assignedTo: opportunity.assignedTo),
               let scope = leadAccessPolicy.scope(for: .assign) else {
@@ -289,6 +335,24 @@ struct LeadDetailView: View {
 
                             Section {
                                 VStack(spacing: 0) {
+                                    // A standing appointment IS the state of
+                                    // this lead — it leads the dossier, with
+                                    // the three verbs on it (bug 52cc8dae).
+                                    // Renders nothing at all when there is no
+                                    // open booking.
+                                    LeadSiteVisitBanner(
+                                        state: LeadSiteVisitBannerState.resolve(
+                                            scheduledAt: openVisitAt
+                                        ),
+                                        canManage: canConvert && !opportunity.stage.isTerminal,
+                                        isCancelling: isCancellingVisit,
+                                        onStart: { showingSiteVisitCapture = true },
+                                        onRebook: { requestVisitRebook() },
+                                        onCancel: { requestVisitCancel() },
+                                        onDetails: { showingAppointmentSheet = true }
+                                    )
+                                    .padding(.bottom, openVisitAt == nil ? 0 : 18)
+
                                     DetailHero(
                                         opportunity: opportunity,
                                         clientName: vm.client?.name,
@@ -296,8 +360,6 @@ struct LeadDetailView: View {
                                         canChangeAssignee: canChangeAssignee,
                                         canEditValue: canEdit,
                                         fieldEdit: fieldEdit,
-                                        openVisitAt: openVisitAt,
-                                        onVisitTap: { showingAppointmentSheet = true },
                                         onAssigneeTap: {
                                             UIImpactFeedbackGenerator(style: .light).impactOccurred()
                                             showingAssignmentPicker = true
@@ -400,7 +462,9 @@ struct LeadDetailView: View {
                             } header: {
                                 LeadDetailStickyHeader(
                                     opportunity: opportunity,
-                                    clientName: vm.client?.name
+                                    clientName: vm.client?.name,
+                                    canEdit: canEdit,
+                                    fieldEdit: fieldEdit
                                 )
                             }
                         }
@@ -531,6 +595,13 @@ struct LeadDetailView: View {
             // for good rather than keep explaining a gesture they now know.
             if completed { holdHintState = LeadHoldHint.retired() }
         }
+        // The roster follows the lead's CURRENT client link — the picker and
+        // its RETRY both write it under the open dossier, and a roster stuck on
+        // the link the screen opened with is what made a landed assignment read
+        // as a failure (bug 908888f6). Idempotent, so an unchanged link is free.
+        .onChange(of: opportunity.clientId) { _, newValue in
+            Task { await vm.clientLinkChanged(to: newValue) }
+        }
         .onReceive(
             NotificationCenter.default.publisher(
                 for: Notification.Name("LeadActivityLoggedSuccess")
@@ -577,6 +648,7 @@ struct LeadDetailView: View {
         ) { _ in
             refreshOpenVisit()
         }
+        .opsConfirm($cancelVisitConfirm)
         .confirmationDialog(
             "ADD PHOTOS",
             isPresented: $showingAddPhotoDialog,
@@ -587,13 +659,13 @@ struct LeadDetailView: View {
             Button("CANCEL", role: .cancel) {}
         }
         .fullScreenCover(isPresented: $showingCameraCapture) {
-            CameraBatchView { images in
-                showingCameraCapture = false
-                guard !images.isEmpty else { return }
-                let reservationIDs = images.map { _ in UUID().uuidString }
-                importingPhotoIDs.append(contentsOf: reservationIDs)
-                addPhotos(images, reservationIDs: reservationIDs)
+            CameraBatchView(owner: leadCameraOwner) { batch in
+                await LeadImageService.shared.acceptCapture(batch, opportunity: opportunity, userID: dataController.currentUser?.id ?? "")
             }
+        }
+        .task(id: opportunity.id) {
+            do { try await LeadImageService.shared.recoverCaptures(opportunity: opportunity, userID: dataController.currentUser?.id ?? "") }
+            catch { ToastCenter.shared.present(Toast(label: Feedback.Err.saveFailed, tone: .error)) }
         }
         .photosPicker(
             isPresented: $showingPhotoLibrary,
@@ -637,7 +709,13 @@ struct LeadDetailView: View {
                 currentClientId: opportunity.clientId,
                 companyId: opportunity.companyId
             ) { client in
-                Task { await fieldEdit.commitClient(id: client.id, name: client.name) }
+                Task {
+                    await fieldEdit.commitClient(id: client.id, name: client.name)
+                    // Pull the roster onto the link the write just made,
+                    // without waiting on an observation hop. Idempotent, so
+                    // the onChange above is not a second fetch.
+                    await vm.clientLinkChanged(to: opportunity.clientId)
+                }
             }
             .environmentObject(dataController)
         }
@@ -667,6 +745,10 @@ struct LeadDetailView: View {
     }
 
     // MARK: - Photos
+
+    private var leadCameraOwner: StagedCaptureOwner {
+        StagedPhotoDestinations.owner(companyID: opportunity.companyId, userID: dataController.currentUser?.id ?? "", kind: "lead", id: opportunity.id)
+    }
 
     private func addPhotos(_ images: [UIImage], reservationIDs: [String]) {
         Task {

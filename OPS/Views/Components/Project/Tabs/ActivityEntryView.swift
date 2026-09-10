@@ -20,7 +20,7 @@ struct ActivityEntryView: View {
     /// `deletePhoto` is true when the user chose to also remove the note's
     /// photo from the project gallery (only offered when the note has one).
     let onDelete: (_ deletePhoto: Bool) -> Void
-    let onEdit: (String, [ProjectNoteMentionSpan]) async -> Bool
+    let onEdit: (String, [ProjectNoteMentionSpan], [String]?) async -> Bool
     let onPhotoTap: (([String], Int) -> Void)?
 
     @EnvironmentObject private var dataController: DataController
@@ -29,6 +29,7 @@ struct ActivityEntryView: View {
     @State private var editText = ""
     @State private var editSelectedRange = NSRange(location: 0, length: 0)
     @State private var editMentionSpans: [ProjectNoteMentionSpan] = []
+    @State private var editAttachments: [String] = []
     @State private var isSavingEdit = false
     @State private var showDeleteConfirmation = false
 
@@ -109,6 +110,7 @@ struct ActivityEntryView: View {
                                 length: 0
                             )
                             editMentionSpans = draft.identitySpans
+                            editAttachments = note.attachments
                             isEditing = true
                         }) {
                             Label("Edit", systemImage: OPSStyle.Icons.pencil)
@@ -154,10 +156,28 @@ struct ActivityEntryView: View {
                         editMentionPicker
                     }
 
+                    // The attachment strip only appears when there is something the
+                    // user may actually detach — never as a permanent empty slot.
+                    if !editableAttachments.isEmpty {
+                        ActivityEditAttachmentStrip(
+                            attachments: $editAttachments,
+                            isDisabled: isSavingEdit
+                        )
+                    }
+
+                    // Shown only once the edit has actually reached the dead end, so
+                    // it explains a disabled Save rather than pre-warning about one.
+                    if editWouldStrandNote {
+                        Text("A note needs words or a photo.")
+                            .font(OPSStyle.Typography.smallCaption)
+                            .foregroundColor(OPSStyle.Colors.tertiaryText)
+                    }
+
                     HStack {
                         Button("Cancel") {
                             isEditing = false
                             editMentionSpans = []
+                            editAttachments = []
                             clearEditMentionState()
                         }
                         .disabled(isSavingEdit)
@@ -172,7 +192,8 @@ struct ActivityEntryView: View {
                                 isSavingEdit = true
                                 let didQueueSave = await onEdit(
                                     editText,
-                                    editMentionSpans
+                                    editMentionSpans,
+                                    editAttachmentsChange
                                 )
                                 isSavingEdit = false
                                 guard didQueueSave else { return }
@@ -183,7 +204,7 @@ struct ActivityEntryView: View {
                         }
                         .font(OPSStyle.Typography.captionBold)
                         .foregroundColor(OPSStyle.Colors.primaryAccent)
-                        .disabled(isSavingEdit)
+                        .disabled(isSavingEdit || editWouldStrandNote)
                     }
                 }
             } else if isPhotoComment, let photo = note.photoURL, !photo.isEmpty {
@@ -223,7 +244,10 @@ struct ActivityEntryView: View {
                                     onPhotoTap?(allPhotos, index)
                                 }) {
                                     PhotoThumbnail(url: url, project: nil)
-                                        .frame(width: 80, height: 80)
+                                        .frame(
+                                            width: OPSStyle.Layout.activityPhotoTileSize,
+                                            height: OPSStyle.Layout.activityPhotoTileSize
+                                        )
                                         .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius))
                                 }
                                 .buttonStyle(PlainButtonStyle())
@@ -281,6 +305,34 @@ struct ActivityEntryView: View {
     /// Subtitle for a comment-less photo post — "added a photo" / "added N photos".
     private var photoAddedSubtitle: String {
         notePhotoURLs.count == 1 ? "added a photo" : "added \(notePhotoURLs.count) photos"
+    }
+
+    // MARK: - Edit session (bug f5f57917)
+
+    /// The photos the open edit session may detach. Empty for a photo comment,
+    /// whose photo is the comment's subject rather than an attachment.
+    private var editableAttachments: [String] {
+        ActivityEditAttachmentPresentation.removableAttachments(
+            photoURL: note.photoURL,
+            attachments: editAttachments
+        )
+    }
+
+    /// True when saving right now would leave a note with neither words nor a
+    /// photo. Drives both the disabled Save and the inline reason for it.
+    private var editWouldStrandNote: Bool {
+        ActivityEditAttachmentPresentation.wouldStrandNote(
+            content: editText,
+            photoURL: note.photoURL,
+            attachments: editAttachments
+        )
+    }
+
+    /// The attachment set to send with the edit, or `nil` when the media half
+    /// did not change. A text-only edit therefore carries no media key at all
+    /// and stays byte-identical to what every previous build sent.
+    private var editAttachmentsChange: [String]? {
+        editAttachments == note.attachments ? nil : editAttachments
     }
 
     private var relativeTimestamp: String {
@@ -493,5 +545,130 @@ struct ActivityEntryView: View {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             contactSheetMember = user
         }
+    }
+}
+
+/// Bug f5f57917 — the rules that decide what an inline note edit may detach.
+///
+/// Extracted from the view so they can be asserted directly instead of by
+/// driving SwiftUI `@State`, and so the client and the server guard
+/// (`update_project_note_mentions`) can be read side by side.
+enum ActivityEditAttachmentPresentation {
+
+    /// The attachments an edit session may detach.
+    ///
+    /// A note whose `photoURL` is set was posted from the photo viewer's
+    /// comment composer: the photo is the comment's *subject*, not an
+    /// attachment, and detaching it would orphan the sentence. Those notes
+    /// expose nothing removable and keep Delete as their route.
+    static func removableAttachments(
+        photoURL: String?,
+        attachments: [String]
+    ) -> [String] {
+        guard isBlank(photoURL) else { return [] }
+        return attachments.filter { !isBlank($0) }
+    }
+
+    /// True when saving would leave a note with neither words nor a photo.
+    /// An edit must never quietly become a delete — the RPC refuses the same
+    /// shape server-side.
+    static func wouldStrandNote(
+        content: String,
+        photoURL: String?,
+        attachments: [String]
+    ) -> Bool {
+        guard isBlank(content) else { return false }
+        guard isBlank(photoURL) else { return false }
+        return !attachments.contains { !isBlank($0) }
+    }
+
+    private static func isBlank(_ value: String?) -> Bool {
+        (value ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .isEmpty
+    }
+}
+
+/// Bug f5f57917 — the editable photo strip inside an inline note edit.
+///
+/// Edit mode used to render no photo at all, so a note's attachment silently
+/// disappeared while editing and there was no way to drop it: the only removal
+/// route was Delete, which destroys the whole note. This mirrors the read-only
+/// strip's tile geometry exactly — same edge, same radius, same spacing — so
+/// edit mode reads as the same card, with one added affordance.
+///
+/// Detach only. The photo stays in the project gallery, where it is site
+/// evidence; the note-delete flow already owns the "…and from the gallery?"
+/// question, and asking it twice inside an inline edit is dialog theater.
+struct ActivityEditAttachmentStrip: View {
+    @Binding var attachments: [String]
+    var isDisabled: Bool = false
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: OPSStyle.Layout.spacing2) {
+                ForEach(Array(attachments.enumerated()), id: \.offset) { index, url in
+                    // A blank entry is corrupt data, not a photo. The
+                    // read-only strip skips those too, so the card's two
+                    // modes can never disagree about what it holds.
+                    if !url.isEmpty {
+                        ZStack(alignment: .topTrailing) {
+                            PhotoThumbnail(url: url, project: nil)
+                                .frame(
+                                    width: OPSStyle.Layout.activityPhotoTileSize,
+                                    height: OPSStyle.Layout.activityPhotoTileSize
+                                )
+                                .clipShape(
+                                    RoundedRectangle(
+                                        cornerRadius: OPSStyle.Layout.cornerRadius
+                                    )
+                                )
+
+                            Button {
+                                remove(at: index)
+                            } label: {
+                                Image(systemName: OPSStyle.Icons.xmarkCircleFill)
+                                    .font(.system(size: OPSStyle.Layout.IconSize.md))
+                                    .foregroundColor(OPSStyle.Colors.primaryText)
+                                    // A filled disc behind the glyph so the
+                                    // mark holds against a bright photo in
+                                    // daylight. Same treatment the compose
+                                    // bar's pending-photo tiles already use.
+                                    .background(
+                                        Circle().fill(OPSStyle.Colors.background)
+                                    )
+                                    // The glyph stays small; the target does
+                                    // not. 44pt is the mobile floor, and
+                                    // anchoring the box inside the tile means
+                                    // it can never steal a tap from the
+                                    // neighbouring photo.
+                                    .frame(
+                                        width: OPSStyle.Layout.touchTargetMin,
+                                        height: OPSStyle.Layout.touchTargetMin,
+                                        alignment: .topTrailing
+                                    )
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                            .disabled(isDisabled)
+                            .padding(.top, OPSStyle.Layout.spacing1)
+                            .padding(.trailing, OPSStyle.Layout.spacing1)
+                            .accessibilityLabel("Remove photo")
+                        }
+                        .frame(
+                            width: OPSStyle.Layout.activityPhotoTileSize,
+                            height: OPSStyle.Layout.activityPhotoTileSize
+                        )
+                    }
+                }
+            }
+        }
+        .animation(OPSStyle.Animation.hover, value: attachments)
+    }
+
+    private func remove(at index: Int) {
+        guard attachments.indices.contains(index) else { return }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        attachments.remove(at: index)
     }
 }

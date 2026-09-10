@@ -28,6 +28,11 @@ struct AddLeadSheet: View {
 
     var onSaved: (Opportunity) -> Void = { _ in }
     var onStartSiteVisit: ((Opportunity) -> Void)? = nil
+    /// Hand the saved lead to the BOOKING sheet — the client profile's
+    /// BOOK VISIT (bug 9a49bd47). Distinct from `onStartSiteVisit`, which
+    /// opens the capture: booking puts an appointment on a calendar, starting
+    /// runs the visit that is happening now.
+    var onBookSiteVisit: ((Opportunity) -> Void)? = nil
 
     @State private var form: LeadForm
 
@@ -38,9 +43,11 @@ struct AddLeadSheet: View {
     /// sites keep working via the defaulted parameters.
     init(seedClient: Client? = nil,
          onSaved: @escaping (Opportunity) -> Void = { _ in },
-         onStartSiteVisit: ((Opportunity) -> Void)? = nil) {
+         onStartSiteVisit: ((Opportunity) -> Void)? = nil,
+         onBookSiteVisit: ((Opportunity) -> Void)? = nil) {
         self.onSaved = onSaved
         self.onStartSiteVisit = onStartSiteVisit
+        self.onBookSiteVisit = onBookSiteVisit
         _form = State(initialValue: seedClient.map { LeadForm(fromClient: $0) } ?? LeadForm())
         _linkedClient = State(initialValue: seedClient)
     }
@@ -252,7 +259,8 @@ struct AddLeadSheet: View {
                 )
                 .disabled(isSaving)
             } primary: {
-                if onStartSiteVisit == nil {
+                switch footerActions {
+                case .saveOnly:
                     SheetCTAButton(
                         label: "SAVE LEAD",
                         icon: "checkmark",
@@ -262,7 +270,7 @@ struct AddLeadSheet: View {
                     )
                     .disabled(!canSave)
                     .opacity(canSave ? 1 : 0.5)
-                } else {
+                case .saveAndVisit, .saveAndBook:
                     HStack(spacing: OPSStyle.Layout.spacing2) {
                         SheetCTAButton(
                             label: "SAVE",
@@ -275,11 +283,13 @@ struct AddLeadSheet: View {
                         .opacity(canSave ? 1 : 0.5)
 
                         SheetCTAButton(
-                            label: "VISIT",
-                            icon: "camera.viewfinder",
+                            label: footerActions == .saveAndBook ? "BOOK" : "VISIT",
+                            icon: footerActions == .saveAndBook
+                                ? OPSStyle.Icons.calendar
+                                : "camera.viewfinder",
                             variant: .primary,
-                            isLoading: isSaving && saveAction == .startSiteVisit,
-                            action: { save(.startSiteVisit) }
+                            isLoading: isSaving && saveAction == followOnAction,
+                            action: { save(followOnAction) }
                         )
                         .disabled(!canSave)
                         .opacity(canSave ? 1 : 0.5)
@@ -297,6 +307,28 @@ struct AddLeadSheet: View {
         )
         .ignoresSafeArea(edges: .bottom)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+    }
+
+    // MARK: - Footer verbs
+
+    private var footerActions: AddLeadFooterActions {
+        AddLeadFooterActions.resolve(
+            offersStartVisit: onStartSiteVisit != nil,
+            offersBookVisit: onBookSiteVisit != nil
+        )
+    }
+
+    private var followOnAction: AddLeadSaveAction {
+        footerActions == .saveAndBook ? .bookSiteVisit : .startSiteVisit
+    }
+
+    /// What runs after this save, if anything.
+    private func followOn(for action: AddLeadSaveAction) -> ((Opportunity) -> Void)? {
+        switch action {
+        case .saveOnly:       return nil
+        case .startSiteVisit: return onStartSiteVisit
+        case .bookSiteVisit:  return onBookSiteVisit
+        }
     }
 
     // MARK: - Save
@@ -318,9 +350,11 @@ struct AddLeadSheet: View {
                 )
                 onSaved(opportunity)
                 dismiss()
-                if action == .startSiteVisit, let onStartSiteVisit {
+                // The follow-on waits out this sheet's dismissal — a sheet
+                // presented into a dismissal in flight lands on nothing.
+                if let followOn = followOn(for: action) {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                        onStartSiteVisit(opportunity)
+                        followOn(opportunity)
                     }
                 }
             } catch {
@@ -424,7 +458,9 @@ struct AddLeadSheet: View {
             let descriptor = FetchDescriptor<Client>(
                 predicate: #Predicate<Client> { $0.companyId == cid }
             )
-            clients = (try? context.fetch(descriptor)) ?? []
+            // Live clients only. Matching a new lead onto a tombstoned client
+            // would attach fresh work to a row the operator already deleted.
+            clients = ((try? context.fetch(descriptor)) ?? []).filter { $0.deletedAt == nil }
         }
 
         if let existing = LeadClientMatcher.match(in: clients, name: name, email: email, phone: phone) {
@@ -480,7 +516,33 @@ private enum AddLeadError: LocalizedError {
     }
 }
 
-private enum AddLeadSaveAction {
+enum AddLeadSaveAction {
     case saveOnly
     case startSiteVisit
+    case bookSiteVisit
+}
+
+/// Which pair of verbs the NEW LEAD footer offers.
+///
+/// A host supplies at most ONE follow-on: the LEADS tab's start-a-visit-now,
+/// or the client profile's book-an-appointment (bug 9a49bd47). Stated as a
+/// rule rather than nested conditionals in the footer so the sheet cannot
+/// grow a third, silently unreachable, combination.
+enum AddLeadFooterActions: Equatable {
+    /// SAVE LEAD, alone.
+    case saveOnly
+    /// SAVE · VISIT — save, then open the capture.
+    case saveAndVisit
+    /// SAVE · BOOK — save, then open the booking sheet.
+    case saveAndBook
+
+    static func resolve(offersStartVisit: Bool, offersBookVisit: Bool) -> AddLeadFooterActions {
+        // Booking wins a (never-used) tie: putting an appointment on a
+        // calendar is the deliberate act; starting a capture is what the
+        // operator does when they are already standing there, and that host
+        // never also offers booking.
+        if offersBookVisit { return .saveAndBook }
+        if offersStartVisit { return .saveAndVisit }
+        return .saveOnly
+    }
 }

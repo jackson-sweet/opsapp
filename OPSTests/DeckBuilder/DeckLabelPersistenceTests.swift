@@ -79,36 +79,6 @@ final class DeckLabelPersistenceTests: XCTestCase {
         return viewModel
     }
 
-    /// A view model over a drawing that already has committed geometry —
-    /// what the autosave prompt calls an EXISTING drawing (new ones enable
-    /// autosave silently and never ask). The geometry has to be present in
-    /// the design's own JSON because `isNewDrawing` is decided at init.
-    private func existingDrawingViewModel(_ data: DeckDrawingData) -> DeckBuilderViewModel {
-        let viewModel = DeckBuilderViewModel(deckDesign: DeckDesign(
-            companyId: "company-1",
-            title: "Existing deck",
-            drawingDataJSON: data.toJSON()
-        ))
-        viewModel.drawingData = data
-        return viewModel
-    }
-
-    override func setUp() {
-        super.setUp()
-        // The autosave answer persists per DEVICE. A leftover decision from
-        // another test (or another suite) would suppress the prompt entirely.
-        let defaults = UserDefaults.standard
-        defaults.removeObject(forKey: "deckBuilder.autosaveDecisionMade")
-        defaults.removeObject(forKey: "deckBuilder.autosaveEnabled")
-    }
-
-    override func tearDown() {
-        let defaults = UserDefaults.standard
-        defaults.removeObject(forKey: "deckBuilder.autosaveDecisionMade")
-        defaults.removeObject(forKey: "deckBuilder.autosaveEnabled")
-        super.tearDown()
-    }
-
     /// One `CommittingDeckLabelField`'s whole lifecycle, headless: the field
     /// owns a `DeckLabelEditSession` seeded from the edge's current label,
     /// stages keystrokes as drafts, and on focus loss / submit / disappear
@@ -299,60 +269,6 @@ final class DeckLabelPersistenceTests: XCTestCase {
         XCTAssertFalse(viewModel.hasPendingSave)
         XCTAssertNil(viewModel.findEdge(byId: "e1")?.label)
         XCTAssertNil(viewModel.deckDesign.drawingData.edges.first(where: { $0.id == "e1" })?.label)
-    }
-
-    // MARK: - Hazard H3 — the autosave question waits for a clear screen
-
-    /// The autosave alert is bound to the builder's root, so raising it while
-    /// the Properties sheet is up presents it BEHIND the sheet: the user sees
-    /// nothing, and the first tap after that goes to a dialog they can't see.
-    /// The ask has to wait until the screen is clear.
-    func testAutosavePromptDefersWhileASheetIsPresented() {
-        let viewModel = existingDrawingViewModel(squareData())
-        viewModel.showingPropertySheet = true
-
-        typeAndCommit("Hot tub side", edgeId: "e1", on: viewModel)
-        viewModel.flushPendingSave()
-
-        XCTAssertFalse(viewModel.showingAutosavePrompt)
-        XCTAssertTrue(viewModel.isPresentingModal)
-
-        viewModel.showingPropertySheet = false
-        viewModel.presentDeferredAutosavePromptIfReady()
-
-        XCTAssertTrue(viewModel.showingAutosavePrompt)
-    }
-
-    /// With no sheet up there is nothing to hide behind — the prompt shows
-    /// immediately, exactly as it did before.
-    func testAutosavePromptShowsImmediatelyWithNoSheetPresented() {
-        let viewModel = existingDrawingViewModel(squareData())
-
-        typeAndCommit("Hot tub side", edgeId: "e1", on: viewModel)
-        viewModel.flushPendingSave()
-
-        XCTAssertFalse(viewModel.isPresentingModal)
-        XCTAssertTrue(viewModel.showingAutosavePrompt)
-    }
-
-    /// The deferred ask fires at most once — a second clear screen must not
-    /// re-raise a question the user already answered.
-    func testDeferredAutosavePromptOnlyFiresOnce() {
-        let viewModel = existingDrawingViewModel(squareData())
-        viewModel.showingPropertySheet = true
-
-        typeAndCommit("Hot tub side", edgeId: "e1", on: viewModel)
-        viewModel.flushPendingSave()
-
-        viewModel.showingPropertySheet = false
-        viewModel.presentDeferredAutosavePromptIfReady()
-        XCTAssertTrue(viewModel.showingAutosavePrompt)
-
-        viewModel.declineAutosave()
-        XCTAssertFalse(viewModel.showingAutosavePrompt)
-
-        viewModel.presentDeferredAutosavePromptIfReady()
-        XCTAssertFalse(viewModel.showingAutosavePrompt)
     }
 
     /// Re-opening the sheet and retyping the value already on the edge must

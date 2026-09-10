@@ -1,0 +1,101 @@
+{
+  "before": {
+    "quickCheck": "ok",
+    "modelChecksum": "oDrDy3ePGUW2ZiuwOISzdvuUZ8yf5LtXt42AFLxtTrs=",
+    "versionIdentifiers": [
+      "25.0.0"
+    ],
+    "counts": {
+      "ZCLIENT": 484,
+      "ZDECKDESIGN": 153,
+      "ZOPPORTUNITY": 11,
+      "ZPROJECTPHOTO": 967,
+      "ZSITEVISIT": 30,
+      "ZSITEVISITCAPTUREARTIFACT": 149,
+      "ZSITEVISITCHECKLISTANSWER": 283,
+      "ZSITEVISITIDENTITYDRAFT": 25,
+      "ZSITEVISITTYPE": 10,
+      "ZSUBCLIENT": 124,
+      "ZSYNCOPERATION": 2636
+    },
+    "syncCounts": {
+      "completed": 2625,
+      "inProgress": 1,
+      "parked": 1,
+      "pending": 9
+    },
+    "deckColumns": {
+      "ZDECKDESIGN": [
+        "Z_PK",
+        "Z_ENT",
+        "Z_OPT",
+        "ZNEEDSSYNC",
+        "ZSYNCPRIORITY",
+        "ZVERSION",
+        "ZCREATEDAT",
+        "ZDELETEDAT",
+        "ZLASTSYNCEDAT",
+        "ZUPDATEDAT",
+        "ZCOMPANYID",
+        "ZCREATEDBY",
+        "ZDRAWINGDATAJSON",
+        "ZID",
+        "ZLOCALTHUMBNAILPATH",
+        "ZPROJECTID",
+        "ZTHUMBNAILURL",
+        "ZTITLE",
+        "ZOPPORTUNITYID"
+      ]
+    },
+    "walBytes": 0
+  },
+  "after": {
+    "quickCheck": "ok",
+    "modelChecksum": "W/BL26OkKY5G0Ed7qNE0Bc9SjxDXSTK+LsRyd/fTKy8=",
+    "versionIdentifiers": [
+      "26.0.0"
+    ],
+    "counts": {
+      "ZCLIENT": 485,
+      "ZDECKDESIGN": 153,
+      "ZOPPORTUNITY": 11,
+      "ZPROJECTPHOTO": 969,
+      "ZSITEVISIT": 30,
+      "ZSITEVISITCAPTUREARTIFACT": 149,
+      "ZSITEVISITCHECKLISTANSWER": 283,
+      "ZSITEVISITIDENTITYDRAFT": 25,
+      "ZSITEVISITTYPE": 10,
+      "ZSUBCLIENT": 124,
+      "ZSYNCOPERATION": 2636
+    },
+    "syncCounts": {
+      "completed": 2635,
+      "parked": 1
+    },
+    "deckColumns": {
+      "ZDECKDESIGN": [
+        "Z_PK",
+        "Z_ENT",
+        "Z_OPT",
+        "ZNEEDSSYNC",
+        "ZSYNCPRIORITY",
+        "ZVERSION",
+        "ZCREATEDAT",
+        "ZDELETEDAT",
+        "ZLASTSYNCEDAT",
+        "ZUPDATEDAT",
+        "ZCOMPANYID",
+        "ZCREATEDBY",
+        "ZDRAWINGDATAJSON",
+        "ZID",
+        "ZLOCALTHUMBNAILPATH",
+        "ZPROJECTID",
+        "ZTHUMBNAILURL",
+        "ZTITLE",
+        "ZOPPORTUNITYID",
+        "ZSYNCEDDRAWINGJSON"
+      ]
+    },
+    "walBytes": 3885192
+  }
+}

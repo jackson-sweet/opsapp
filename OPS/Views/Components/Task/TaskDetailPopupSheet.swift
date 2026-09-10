@@ -443,7 +443,7 @@ struct TaskDetailPopupSheet: View {
 
     private var datesRow: some View {
         DocRow(label: "DATES") {
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                 if hasDates {
                     if canSchedule {
                         Button(action: openScheduler) {
@@ -480,6 +480,11 @@ struct TaskDetailPopupSheet: View {
                         .accessibilityLabel("Set the dates for this task")
                 } else {
                     TaskDoc.blank
+                }
+                if task.needsSync {
+                    Text(SyncStatusCopy.localTaskChanges)
+                        .font(OPSStyle.Typography.smallCaption)
+                        .foregroundStyle(OPSStyle.Colors.secondaryText)
                 }
             }
         }

@@ -300,6 +300,8 @@ enum Feedback {
         static let removed          = Toast(label: "// PHOTO REMOVED", tone: .success)
         static let annotationSaved  = Toast(label: "// MARKUP SAVED", tone: .success)
         static let visibilityUpdated = Toast(label: "// VISIBILITY UPDATED", tone: .success)
+        static let taskAssigned     = Toast(label: "// TASK UPDATED", tone: .success)
+        static let taskCleared      = Toast(label: "// TASK CLEARED", tone: .success)
     }
 
     // MARK: - Onboarding / auth

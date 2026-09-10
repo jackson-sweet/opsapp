@@ -127,6 +127,13 @@ actor SiteVisitMediaUploadPreparer {
     }
 }
 
+private actor SiteVisitMediaAssetLoader {
+    static let shared = SiteVisitMediaAssetLoader()
+    func load(_ source: String) throws -> SiteVisitMediaSyncManager.LoadedAsset {
+        try SiteVisitMediaSyncManager.loadAsset(source)
+    }
+}
+
 struct SiteVisitMediaSyncManager {
     typealias LoadedAsset = (data: Data, contentType: String)
     typealias Loader = (String) throws -> LoadedAsset
@@ -140,7 +147,7 @@ struct SiteVisitMediaSyncManager {
     ) async throws -> String
 
     private let uploader: Uploader
-    private let loader: Loader
+    private let loader: Loader?
     private let preparer: Preparer
 
     init(
@@ -153,7 +160,7 @@ struct SiteVisitMediaSyncManager {
                 contentType: contentType
             )
         },
-        loader: @escaping Loader = Self.loadAsset,
+        loader: Loader? = nil,
         preparer: @escaping Preparer = { asset in
             try await SiteVisitMediaUploadPreparer.shared.prepare(
                 data: asset.data,
@@ -169,8 +176,12 @@ struct SiteVisitMediaSyncManager {
     func uploadPendingMedia(
         artifactId: String,
         mediaOperation: SyncOperation,
-        context: ModelContext
+        context: ModelContext,
+        isCurrent: () -> Bool = { true },
+        isolation: isolated (any Actor)? = #isolation
     ) async throws {
+        try Task.checkCancellation()
+        guard isCurrent() else { throw CancellationError() }
         // Predicate-scoped, fetchLimit 1: this runs once per media operation
         // inside the same drain that crashed on a whole-table fetch registering
         // every artifact in the actor's context (bug 3eef6ad7).
@@ -199,8 +210,13 @@ struct SiteVisitMediaSyncManager {
 
             let asset: LoadedAsset
             do {
-                asset = try loader(source)
+                if let loader { asset = try loader(source) }
+                else { asset = try await SiteVisitMediaAssetLoader.shared.load(source) }
+                try Task.checkCancellation()
+                guard isCurrent() else { throw CancellationError() }
             } catch let error as SiteVisitMediaSyncError {
+                try Task.checkCancellation()
+                guard isCurrent() else { throw CancellationError() }
                 guard case .localFileMissing = error else { throw error }
                 // The bytes are gone and the local file was the only copy, so
                 // no future drain can ever succeed. Clearing the dead pointer
@@ -224,6 +240,8 @@ struct SiteVisitMediaSyncManager {
                 continue
             }
             let prepared = try await preparer(asset)
+            try Task.checkCancellation()
+            guard isCurrent() else { throw CancellationError() }
             let remoteURL = try await uploader(
                 artifact.siteVisitId.lowercased(),
                 artifact.id.lowercased(),
@@ -231,6 +249,8 @@ struct SiteVisitMediaSyncManager {
                 prepared.data,
                 prepared.contentType
             )
+            try Task.checkCancellation()
+            guard isCurrent() else { throw CancellationError() }
             guard Self.isRemoteURL(remoteURL) else {
                 throw SiteVisitMediaSyncError.invalidRemoteURL(remoteURL)
             }
@@ -349,7 +369,7 @@ struct SiteVisitMediaSyncManager {
         return scheme == "https" || scheme == "http"
     }
 
-    private static func loadAsset(_ source: String) throws -> LoadedAsset {
+    fileprivate static func loadAsset(_ source: String) throws -> LoadedAsset {
         let fileURL: URL?
         if source.hasPrefix("file://") {
             fileURL = URL(string: source)

@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import Combine
 
 enum ExpenseSettingsLoadState: Equatable {
     case idle
@@ -53,7 +54,80 @@ protocol ExpenseBatchApprovalRepository {
     func triggerAccountingSync(expenseId: String) async
 }
 
-extension ExpenseRepository: ExpenseBatchApprovalRepository {}
+@MainActor
+protocol ExpenseConsoleRepository {
+    func fetchBatches() async throws -> [ExpenseBatchDTO]
+    func fetchAll() async throws -> [ExpenseDTO]
+    func fetchSettings() async throws -> ExpenseSettingsDTO?
+}
+
+extension ExpenseRepository: ExpenseBatchApprovalRepository, ExpenseConsoleRepository {}
+
+/// Process-wide financial receipts outlive any particular console. Claims
+/// protect pending work; accepted receipts protect stale/reopened consoles
+/// after the original operation releases its claim.
+@MainActor
+final class ExpenseBatchApprovalState: ObservableObject {
+    static let shared = ExpenseBatchApprovalState()
+
+    struct Key: Hashable {
+        let companyId: String
+        let batchId: String
+
+        init(_ batch: ExpenseBatchDTO) {
+            companyId = batch.companyId.lowercased()
+            batchId = batch.id.lowercased()
+        }
+    }
+
+    @Published private(set) var accepted: [Key: Int] = [:]
+    @Published private(set) var claims: Set<Key> = []
+    private(set) var receiptVersion = 0
+
+    func claim(_ batches: [ExpenseBatchDTO]) -> Set<Key> {
+        let keys = Set(batches.map(Key.init))
+        claims.formUnion(keys)
+        return keys
+    }
+
+    func release(_ keys: Set<Key>) {
+        claims.subtract(keys)
+    }
+
+    func recordAccepted(_ batch: ExpenseBatchDTO) {
+        receiptVersion += 1
+        accepted[Key(batch)] = receiptVersion
+    }
+
+    func reconcile(_ batches: [ExpenseBatchDTO], readStartedAt version: Int) {
+        // A previously-started read cannot undo a newer receipt. An explicit
+        // later server transition back to review remains authoritative.
+        let retired = batches.compactMap { batch -> Key? in
+            let key = Key(batch)
+            guard let acceptedAt = accepted[key], acceptedAt <= version,
+                  !claims.contains(key),
+                  ExpenseBatchStatus(rawValue: batch.status)?.needsReview == true else { return nil }
+            return key
+        }
+        guard !retired.isEmpty else { return }
+        var remaining = accepted
+        for key in retired { remaining.removeValue(forKey: key) }
+        accepted = remaining
+    }
+}
+
+struct ExpenseBatchApprovalResult: Equatable {
+    let savedCount: Int
+    let requestedCount: Int
+    let refreshRequired: Bool
+
+    var toastLabel: String {
+        if refreshRequired {
+            return "// \(savedCount) OF \(requestedCount) APPROVED · REFRESH NEEDED"
+        }
+        return "// \(savedCount) OF \(requestedCount) BATCHES APPROVED"
+    }
+}
 
 @MainActor
 class ExpenseViewModel: ObservableObject {
@@ -79,19 +153,43 @@ class ExpenseViewModel: ObservableObject {
     @Published private(set) var hasSavedCurrentApproval = false
     @Published private(set) var approvalBatchNumber = 0
     @Published private(set) var approvalBatchCount = 0
-    @Published private(set) var confirmedApprovedBatchIds: Set<String> = []
     @Published private(set) var approvalRefreshRequired = false
+    @Published private(set) var lastBatchApprovalResult: ExpenseBatchApprovalResult?
+
+    var confirmedApprovedBatchIds: Set<String> {
+        Set(reviewBatches.compactMap { batch in
+            guard belongsToCurrentCompany(batch),
+                  approvalState.accepted[ExpenseBatchApprovalState.Key(batch)] != nil else { return nil }
+            return batch.id
+        })
+    }
+
+    var approvalInFlightBatchIds: Set<String> {
+        Set(reviewBatches.compactMap { batch in
+            guard belongsToCurrentCompany(batch),
+                  approvalState.claims.contains(ExpenseBatchApprovalState.Key(batch)) else { return nil }
+            return batch.id
+        })
+    }
 
     /// Shared by list and reopened detail views; not tied to sheet lifetime.
     var batchApprovalRepository: ExpenseBatchApprovalRepository?
+    var consoleRepository: ExpenseConsoleRepository?
     private var consoleLoadGeneration = 0
     private var batchLineLoadGeneration = 0
     private var selectedBatchId: String?
     private var needsConsoleRefreshAfterApproval = false
-    /// A second console can be opened while a popped console's button task
-    /// still finishes. Protect that overlap too, scoped to company + batch.
-    private static var batchApprovalClaims: Set<String> = []
-    private var ownedBatchApprovalClaims: Set<String> = []
+    private let approvalState: ExpenseBatchApprovalState
+    private var approvalStateObservation: AnyCancellable?
+    private var ownedBatchApprovalClaims: Set<ExpenseBatchApprovalState.Key> = []
+    private var batchApprovalFailure: String?
+
+    init(approvalState: ExpenseBatchApprovalState? = nil) {
+        self.approvalState = approvalState ?? .shared
+        approvalStateObservation = self.approvalState.objectWillChange.sink { [weak self] _ in
+            self?.objectWillChange.send()
+        }
+    }
 
     var approvalProgressLabel: String {
         if approvalBatchCount > 1 {
@@ -103,10 +201,16 @@ class ExpenseViewModel: ObservableObject {
     }
 
     func canApproveBatch(_ batch: ExpenseBatchDTO) -> Bool {
-        guard !isApprovingBatches, !confirmedApprovedBatchIds.contains(batch.id),
-              !Self.batchApprovalClaims.contains(approvalClaimKey(batch)) else { return false }
+        let key = ExpenseBatchApprovalState.Key(batch)
+        guard belongsToCurrentCompany(batch), !isApprovingBatches,
+              approvalState.accepted[key] == nil,
+              !approvalState.claims.contains(key) else { return false }
         let current = reviewBatches.first(where: { $0.id == batch.id }) ?? batch
         return ExpenseBatchStatus(rawValue: current.status)?.needsReview == true
+    }
+
+    private func belongsToCurrentCompany(_ batch: ExpenseBatchDTO) -> Bool {
+        storedCompanyId == nil || storedCompanyId?.lowercased() == batch.companyId.lowercased()
     }
 
     private var repository: ExpenseRepository?
@@ -229,8 +333,8 @@ class ExpenseViewModel: ObservableObject {
         storedUserName = currentUserName
         repository = ExpenseRepository(companyId: companyId)
         batchApprovalRepository = repository
+        consoleRepository = repository
         if companyChanged {
-            confirmedApprovedBatchIds = []
             approvalRefreshRequired = false
             consoleLoadGeneration += 1
             settings = nil
@@ -528,9 +632,10 @@ class ExpenseViewModel: ObservableObject {
     /// in parallel. The strip and the queue derive from the SAME two datasets
     /// so the numbers can never disagree with the list beneath them.
     func loadConsole() async {
-        guard let repo = repository else { return }
+        guard let repo = consoleRepository else { return }
         consoleLoadGeneration += 1
         let generation = consoleLoadGeneration
+        let receiptVersion = approvalState.receiptVersion
         isLoading = true
         defer { isLoading = false }
         do {
@@ -542,6 +647,7 @@ class ExpenseViewModel: ObservableObject {
             // old review row back over its authoritative affected-row readback.
             guard generation == consoleLoadGeneration else { return }
             reviewBatches = batches
+            approvalState.reconcile(batches, readStartedAt: receiptVersion)
             expenses = lines
             settings = loadedSettings
             settingsLoadState = .loaded
@@ -556,19 +662,27 @@ class ExpenseViewModel: ObservableObject {
     /// Debounced realtime refresh. RealtimeProcessor posts `.expenseUpdated`
     /// for every `expenses` / `expense_batches` change — coalesce bursts
     /// (an approval flips a batch plus each of its lines) into one reload.
-    func scheduleRealtimeRefresh() {
+    @discardableResult
+    func scheduleRealtimeRefresh() -> Task<Void, Never>? {
         // Own approval events can be one event per line. Preserve a refresh for
         // unrelated changes too, but do not refetch the whole company mid-run.
         if isApprovingBatches {
             needsConsoleRefreshAfterApproval = true
-            return
+            return nil
         }
         realtimeRefreshTask?.cancel()
         realtimeRefreshTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 500_000_000)
-            guard !Task.isCancelled else { return }
-            await self?.loadConsole()
+            guard !Task.isCancelled, let self else { return }
+            // The operation may have started while this debounce was asleep.
+            // Keep one deferred reload instead of launching three full reads.
+            if self.isApprovingBatches {
+                self.needsConsoleRefreshAfterApproval = true
+                return
+            }
+            await self.loadConsole()
         }
+        return realtimeRefreshTask
     }
 
     /// Per-batch line counts + flag counts for the loaded company lines.
@@ -594,13 +708,19 @@ class ExpenseViewModel: ObservableObject {
     func approveBatch(_ batch: ExpenseBatchDTO, silent: Bool = false) async -> Bool {
         guard let repo = batchApprovalRepository, canApproveBatch(batch) else { return false }
         claimBatchApprovals([batch])
+        batchApprovalFailure = nil
+        lastBatchApprovalResult = nil
         isApprovingBatches = true
         approvalBatchNumber = 1
         approvalBatchCount = 1
         hasSavedCurrentApproval = false
         defer { finishBatchApproval() }
         let saved = await persistBatchApproval(batch, repository: repo)
-        if saved && !silent { presentApprovalResult() }
+        let result = ExpenseBatchApprovalResult(
+            savedCount: saved ? 1 : 0, requestedCount: 1, refreshRequired: approvalRefreshRequired)
+        lastBatchApprovalResult = result
+        if saved && !silent { presentApprovalResult(result) }
+        if !saved { self.error = batchApprovalFailure }
         return saved
     }
 
@@ -609,13 +729,15 @@ class ExpenseViewModel: ObservableObject {
     @discardableResult
     func approveBatches(_ batches: [ExpenseBatchDTO]) async -> Int {
         guard let repo = batchApprovalRepository, !isApprovingBatches else { return 0 }
-        var seen: Set<String> = []
+        var seen: Set<ExpenseBatchApprovalState.Key> = []
         let lineStats = consoleLineStats
         let requested = batches.filter {
-            seen.insert($0.id).inserted && canApproveBatch($0) && (lineStats[$0.id]?.flagged ?? 0) == 0
+            seen.insert(ExpenseBatchApprovalState.Key($0)).inserted && canApproveBatch($0) && (lineStats[$0.id]?.flagged ?? 0) == 0
         }
         guard !requested.isEmpty else { return 0 }
         claimBatchApprovals(requested)
+        batchApprovalFailure = nil
+        lastBatchApprovalResult = nil
         isApprovingBatches = true
         approvalBatchCount = requested.count
         defer { finishBatchApproval() }
@@ -626,30 +748,26 @@ class ExpenseViewModel: ObservableObject {
             guard await persistBatchApproval(batch, repository: repo) else { break }
             approvedCount += 1
         }
+        let result = ExpenseBatchApprovalResult(
+            savedCount: approvedCount, requestedCount: requested.count, refreshRequired: approvalRefreshRequired)
+        lastBatchApprovalResult = result
         if approvedCount > 0 {
-            if approvalRefreshRequired {
-                presentApprovalResult()
-            } else if approvedCount == requested.count {
-                ToastCenter.shared.present(Feedback.Batch.allApproved)
-            } else {
-                ToastCenter.shared.present(Toast(
-                    label: "// \(approvedCount) OF \(requested.count) BATCHES APPROVED", tone: .warning))
-            }
+            // One result owns both partial success and refresh trouble; a
+            // generic failure toast must not displace its saved/requested count.
+            self.error = nil
+            presentApprovalResult(result)
+        } else {
+            self.error = batchApprovalFailure
         }
         return approvedCount
     }
 
-    private func approvalClaimKey(_ batch: ExpenseBatchDTO) -> String {
-        "\(batch.companyId.lowercased()):\(batch.id.lowercased())"
-    }
-
     private func claimBatchApprovals(_ batches: [ExpenseBatchDTO]) {
-        ownedBatchApprovalClaims = Set(batches.map(approvalClaimKey))
-        Self.batchApprovalClaims.formUnion(ownedBatchApprovalClaims)
+        ownedBatchApprovalClaims = approvalState.claim(batches)
     }
 
     private func finishBatchApproval() {
-        Self.batchApprovalClaims.subtract(ownedBatchApprovalClaims)
+        approvalState.release(ownedBatchApprovalClaims)
         ownedBatchApprovalClaims.removeAll()
         isApprovingBatches = false
         hasSavedCurrentApproval = false
@@ -666,14 +784,14 @@ class ExpenseViewModel: ObservableObject {
         do {
             try await repo.approveBatchAtomic(batch.id)
         } catch {
-            self.error = error.localizedDescription
+            batchApprovalFailure = error.localizedDescription
             return false
         }
 
         // This is a receipt of the completed RPC, never an optimistic status.
         // Keep it even when a subsequent read fails, so retrying a stale detail
         // cannot submit the same decision or accounting work again.
-        confirmedApprovedBatchIds.insert(batch.id)
+        approvalState.recordAccepted(batch)
         hasSavedCurrentApproval = true
         consoleLoadGeneration += 1
         self.error = nil
@@ -720,13 +838,17 @@ class ExpenseViewModel: ObservableObject {
         return true
     }
 
-    private func presentApprovalResult() {
-        if approvalRefreshRequired {
+    private func presentApprovalResult(_ result: ExpenseBatchApprovalResult) {
+        if result.refreshRequired {
             ToastCenter.shared.present(Toast(
-                label: "// APPROVAL SAVED · REFRESH NEEDED", tone: .warning,
+                label: result.toastLabel, tone: .warning,
                 action: ToastAction(label: "REFRESH") { [weak self] in
                     Task { await self?.loadConsole() }
                 }))
+        } else if result.savedCount < result.requestedCount {
+            ToastCenter.shared.present(Toast(label: result.toastLabel, tone: .warning))
+        } else if result.requestedCount > 1 {
+            ToastCenter.shared.present(Feedback.Batch.allApproved)
         } else {
             ToastCenter.shared.present(Feedback.Batch.approved)
         }

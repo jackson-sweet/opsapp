@@ -279,7 +279,8 @@ struct ExpensesListView: View {
                             pendingPayBatches = group.batches
                             showPayConfirm = !pendingPayBatches.isEmpty
                         },
-                        approvalLockedBatchIds: viewModel.confirmedApprovedBatchIds
+                        approvalLockedBatchIds: viewModel.confirmedApprovedBatchIds,
+                        approvalInFlightBatchIds: viewModel.approvalInFlightBatchIds
                     )
                     .opacity(hasAppeared ? 1 : 0)
                     .animation(reduceMotion ? nil : OPSStyle.Animation.panel, value: selectedBucket)

@@ -106,7 +106,9 @@ class ExpenseRepository {
     // MARK: - Accounting Sync
 
     /// Triggers the accounting-sync-expense Edge Function for an approved expense.
-    /// Fire-and-forget — logs errors but does not throw, so approval is not blocked.
+    /// Best-effort and error-contained: logs failures without throwing.
+    /// Awaiting callers still wait for this request; this method does not
+    /// detach delivery or provide a durable retry queue.
     func triggerAccountingSync(expenseId: String) async {
         do {
             try await client.functions.invoke(

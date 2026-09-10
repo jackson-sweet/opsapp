@@ -112,7 +112,7 @@ struct ExpenseBatchDetailView: View {
                         sectionHeader("EXPENSES")
 
                         expenseCards
-                            .disabled(viewModel.isApprovingBatches)
+                            .disabled(viewModel.isApprovingBatches || viewModel.approvalInFlightBatchIds.contains(batch.id))
                     }
                     .padding(.bottom, hasFooter ? 100 : OPSStyle.Layout.spacing5)
                 }
@@ -646,6 +646,9 @@ struct ExpenseBatchDetailView: View {
                     footerButton(viewModel.approvalProgressLabel, background: OPSStyle.Colors.successStatus) {}
                         .disabled(true)
                         .accessibilityValue("Approval in progress")
+                } else if viewModel.approvalInFlightBatchIds.contains(batch.id) {
+                    footerButton("APPROVAL IN PROGRESS", background: OPSStyle.Colors.successStatus) {}
+                        .disabled(true)
                 } else if isReviewable && viewModel.confirmedApprovedBatchIds.contains(batch.id) {
                     footerButton("APPROVED · REFRESH PENDING", background: OPSStyle.Colors.successStatus) {}
                         .disabled(true)

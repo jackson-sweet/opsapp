@@ -7,7 +7,15 @@ import XCTest
 final class ExpenseBatchApprovalTests: XCTestCase {
     private enum Failure: Error { case offline }
 
-    private final class Repository: ExpenseBatchApprovalRepository {
+    private final class Repository: ExpenseBatchApprovalRepository, ExpenseConsoleRepository {
+        var consoleBatchReads = 0
+        var consoleLineReads = 0
+        var consoleSettingsReads = 0
+        var consoleLoadFails = false
+        var consoleBatches: [ExpenseBatchDTO] = []
+        var pauseConsole = false
+        var consoleGate: CheckedContinuation<Void, Never>?
+        var consoleStarted: (() -> Void)?
         var approvalCalls: [String] = []
         var batchReads: [String] = []
         var lineReads: [String] = []
@@ -23,6 +31,29 @@ final class ExpenseBatchApprovalTests: XCTestCase {
         var pauseSync = false
         var approvalStarted: (() -> Void)?
         var syncStarted: (() -> Void)?
+
+        func fetchBatches() async throws -> [ExpenseBatchDTO] {
+            consoleBatchReads += 1
+            let snapshot = consoleBatches
+            if pauseConsole {
+                await withCheckedContinuation { continuation in
+                    consoleGate = continuation
+                    consoleStarted?()
+                }
+            }
+            if consoleLoadFails { throw Failure.offline }
+            return snapshot
+        }
+
+        func fetchAll() async throws -> [ExpenseDTO] {
+            consoleLineReads += 1
+            return []
+        }
+
+        func fetchSettings() async throws -> ExpenseSettingsDTO? {
+            consoleSettingsReads += 1
+            return nil
+        }
 
         func approveBatchAtomic(_ id: String) async throws {
             approvalCalls.append(id)
@@ -59,7 +90,8 @@ final class ExpenseBatchApprovalTests: XCTestCase {
     }
 
     func testPendingApprovalLocksDuplicateAndReopenedDetailBeforeServerResponse() async throws {
-        let (model, repo, batch) = try fixture()
+        let sharedState = ExpenseBatchApprovalState()
+        let (model, repo, batch) = try fixture(sharedState: sharedState)
         repo.pauseApproval = true
         let started = expectation(description: "approval request started")
         repo.approvalStarted = { started.fulfill() }
@@ -77,14 +109,25 @@ final class ExpenseBatchApprovalTests: XCTestCase {
         XCTAssertFalse(duplicate)
         XCTAssertEqual(repo.approvalCalls, [batch.id])
         // Popping the entire console and reopening it creates a new model.
-        let (reopened, reopenedRepo, reopenedBatch) = try fixture()
+        let (reopened, reopenedRepo, reopenedBatch) = try fixture(sharedState: sharedState)
         let reopenedSaved = await reopened.approveBatch(reopenedBatch)
         XCTAssertFalse(reopenedSaved)
         XCTAssertTrue(reopenedRepo.approvalCalls.isEmpty)
+        XCTAssertTrue(reopened.approvalInFlightBatchIds.contains(batch.id))
         repo.approvalGate?.resume()
         let saved = await operation.value
         XCTAssertTrue(saved)
         XCTAssertFalse(model.isApprovingBatches)
+        XCTAssertEqual(reopened.reviewBatches.first?.status, "pending_review", "Simulate missed realtime")
+        XCTAssertTrue(reopened.confirmedApprovedBatchIds.contains(batch.id))
+        let afterCompletion = await reopened.approveBatch(reopenedBatch)
+        XCTAssertFalse(afterCompletion)
+        reopenedRepo.consoleLoadFails = true
+        await reopened.loadConsole()
+        let afterFailedRefresh = await reopened.approveBatch(reopenedBatch)
+        XCTAssertFalse(afterFailedRefresh)
+        XCTAssertTrue(reopenedRepo.approvalCalls.isEmpty)
+        XCTAssertTrue(reopenedRepo.syncCalls.isEmpty)
     }
 
     func testAccountingRemainsSerialAndAwaitedWhileCanonicalApprovalIsVisible() async throws {
@@ -184,7 +227,8 @@ final class ExpenseBatchApprovalTests: XCTestCase {
         let third = try makeBatch("third", status: "pending_review")
         model.reviewBatches += [second, third]
         repo.approvalFailure = second.id
-        let count = await model.approveBatches([batch, batch, second, third])
+        let sameIdentity = try makeBatch(batch.id.uppercased(), status: "pending_review")
+        let count = await model.approveBatches([batch, batch, sameIdentity, second, third])
         XCTAssertEqual(count, 1)
         XCTAssertEqual(repo.approvalCalls, [batch.id, second.id])
         XCTAssertFalse(model.canApproveBatch(batch))
@@ -240,18 +284,127 @@ final class ExpenseBatchApprovalTests: XCTestCase {
         XCTAssertEqual(model.reviewBatches.first?.status, "pending_review")
     }
 
-    private func fixture() throws -> (ExpenseViewModel, Repository, ExpenseBatchDTO) {
-        let model = ExpenseViewModel()
+    func testSharedReceiptPublishesToAnotherOpenConsole() async throws {
+        let sharedState = ExpenseBatchApprovalState()
+        let (model, _, batch) = try fixture(sharedState: sharedState)
+        let (reopened, _, _) = try fixture(sharedState: sharedState)
+        var changes = 0
+        let observation = reopened.objectWillChange.sink { changes += 1 }
+        let saved = await model.approveBatch(batch)
+        XCTAssertTrue(saved)
+        XCTAssertGreaterThan(changes, 0, "Existing views must redraw when a receipt arrives elsewhere")
+        XCTAssertTrue(reopened.confirmedApprovedBatchIds.contains(batch.id))
+        withExtendedLifetime(observation) {}
+    }
+
+    func testFreshAuthoritativeReviewStateCanRetireAcceptedReceipt() async throws {
+        let (model, repo, batch) = try fixture()
+        let saved = await model.approveBatch(batch)
+        XCTAssertTrue(saved)
+        XCTAssertFalse(model.canApproveBatch(batch))
+        // A later successful server read is the only authority to reopen it.
+        repo.consoleBatches = [batch]
+        await model.loadConsole()
+        XCTAssertTrue(model.canApproveBatch(batch))
+        XCTAssertTrue(model.confirmedApprovedBatchIds.isEmpty)
+    }
+
+    func testConsoleReadStartedBeforeAcceptanceCannotRetireReceipt() async throws {
+        let state = ExpenseBatchApprovalState()
+        let (model, _, batch) = try fixture(sharedState: state)
+        let (reopened, repo, _) = try fixture(sharedState: state)
+        repo.pauseConsole = true
+        repo.consoleBatches = [batch]
+        let started = expectation(description: "stale console read started")
+        repo.consoleStarted = { started.fulfill() }
+        let staleLoad = Task { await reopened.loadConsole() }
+        await fulfillment(of: [started], timeout: 1)
+        let saved = await model.approveBatch(batch)
+        XCTAssertTrue(saved)
+        repo.consoleGate?.resume()
+        await staleLoad.value
+        XCTAssertEqual(reopened.reviewBatches.first?.status, "pending_review")
+        XCTAssertFalse(reopened.canApproveBatch(batch))
+        XCTAssertTrue(reopened.confirmedApprovedBatchIds.contains(batch.id))
+    }
+
+    func testReceiptIsCompanyScopedAndSurvivesSwitchingBack() async throws {
+        let sharedState = ExpenseBatchApprovalState()
+        let (model, _, batch) = try fixture(sharedState: sharedState)
+        let saved = await model.approveBatch(batch)
+        XCTAssertTrue(saved)
+        let otherBatch = try makeBatch(batch.id, status: "pending_review", companyId: "other-company")
+        model.setup(companyId: "other-company")
+        model.reviewBatches = [otherBatch]
+        XCTAssertTrue(model.confirmedApprovedBatchIds.isEmpty)
+        XCTAssertTrue(model.canApproveBatch(otherBatch))
+        XCTAssertFalse(model.canApproveBatch(batch), "Stale rows from another company cannot be submitted")
+        model.setup(companyId: batch.companyId)
+        model.reviewBatches = [batch]
+        XCTAssertTrue(model.confirmedApprovedBatchIds.contains(batch.id))
+        XCTAssertFalse(model.canApproveBatch(batch))
+    }
+
+    func testPrequeuedRealtimeRefreshDefersAllReadsUntilApprovalFinishes() async throws {
+        let (model, repo, batch) = try fixture()
+        repo.pauseApproval = true
+        repo.consoleBatches = [try makeBatch(batch.id, status: "approved")]
+        let started = expectation(description: "approval started")
+        repo.approvalStarted = { started.fulfill() }
+        let refreshed = expectation(description: "one coalesced console reload completed")
+        let observation = model.$settingsLoadState.filter { $0 == .loaded }.sink { _ in refreshed.fulfill() }
+        // Schedule first, then enter approval before the debounce expires.
+        let queued = try XCTUnwrap(model.scheduleRealtimeRefresh())
+        let operation = Task { await model.approveBatch(batch) }
+        await fulfillment(of: [started], timeout: 1)
+        await queued.value
+        XCTAssertEqual(repo.consoleBatchReads, 0)
+        XCTAssertEqual(repo.consoleLineReads, 0)
+        XCTAssertEqual(repo.consoleSettingsReads, 0)
+        model.scheduleRealtimeRefresh()
+        model.scheduleRealtimeRefresh()
+        repo.approvalGate?.resume()
+        let saved = await operation.value
+        XCTAssertTrue(saved)
+        await fulfillment(of: [refreshed], timeout: 5)
+        XCTAssertEqual(repo.consoleBatchReads, 1)
+        XCTAssertEqual(repo.consoleLineReads, 1)
+        XCTAssertEqual(repo.consoleSettingsReads, 1)
+        withExtendedLifetime(observation) {}
+    }
+
+    func testBulkKeepsSavedCountWhenReadbackAndLaterWriteBothFail() async throws {
+        let (model, repo, first) = try fixture()
+        let second = try makeBatch("second", status: "pending_review")
+        model.reviewBatches.append(second)
+        repo.batchReadFails = true
+        repo.approvalFailure = second.id
+        let count = await model.approveBatches([first, second])
+        XCTAssertEqual(count, 1)
+        let result = try XCTUnwrap(model.lastBatchApprovalResult)
+        XCTAssertEqual(result.savedCount, 1)
+        XCTAssertEqual(result.requestedCount, 2)
+        XCTAssertTrue(result.refreshRequired)
+        XCTAssertTrue(result.toastLabel.contains("1 OF 2"))
+        XCTAssertTrue(result.toastLabel.contains("REFRESH NEEDED"))
+        XCTAssertNil(model.error, "The counted result replaces a competing generic failure toast")
+        XCTAssertFalse(model.canApproveBatch(first))
+        XCTAssertTrue(model.canApproveBatch(second))
+    }
+
+    private func fixture(sharedState: ExpenseBatchApprovalState? = nil) throws -> (ExpenseViewModel, Repository, ExpenseBatchDTO) {
+        let model = ExpenseViewModel(approvalState: sharedState ?? ExpenseBatchApprovalState())
         let repository = Repository()
         model.batchApprovalRepository = repository
+        model.consoleRepository = repository
         let batch = try makeBatch("batch", status: "pending_review")
         model.reviewBatches = [batch]
         repository.approvedRows[batch.id] = try makeBatch(batch.id, status: "approved")
         return (model, repository, batch)
     }
 
-    private func makeBatch(_ id: String, status: String) throws -> ExpenseBatchDTO {
-        try decode(["id": id, "company_id": "company", "batch_number": "EXP-1", "status": status,
+    private func makeBatch(_ id: String, status: String, companyId: String = "company") throws -> ExpenseBatchDTO {
+        try decode(["id": id, "company_id": companyId, "batch_number": "EXP-1", "status": status,
                     "total_amount": 200, "created_at": "2026-09-01T12:00:00Z"])
     }
 

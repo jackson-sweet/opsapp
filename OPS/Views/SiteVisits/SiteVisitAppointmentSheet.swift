@@ -78,7 +78,9 @@ struct SiteVisitAppointmentSheet: View {
     /// START is honest from the morning of the visit day onward — the same
     /// today-rule the calendar's branch dialog uses (DayCanvasView).
     private func startIsAvailable(_ snapshot: BookSiteVisitForm.BookingSnapshot, now: Date) -> Bool {
-        Calendar.current.isDate(snapshot.scheduledAt, inSameDayAs: now) || snapshot.scheduledAt <= now
+        // The visit day only. A booking from an earlier day that nobody started
+        // is missed, not late — its remedy is REBOOK (bug 2b085519).
+        Calendar.current.isDate(snapshot.scheduledAt, inSameDayAs: now)
     }
 
     @MainActor
@@ -184,23 +186,36 @@ struct SiteVisitAppointmentContent: View {
         .accessibilityElement(children: .combine)
     }
 
+    /// Booked for a day that has already gone and never started — overdue,
+    /// so rose, and the number is how long ago rather than a window that
+    /// closed days back (bug 2b085519).
+    private var isMissed: Bool {
+        scheduledAt < Calendar.current.startOfDay(for: now)
+    }
+
     /// The number the sheet exists for. Window open = tan (attention, the
-    /// site-visit semantic), otherwise neutral. Mono, always.
+    /// site-visit semantic), missed = rose, otherwise neutral. Mono, always.
     private var countdownBlock: some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
-            Text(countdownToken == nil ? "// VISIT WINDOW OPEN" : "// UNTIL VISIT")
+            Text(isMissed ? "// MISSED" : (countdownToken == nil ? "// VISIT WINDOW OPEN" : "// UNTIL VISIT"))
                 .font(OPSStyle.Typography.nanoLabel)
                 .tracking(1.2)
-                .foregroundColor(countdownToken == nil ? OPSStyle.Colors.tanTextM : OPSStyle.Colors.text3)
+                .foregroundColor(
+                    isMissed
+                        ? OPSStyle.Colors.roseTextM
+                        : (countdownToken == nil ? OPSStyle.Colors.tanTextM : OPSStyle.Colors.text3)
+                )
 
-            Text(countdownToken ?? "NOW")
+            Text(isMissed ? DaySheetDateToken.age(scheduledAt, now: now) : (countdownToken ?? "NOW"))
                 .font(OPSStyle.Typography.subtitle)
                 .foregroundColor(OPSStyle.Colors.primaryText)
                 .monospacedDigit()
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(
-            countdownToken.map { "Time until visit, \($0.lowercased())" } ?? "Visit window open"
+            isMissed
+                ? "Visit missed, \(DaySheetDateToken.age(scheduledAt, now: now).lowercased())"
+                : countdownToken.map { "Time until visit, \($0.lowercased())" } ?? "Visit window open"
         )
     }
 

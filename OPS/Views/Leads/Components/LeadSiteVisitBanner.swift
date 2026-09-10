@@ -24,6 +24,13 @@
 //                                 not at cannot be started, and a button that
 //                                 can only be wrong is worse than no button.
 //    · booked, window open      → START leads, REBOOK / CANCEL behind it.
+//    · booked, day already gone → MISSED with its real date; REBOOK leads,
+//                                 CANCEL behind it. No START: a booking
+//                                 nobody started or cancelled days ago is
+//                                 not a visit somebody is late for — it has
+//                                 to be put back on the calendar or killed
+//                                 (bug 2b085519: an Aug 28 booking read
+//                                 "SITE VISIT · TODAY" two weeks later).
 //    · no convert grant         → the FACT, and no verbs. That a visit is
 //                                 booked is worth knowing to anyone who can
 //                                 read the lead; acting on it is not.
@@ -45,6 +52,9 @@ import SwiftUI
 enum LeadSiteVisitBannerState: Equatable {
     case hidden
     case booked(token: String, windowOpen: Bool)
+    /// Booked for a day that has already gone, and never started or
+    /// cancelled. The token carries the booking's real date.
+    case missed(token: String)
 
     /// - Parameter scheduledAt: the lead's OPEN booking's time, or nil when it
     ///   has none. `SiteVisitBookingLookup.openBooking` is the one definition
@@ -56,23 +66,35 @@ enum LeadSiteVisitBannerState: Equatable {
         calendar: Calendar = .current
     ) -> LeadSiteVisitBannerState {
         guard let scheduledAt else { return .hidden }
+        let token = SiteVisitBookingLookup.bookedToken(
+            for: scheduledAt,
+            now: now,
+            calendar: calendar
+        )
+        // A booking whose DAY is behind today is missed, not late: earlier
+        // today is still the visit somebody is running behind on.
+        if scheduledAt < calendar.startOfDay(for: now) {
+            return .missed(token: token)
+        }
         return .booked(
-            token: SiteVisitBookingLookup.bookedToken(
-                for: scheduledAt,
-                now: now,
-                calendar: calendar
-            ),
+            token: token,
             // The same today-rule the appointment sheet and the calendar's
             // branch dialog use: START is honest from the morning of the visit
-            // day onward.
+            // day onward. Earlier days never reach here.
             windowOpen: calendar.isDate(scheduledAt, inSameDayAs: now)
-                || scheduledAt <= now
         )
     }
 
     var token: String? {
-        if case let .booked(token, _) = self { return token }
-        return nil
+        switch self {
+        case .hidden: return nil
+        case let .booked(token, _), let .missed(token): return token
+        }
+    }
+
+    var isMissed: Bool {
+        if case .missed = self { return true }
+        return false
     }
 
     var windowOpen: Bool {
@@ -106,61 +128,90 @@ struct LeadSiteVisitBanner: View {
     static let accessibilityID = "lead-site-visit-banner"
 
     var body: some View {
-        if case let .booked(token, windowOpen) = state {
-            // The headline carries its own 44pt row, so the stack rides tight
-            // against it rather than adding a second gap.
-            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
-                headline(token)
-
-                if canManage {
-                    actions(windowOpen: windowOpen)
-                }
-            }
-            .padding(.horizontal, OPSStyle.Layout.spacing3)
-            .padding(.vertical, OPSStyle.Layout.spacing2)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            // Solid command surface + the mobile-bright tan edge. Tan is the
-            // site-visit semantic (DESIGN.md §3); the -M line clears the
-            // outdoor-glare contrast commandCard(tone:)'s 0.30 border would not
-            // — the same treatment WonNotConvertedCard gives its olive.
-            .commandCard()
-            .overlay(
-                RoundedRectangle(
-                    cornerRadius: OPSStyle.Layout.panelRadius,
-                    style: .continuous
-                )
-                .strokeBorder(OPSStyle.Colors.tanLineM, lineWidth: OPSStyle.Layout.Border.standard)
+        switch state {
+        case .hidden:
+            EmptyView()
+        case let .booked(token, windowOpen):
+            card(
+                headline: "SITE VISIT · \(token)",
+                spoken: "Site visit booked, \(token.lowercased())",
+                missed: false,
+                windowOpen: windowOpen
             )
-            .padding(.horizontal, OPSStyle.Layout.spacing3_5)
-            .accessibilityIdentifier(Self.accessibilityID)
+        case let .missed(token):
+            card(
+                headline: "SITE VISIT · MISSED \(token)",
+                spoken: "Site visit missed, booked for \(token.lowercased())",
+                missed: true,
+                windowOpen: false
+            )
         }
     }
 
+    private func card(
+        headline text: String,
+        spoken: String,
+        missed: Bool,
+        windowOpen: Bool
+    ) -> some View {
+        // The headline carries its own 44pt row, so the stack rides tight
+        // against it rather than adding a second gap.
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+            headline(text, spoken: spoken, missed: missed)
+
+            if canManage {
+                actions(windowOpen: windowOpen, missed: missed)
+            }
+        }
+        .padding(.horizontal, OPSStyle.Layout.spacing3)
+        .padding(.vertical, OPSStyle.Layout.spacing2)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        // Solid command surface + the mobile-bright tan edge. Tan is the
+        // site-visit semantic (DESIGN.md §3); the -M line clears the
+        // outdoor-glare contrast commandCard(tone:)'s 0.30 border would not
+        // — the same treatment WonNotConvertedCard gives its olive. A missed
+        // booking is overdue, so it takes rose, the overdue semantic, at the
+        // same -M strength.
+        .commandCard()
+        .overlay(
+            RoundedRectangle(
+                cornerRadius: OPSStyle.Layout.panelRadius,
+                style: .continuous
+            )
+            .strokeBorder(
+                missed ? OPSStyle.Colors.roseLineM : OPSStyle.Colors.tanLineM,
+                lineWidth: OPSStyle.Layout.Border.standard
+            )
+        )
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+        .accessibilityIdentifier(Self.accessibilityID)
+    }
+
     @ViewBuilder
-    private func headline(_ token: String) -> some View {
+    private func headline(_ text: String, spoken: String, missed: Bool) -> some View {
         if let onDetails {
             Button {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 onDetails()
             } label: {
-                headlineRow(token, showsDisclosure: true)
+                headlineRow(text, missed: missed, showsDisclosure: true)
             }
             .buttonStyle(PlainButtonStyle())
-            .accessibilityLabel("Site visit booked, \(token.lowercased()). Opens visit details")
+            .accessibilityLabel("\(spoken). Opens visit details")
         } else {
-            headlineRow(token, showsDisclosure: false)
+            headlineRow(text, missed: missed, showsDisclosure: false)
                 .accessibilityElement(children: .combine)
-                .accessibilityLabel("Site visit booked, \(token.lowercased())")
+                .accessibilityLabel(spoken)
         }
     }
 
-    private func headlineRow(_ token: String, showsDisclosure: Bool) -> some View {
+    private func headlineRow(_ text: String, missed: Bool, showsDisclosure: Bool) -> some View {
         HStack(spacing: OPSStyle.Layout.spacing2) {
             HStack(spacing: 0) {
                 Text("// ")
                     .foregroundColor(OPSStyle.Colors.textMute)
-                Text("SITE VISIT · \(token)")
-                    .foregroundColor(OPSStyle.Colors.tanTextM)
+                Text(text)
+                    .foregroundColor(missed ? OPSStyle.Colors.roseTextM : OPSStyle.Colors.tanTextM)
             }
             .font(OPSStyle.Typography.miniLabel)
             .fontWeight(.semibold)
@@ -182,7 +233,7 @@ struct LeadSiteVisitBanner: View {
     }
 
     @ViewBuilder
-    private func actions(windowOpen: Bool) -> some View {
+    private func actions(windowOpen: Bool, missed: Bool) -> some View {
         HStack(spacing: OPSStyle.Layout.spacing2) {
             if windowOpen {
                 verb(
@@ -192,11 +243,12 @@ struct LeadSiteVisitBanner: View {
                     spoken: "Start this site visit"
                 )
             }
+            // A missed booking's remedy is a new time, so REBOOK leads.
             verb(
                 "REBOOK",
-                emphasis: .standard,
+                emphasis: missed ? .lead : .standard,
                 action: onRebook,
-                spoken: "Move this site visit"
+                spoken: missed ? "Book a new time for this site visit" : "Move this site visit"
             )
             verb(
                 "CANCEL",
@@ -301,6 +353,10 @@ struct LeadSiteVisitBanner: View {
         LeadSiteVisitBanner(
             state: .booked(token: "TUE 2:00PM", windowOpen: false),
             canManage: false
+        )
+        LeadSiteVisitBanner(
+            state: .missed(token: "AUG 28 10:00AM"),
+            canManage: true
         )
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)

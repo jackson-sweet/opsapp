@@ -25,6 +25,7 @@ struct OPSButtonStyle {
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
                         .stroke(border, lineWidth: 1)
                 )
+                .bugReportPickable(.button)
                 .scaleEffect(configuration.isPressed ? 0.98 : 1.0)
                 .animation(OPSStyle.Animation.hover, value: configuration.isPressed)
         }
@@ -60,6 +61,7 @@ struct OPSButtonStyle {
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.chipRadius)
                         .stroke(OPSStyle.Colors.line, lineWidth: OPSStyle.Layout.Border.standard)
                 )
+                .bugReportPickable(.button)
                 .frame(minHeight: OPSStyle.Layout.touchTargetMin)
                 .contentShape(Rectangle())
                 .animation(OPSStyle.Animation.hover, value: configuration.isPressed)
@@ -82,6 +84,7 @@ struct OPSButtonStyle {
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
                         .stroke(OPSStyle.Colors.line, lineWidth: 1)
                 )
+                .bugReportPickable(.button)
                 .scaleEffect(configuration.isPressed ? 0.98 : 1.0)
                 .animation(OPSStyle.Animation.hover, value: configuration.isPressed)
         }
@@ -107,6 +110,7 @@ struct OPSButtonStyle {
                     RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
                         .stroke(OPSStyle.Colors.roseLine, lineWidth: 1)
                 )
+                .bugReportPickable(.button)
                 .scaleEffect(configuration.isPressed ? 0.98 : 1.0)
                 .animation(OPSStyle.Animation.hover, value: configuration.isPressed)
         }
@@ -126,6 +130,7 @@ struct OPSButtonStyle {
                 .frame(width: size, height: size)
                 .background(configuration.isPressed ? OPSStyle.Colors.surfaceHover : backgroundColor)
                 .clipShape(Circle())
+                .bugReportPickable(.button)
                 .scaleEffect(configuration.isPressed ? 0.94 : 1.0)
                 .animation(OPSStyle.Animation.hover, value: configuration.isPressed)
         }

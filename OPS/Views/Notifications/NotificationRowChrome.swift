@@ -103,6 +103,7 @@ struct NotificationRowChrome<Icon: View, Detail: View>: View {
                 ? OPSStyle.Colors.primaryAccent.opacity(0.25)
                 : OPSStyle.Colors.glassBorder
         )
+        .bugReportPickable(.row, label: title)
         .padding(.horizontal, OPSStyle.Layout.spacing3)
         .padding(.vertical, OPSStyle.Layout.spacing1)
     }
@@ -169,6 +170,7 @@ struct NotificationActionButton: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(PlainButtonStyle())
+        .bugReportPickable(.button, label: label)
         .padding(.horizontal, OPSStyle.Layout.spacing3)
     }
 }

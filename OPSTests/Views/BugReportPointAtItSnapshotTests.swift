@@ -2,11 +2,19 @@
 //  BugReportPointAtItSnapshotTests.swift
 //  OPSTests
 //
-//  Visual proof for bug 5aabcc3a — the optional POINT AT IT step on the
-//  screenshot-triggered bug report: the offer, the marked state with its ring,
-//  and the armed full-screen shot the operator taps.
+//  Visual proof for bug 14e5a792 — POINT AT IT picks on the live app:
 //
-//  Extract: xcrun xcresulttool export attachments --path <dd>/Logs/Test/*.xcresult --output-path <dir>
+//    · the pick layer armed over a real screen (bar only, app untouched)
+//    · the pick layer with a finger on a house button: outline, dim, tag
+//    · the pick layer with a finger on a plain line of text
+//    · the report sheet after a pick: SPOT MARKED, the element's name, and
+//      the pick-time screenshot with the element outlined
+//    · the enlarged screenshot, outlined
+//
+//  Everything is rendered in the app host's own window, with the real probe,
+//  Vision and resolution pipeline — no staged answers.
+//
+//  Extract: xcrun xcresulttool export attachments --path <result>.xcresult --output-path <dir>
 //
 
 #if DEBUG
@@ -18,22 +26,9 @@ import UIKit
 @MainActor
 final class BugReportPointAtItSnapshotTests: XCTestCase {
 
-    private let sheetSize = CGSize(width: 390, height: 700)
-    private let screenSize = CGSize(width: 390, height: 844)
-
-    private func snapshot<V: View>(
-        _ name: String,
-        size: CGSize,
-        @ViewBuilder content: () -> V
-    ) throws {
-        let image = try FixedSizeSnapshot.render(
-            content()
-                .environment(\.colorScheme, .dark),
-            size: size,
-            minimumSettle: 0.3
-        )
+    private func attach(_ image: UIImage, _ name: String) {
         guard let data = image.pngData() else {
-            return XCTFail("Failed to render \(name)")
+            return XCTFail("Failed to encode \(name)")
         }
         let attachment = XCTAttachment(data: data, uniformTypeIdentifier: "public.png")
         attachment.name = "\(name).png"
@@ -42,127 +37,125 @@ final class BugReportPointAtItSnapshotTests: XCTestCase {
         print("SNAPSHOT \(name) (\(Int(image.size.width))x\(Int(image.size.height))pt)")
     }
 
-    /// A stand-in for the captured screen: dark canvas, a header band, and a
-    /// button-shaped block at the spot the mark points to.
-    private func syntheticScreen() -> UIImage {
-        UIGraphicsImageRenderer(size: screenSize).image { ctx in
-            UIColor.black.setFill()
-            ctx.fill(CGRect(origin: .zero, size: screenSize))
-            UIColor(white: 0.14, alpha: 1).setFill()
-            ctx.fill(CGRect(x: 0, y: 0, width: screenSize.width, height: 110))
-            UIColor(white: 0.10, alpha: 1).setFill()
-            for row in 0..<5 {
-                ctx.fill(CGRect(x: 20, y: 140 + row * 90, width: 350, height: 72))
-            }
-            // A neutral control band, deliberately NOT the accent colour — the
-            // mark's own legibility is proven by the halo test below.
-            UIColor(white: 0.22, alpha: 1).setFill()
-            ctx.fill(CGRect(x: 20, y: 300, width: 350, height: 52))
-            UIColor(red: 0.435, green: 0.580, blue: 0.690, alpha: 1).setFill()
-            ctx.fill(CGRect(x: 20, y: 620, width: 350, height: 52))
-        }
-    }
+    /// The representative screen, pick mode on, Vision finished.
+    private func armedStage() async throws -> (BugReportPickStage, BugReportPickSession) {
+        BugReportPickMode.shared.deactivate()
+        let stage = try BugReportPickStage(BugReportPickRepresentativeScreen())
+        BugReportPickMode.shared.activate()
+        await stage.settle()
 
-    private func capture() -> BugReportCaptureService.AppWindowCapture {
-        BugReportCaptureService.AppWindowCapture(
-            screenshot: syntheticScreen(),
-            elements: [
-                .init(frame: CGRect(origin: .zero, size: screenSize), depth: 0, viewType: "UIWindow"),
-                .init(
-                    frame: CGRect(x: 20, y: 300, width: 350, height: 52),
-                    depth: 4,
-                    label: "Start job",
-                    identifier: "job.start",
-                    viewType: "SwiftUIButton"
-                ),
-                .init(frame: CGRect(x: 24, y: 304, width: 342, height: 44), depth: 6, viewType: "_UIGraphicsView")
-            ],
-            size: screenSize
+        let session = BugReportPickSession(
+            appWindow: stage.window,
+            screenName: "Leads",
+            capture: { _ in stage.render() }
         )
+        session.arm()
+        await BugReportPickProbeReadout.awaitText(session)
+        XCTAssertTrue(session.linesReady)
+        return (stage, session)
     }
 
-    private var markOnTheButton: BugReportElementMark {
-        BugReportElementHitTest.mark(
-            atNormalized: CGPoint(x: 195.0 / 390.0, y: 326.0 / 844.0),
-            windowSize: screenSize,
-            candidates: capture().elements
-        )
+    private func layer(for session: BugReportPickSession) -> BugReportPickLayer {
+        BugReportPickLayer(session: session, onCancel: {}, onLift: { _ in })
     }
 
-    private func sheet(
-        mark: BugReportElementMark? = nil,
-        pointing: Bool = false
-    ) -> some View {
-        BugReportSheet(
-            capture: capture(),
-            onClose: {},
-            initialElementMark: mark,
-            initialPointing: pointing
-        )
-        .environmentObject(AppState())
-        .environmentObject(DataController())
-    }
-
-    /// Before pointing: the evidence card offers the step and nothing else has
-    /// changed about the report.
-    func testSheetOffersPointAtIt() throws {
-        try snapshot("bugreport-point-offer", size: sheetSize) {
-            sheet()
+    func testPickLayerArmedOverTheLiveScreen() async throws {
+        let (stage, session) = try await armedStage()
+        defer {
+            stage.tearDown()
+            BugReportPickMode.shared.deactivate()
         }
+        stage.overlay(layer(for: session))
+        await stage.settle(minimum: 0.4)
+        XCTAssertNil(session.target, "Nothing is outlined before a finger lands")
+        attach(stage.render(), "pick-layer-armed")
     }
 
-    /// After one tap: the ring rides the thumbnail and the card names what the
-    /// frozen hierarchy found there.
-    func testSheetShowsTheMarkedSpot() throws {
-        try snapshot("bugreport-point-marked", size: sheetSize) {
-            sheet(mark: markOnTheButton)
+    func testPickLayerOutlinesAButtonAndTagsIt() async throws {
+        let (stage, session) = try await armedStage()
+        defer {
+            stage.tearDown()
+            BugReportPickMode.shared.deactivate()
         }
+        stage.overlay(layer(for: session))
+        await stage.settle(minimum: 0.3)
+
+        let probes = BugReportPickProbeReadout.probes(in: stage.window)
+        let button = try XCTUnwrap(probes.first { $0.role == .button && $0.component == "ButtonStyles" })
+        session.track(at: BugReportPickProbeReadout.centre(of: button, in: stage.window))
+        await stage.settle(minimum: 0.4)
+
+        let target = try XCTUnwrap(session.target)
+        XCTAssertEqual(target.role, .button)
+        print("PICK TAG: \(target.tagText)")
+        attach(stage.render(), "pick-layer-button")
     }
 
-    /// Armed: the full-screen shot with the instruction and the SKIP out.
-    /// Rendered directly — a `fullScreenCover` presents outside its host's
-    /// view, so a snapshot of the sheet would capture the sheet, not the cover.
-    func testArmedFullScreenAwaitsTheTap() throws {
-        try snapshot("bugreport-point-armed", size: screenSize) {
+    func testPickLayerOnAPlainLineOfText() async throws {
+        let (stage, session) = try await armedStage()
+        defer {
+            stage.tearDown()
+            BugReportPickMode.shared.deactivate()
+        }
+        stage.overlay(layer(for: session))
+        await stage.settle(minimum: 0.3)
+
+        let header = try XCTUnwrap(session.lines.first { $0.text.uppercased().contains("THIS WEEK") })
+        session.track(at: CGPoint(x: header.frame.midX, y: header.frame.midY))
+        await stage.settle(minimum: 0.4)
+
+        let target = try XCTUnwrap(session.target)
+        XCTAssertEqual(target.source, .text)
+        print("PICK TAG: \(target.tagText)")
+        attach(stage.render(), "pick-layer-text")
+    }
+
+    func testTheReportSheetComesBackWithTheOutlinedPick() async throws {
+        let (stage, session) = try await armedStage()
+        // Idempotent — the explicit teardown below hands the window back
+        // before the sheet renders; this one covers an early throw.
+        defer {
+            stage.tearDown()
+            BugReportPickMode.shared.deactivate()
+        }
+        let probes = BugReportPickProbeReadout.probes(in: stage.window)
+        let start = try XCTUnwrap(probes.first { $0.label == "START" })
+        let spot = try await XCTUnwrapAsync(
+            await session.commit(at: BugReportPickProbeReadout.centre(of: start, in: stage.window))
+        )
+        let trigger = stage.render()
+        stage.tearDown()
+        BugReportPickMode.shared.deactivate()
+
+        let draft = BugReportDraft(
+            triggerScreenshot: trigger,
+            description: "START does nothing on this visit",
+            category: .bug
+        )
+        draft.mark(spot.element, screenshot: spot.screenshot)
+        XCTAssertEqual(draft.element?.resolution.cardText, "START · BUTTON")
+
+        let sheet = try FixedSizeSnapshot.render(
+            BugReportSheet(draft: draft, onClose: {}, onPointAtIt: {})
+                .environmentObject(AppState())
+                .environmentObject(DataController())
+                .environment(\.colorScheme, .dark),
+            size: CGSize(width: 390, height: 700),
+            minimumSettle: 0.3
+        )
+        attach(sheet, "report-sheet-after-pick")
+
+        let viewer = try FixedSizeSnapshot.render(
             BugReportScreenshotViewer(
-                image: syntheticScreen(),
-                mark: nil,
-                isPointing: true,
-                onPlace: { _ in },
+                image: draft.screenshot,
+                element: draft.element,
                 onClose: {}
             )
-        }
-    }
-
-    /// The mark landing on a FILLED ACCENT control — the case where a bare
-    /// steel-blue ring would vanish. The halo is what keeps it readable.
-    func testRingStaysLegibleOnAnAccentFilledControl() throws {
-        try snapshot("bugreport-point-ring-on-accent", size: screenSize) {
-            BugReportScreenshotViewer(
-                image: syntheticScreen(),
-                mark: BugReportElementHitTest.mark(
-                    atNormalized: CGPoint(x: 195.0 / 390.0, y: 646.0 / 844.0),
-                    windowSize: screenSize,
-                    candidates: capture().elements
-                ),
-                isPointing: false,
-                onPlace: { _ in },
-                onClose: {}
-            )
-        }
-    }
-
-    /// The ring, at full size, on the spot that was tapped.
-    func testFullScreenShowsTheRingOnTheSpot() throws {
-        try snapshot("bugreport-point-ring", size: screenSize) {
-            BugReportScreenshotViewer(
-                image: syntheticScreen(),
-                mark: markOnTheButton,
-                isPointing: false,
-                onPlace: { _ in },
-                onClose: {}
-            )
-        }
+            .environment(\.colorScheme, .dark),
+            size: CGSize(width: 390, height: 844),
+            minimumSettle: 0.2
+        )
+        attach(viewer, "viewer-with-outline")
     }
 }
 #endif

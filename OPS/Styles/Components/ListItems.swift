@@ -66,6 +66,7 @@ struct ListItem: View {
             .opacity(isDisabled ? 0.55 : 1)
         }
         .disabled(isDisabled)
+        .bugReportPickable(.row, label: title)
     }
 }
 

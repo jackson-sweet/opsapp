@@ -39,21 +39,19 @@ final class ProjectCreationCompletion: ObservableObject {
 
     static func toast(
         for notification: Notification,
-        notificationCenter: NotificationCenter = .default
+        coordinator: DeepLinkCoordinator? = nil
     ) -> Toast {
+        let routeCoordinator = coordinator ?? .shared
         let target = notification.userInfo?[ProjectCreationPresentationTarget.userInfoKey] as? ProjectCreationPresentationTarget
         return Feedback.JobBoard.projectCreated(
             title: notification.userInfo?["projectTitle"] as? String ?? "",
             projectID: notification.userInfo?["projectId"] as? String
         ) { projectID in
-            // The existing mounted route checks permissions and resolves the
-            // local project first, including projects still waiting to sync.
-            var info: [AnyHashable: Any] = ["projectId": projectID]
-            if let target { info[ProjectCreationPresentationTarget.userInfoKey] = target }
-            notificationCenter.post(
-                name: .openProjectDetails,
-                object: nil,
-                userInfo: info
+            // Retain intent before posting: the mounted route may defer behind
+            // PIN, then the existing unlock drain retries its unchanged checks.
+            routeCoordinator.receive(
+                entity: "projects", id: projectID, scheme: "toast",
+                projectCreationPresentationTarget: target
             )
         }
     }

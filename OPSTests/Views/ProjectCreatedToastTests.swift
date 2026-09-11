@@ -45,6 +45,8 @@ final class ProjectCreatedToastTests: XCTestCase {
 
     func testToastBodyPostsExistingRouteWithImmutableProjectIDOnce() {
         let notifications = NotificationCenter()
+        let coordinator = DeepLinkCoordinator(notificationCenter: notifications)
+        defer { coordinator.clear() }
         var routes: [Notification] = []
         let observer = notifications.addObserver(forName: .openProjectDetails, object: nil, queue: nil) {
             routes.append($0)
@@ -53,7 +55,7 @@ final class ProjectCreatedToastTests: XCTestCase {
         var info = ["projectId": "project-a", "projectTitle": "North deck"]
         let toast = ProjectCreationCompletion.toast(
             for: Notification(name: ProjectCreationCompletion.notificationName, userInfo: info),
-            notificationCenter: notifications
+            coordinator: coordinator
         )
         info["projectId"] = "project-b"
         center.present(toast)

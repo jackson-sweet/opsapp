@@ -24,6 +24,10 @@ final class ProjectCreatedNestedPresentationTests: XCTestCase {
         try await assertNestedPresentation(parentPlacement: .outerContainer, outcome: .parentClosed)
     }
 
+    func testPINBlockedToastReplaysAfterUnlockAboveParent() async throws {
+        try await assertNestedPresentation(parentPlacement: .outerContainer, outcome: .pinLocked)
+    }
+
     private func assertNestedPresentation(
         parentPlacement: ParentSheetPlacement,
         outcome: RouteOutcome = .allowed
@@ -33,6 +37,7 @@ final class ProjectCreatedNestedPresentationTests: XCTestCase {
         let state = AppState()
         let presentation = NestedCreationPresentation(outcome: outcome)
         let routes = NotificationCenter()
+        let coordinator = DeepLinkCoordinator(notificationCenter: routes)
         let created = expectation(description: "Child creation finished dismissal")
         let parentVisible = expectation(description: "Parent form fully presented")
         let parentClosed = outcome == .parentClosed
@@ -41,14 +46,15 @@ final class ProjectCreatedNestedPresentationTests: XCTestCase {
         let destinationVisible = expectation(description: "Validated route destination visibly presented")
         let destinationClosed = expectation(description: "Route destination finished dismissal")
         let completion = ProjectCreationCompletion { notification in
-            ToastCenter.shared.present(ProjectCreationCompletion.toast(for: notification, notificationCenter: routes))
+            ToastCenter.shared.present(ProjectCreationCompletion.toast(for: notification, coordinator: coordinator))
             created.fulfill()
         }
         let host = UIHostingController(rootView: NestedCreationRoot(
             presentation: presentation, appState: state, completion: completion,
-            routes: routes, parentPlacement: parentPlacement
+            routes: routes, coordinator: coordinator, parentPlacement: parentPlacement
         ))
         defer {
+            coordinator.clear()
             ToastCenter.shared.reset()
             presentation.editDraft = nil
             presentation.readDraft = nil
@@ -93,9 +99,18 @@ final class ProjectCreatedNestedPresentationTests: XCTestCase {
 
         let toast = try XCTUnwrap(ToastCenter.shared.current)
         ToastCenter.shared.handleTap(toastID: toast.id, target: .message)
+        if outcome == .pinLocked {
+            XCTAssertNil(ToastCenter.shared.current)
+            XCTAssertNil(parent.presentedViewController)
+            XCTAssertEqual(coordinator.pendingLink?.id, "project-a")
+            XCTAssertNotNil(coordinator.pendingLink?.projectCreationPresentationTarget)
+            presentation.pinAuthenticated = true
+            coordinator.drain(context: "pin_unlocked")
+        }
         await fulfillment(of: [destinationVisible], timeout: 3)
         let destination = try XCTUnwrap(presentation.destinationController)
-        XCTAssertEqual(presentation.routedIDs, ["project-a"])
+        XCTAssertEqual(presentation.routedIDs, outcome == .pinLocked ? ["project-a", "project-a"] : ["project-a"])
+        XCTAssertNil(coordinator.pendingLink)
         XCTAssertTrue(presentation.receivedOriginTarget)
         XCTAssertEqual(presentation.displayedDestinationID,
                        outcome == .denied ? "denied:\(NestedCreationPresentation.denialMessage)" : "project:project-a")
@@ -135,6 +150,7 @@ private enum RouteOutcome: Equatable {
     case allowed
     case denied
     case parentClosed
+    case pinLocked
 }
 
 @MainActor
@@ -149,6 +165,7 @@ private final class NestedCreationPresentation: ObservableObject {
     var routedIDs: [String] = []
     var receivedOriginTarget = false
     var displayedDestinationID: String?
+    var pinAuthenticated: Bool
     var editDraft: ((String) -> Void)?
     var readDraft: (() -> String)?
     var saveCreation: (() -> Void)?
@@ -159,7 +176,10 @@ private final class NestedCreationPresentation: ObservableObject {
     var onDestinationVisible: (() -> Void)?
     var onDestinationClosed: (() -> Void)?
 
-    init(outcome: RouteOutcome) { self.outcome = outcome }
+    init(outcome: RouteOutcome) {
+        self.outcome = outcome
+        self.pinAuthenticated = outcome != .pinLocked
+    }
 }
 
 private struct NestedCreationRoot: View {
@@ -167,6 +187,7 @@ private struct NestedCreationRoot: View {
     @ObservedObject var appState: AppState
     let completion: ProjectCreationCompletion
     let routes: NotificationCenter
+    let coordinator: DeepLinkCoordinator
     let parentPlacement: ParentSheetPlacement
 
     var body: some View {
@@ -176,11 +197,15 @@ private struct NestedCreationRoot: View {
                 let target = notification.userInfo?[ProjectCreationPresentationTarget.userInfoKey] as? ProjectCreationPresentationTarget
                 presentation.routedIDs.append(id)
                 presentation.receivedOriginTarget = target != nil
+                // Matches MainTabView's PIN early-return contract: defer without
+                // clearing or presenting until the existing unlock drain runs.
+                guard presentation.pinAuthenticated else { return }
                 // The actual production handoff, after MainTabView's existing
                 // local-first resolution and unchanged authorization checks.
                 let destination: ProjectCreationDestination = presentation.outcome == .denied
                     ? .denied(NestedCreationPresentation.denialMessage)
                     : .project(Project(id: id, title: "North deck", status: .rfq))
+                coordinator.clear()
                 ProjectCreationPresentationTarget.deliver(destination, to: target) {
                     appState.viewProjectDetailsById(id)
                 }

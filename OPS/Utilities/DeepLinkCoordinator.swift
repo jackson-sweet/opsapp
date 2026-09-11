@@ -109,7 +109,15 @@ final class DeepLinkCoordinator: ObservableObject {
 
     static let shared = DeepLinkCoordinator()
 
-    private init() {}
+    private let notificationCenter: NotificationCenter
+
+    private convenience init() {
+        self.init(notificationCenter: .default)
+    }
+
+    init(notificationCenter: NotificationCenter) {
+        self.notificationCenter = notificationCenter
+    }
 
     // MARK: - Model
 
@@ -138,6 +146,10 @@ final class DeepLinkCoordinator: ObservableObject {
         /// attached) from cold-launch (was_running=false, observers likely
         /// not attached yet).
         let wasRunning: Bool
+
+        /// An optional address for an originating creation parent. Its endpoint
+        /// is weak; retaining navigation intent never retains an unfinished form.
+        let projectCreationPresentationTarget: ProjectCreationPresentationTarget?
     }
 
     // MARK: - Published State
@@ -158,7 +170,12 @@ final class DeepLinkCoordinator: ObservableObject {
     ///
     /// Malformed URLs (unknown entity, empty ID) emit `deep_link_malformed`
     /// and are NOT stashed — they would never resolve.
-    func receive(entity: String, id: String, scheme: String) {
+    func receive(
+        entity: String,
+        id: String,
+        scheme: String,
+        projectCreationPresentationTarget: ProjectCreationPresentationTarget? = nil
+    ) {
         // Validate
         guard isKnownEntity(entity) else {
             AnalyticsService.shared.track(
@@ -194,7 +211,8 @@ final class DeepLinkCoordinator: ObservableObject {
             deepLinkId: UUID(),
             receivedAt: Date(),
             scheme: scheme,
-            wasRunning: UIApplication.shared.applicationState != .inactive
+            wasRunning: UIApplication.shared.applicationState != .inactive,
+            projectCreationPresentationTarget: entity == "projects" ? projectCreationPresentationTarget : nil
         )
 
         pendingLink = link
@@ -269,14 +287,14 @@ final class DeepLinkCoordinator: ObservableObject {
             // Should be unreachable — validated in receive().
             return
         }
-        NotificationCenter.default.post(
-            name: name,
-            object: nil,
-            userInfo: [
-                entityIdKey: link.id,
-                Self.deepLinkIdUserInfoKey: link.deepLinkId.uuidString
-            ]
-        )
+        var info: [AnyHashable: Any] = [
+            entityIdKey: link.id,
+            Self.deepLinkIdUserInfoKey: link.deepLinkId.uuidString
+        ]
+        if let target = link.projectCreationPresentationTarget {
+            info[ProjectCreationPresentationTarget.userInfoKey] = target
+        }
+        notificationCenter.post(name: name, object: nil, userInfo: info)
     }
 
     /// Mapping from entity name to the notification name and the key under

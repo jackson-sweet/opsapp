@@ -17,7 +17,11 @@ enum ProjectCreationDestination: Identifiable {
 /// project route must validate access before delivering either outcome here.
 /// Keeping only a weak endpoint lets a toast outlive a dismissed parent form.
 @MainActor
-final class ProjectCreationPresentationTarget {
+final class ProjectCreationPresentationTarget: Equatable {
+    nonisolated static func == (lhs: ProjectCreationPresentationTarget, rhs: ProjectCreationPresentationTarget) -> Bool {
+        lhs === rhs
+    }
+
     static let userInfoKey = "projectCreationPresentationTarget"
     private weak var endpoint: ProjectCreationPresentationEndpoint?
 

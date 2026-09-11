@@ -248,6 +248,9 @@ final class CalendarMirrorContentTests: XCTestCase {
 
         event.address = " \n"
         XCTAssertNil(CalendarMirrorContent.payload(for: event).location)
+
+        event.address = nil
+        XCTAssertNil(CalendarMirrorContent.payload(for: event).location)
     }
 
     func test_task_locationUsesResolvedProjectAddress() throws {
@@ -256,13 +259,20 @@ final class CalendarMirrorContentTests: XCTestCase {
         )
         task.startDate = Date(timeIntervalSince1970: 1_800_000_000)
         task.endDate = Date(timeIntervalSince1970: 1_800_086_400)
-        let payload = try XCTUnwrap(CalendarMirrorContent.payload(
-            for: task,
-            projectDisplayName: "Front stairs",
-            taskTypeDisplay: "Install",
-            address: " 123 Main St \n"
-        ))
-        XCTAssertEqual(payload.location, "123 Main St")
+        let cases: [(address: String?, expected: String?)] = [
+            (" 123 Main St \n", "123 Main St"),
+            (" \n", nil),
+            (nil, nil)
+        ]
+        for (index, row) in cases.enumerated() {
+            let payload = try XCTUnwrap(CalendarMirrorContent.payload(
+                for: task,
+                projectDisplayName: "Front stairs",
+                taskTypeDisplay: "Install",
+                address: row.address
+            ))
+            XCTAssertEqual(payload.location, row.expected, "Task location case \(index)")
+        }
     }
 
     func test_canonicalHash_tracksLocationEvenWhenNotesAreUnchanged() {
@@ -353,6 +363,10 @@ final class CalendarMirrorContentTests: XCTestCase {
         CalendarMirrorEventMapping.apply(payload: removed, to: event)
         XCTAssertTrue((event.location ?? "").isEmpty)
         XCTAssertEqual(event.notes, "Confirm access.\n// OPS · view in app")
+        XCTAssertFalse(CalendarMirrorEventMapping.needsUpdate(
+            payload: removed, event: event, contentHash: removed.canonicalHash
+        ))
+        event.location = ""
         XCTAssertFalse(CalendarMirrorEventMapping.needsUpdate(
             payload: removed, event: event, contentHash: removed.canonicalHash
         ))

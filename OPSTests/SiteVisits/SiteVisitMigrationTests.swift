@@ -246,7 +246,7 @@ final class SiteVisitMigrationTests: XCTestCase {
             artifact.opportunityId = visit.opportunityId
             context.insert(artifact)
 
-            let answer = SiteVisitChecklistAnswer(
+            let answer = OPSSchemaLegacyPhoneV27.SiteVisitChecklistAnswer(
                 id: answerID,
                 siteVisitId: visitID,
                 companyId: companyID,
@@ -312,9 +312,16 @@ final class SiteVisitMigrationTests: XCTestCase {
         XCTAssertEqual(artifact.title, "North elevation", target)
         XCTAssertEqual(artifact.localAssetURL, "file:///visit/north.jpg", target)
 
-        let answer = try XCTUnwrap(try context.fetch(FetchDescriptor<SiteVisitChecklistAnswer>()).first, target)
-        XCTAssertEqual(answer.id, answerID, target)
-        XCTAssertEqual(answer.answerValue.text, "North gate", target)
+        if targetVersion.versionIdentifier == OPSSchemaCurrent.versionIdentifier {
+            let answer = try XCTUnwrap(try context.fetch(FetchDescriptor<SiteVisitChecklistAnswer>()).first, target)
+            XCTAssertEqual(answer.id, answerID, target)
+            XCTAssertEqual(answer.answerValue.text, "North gate", target)
+            XCTAssertNil(answer.siteVisitWriteStateData)
+        } else {
+            let answer = try XCTUnwrap(try context.fetch(FetchDescriptor<OPSSchemaLegacyPhoneV27.SiteVisitChecklistAnswer>()).first, target)
+            XCTAssertEqual(answer.id, answerID, target)
+            XCTAssertEqual(answer.answerValue.text, "North gate", target)
+        }
 
         let draft = try XCTUnwrap(try context.fetch(FetchDescriptor<SiteVisitIdentityDraft>()).first, target)
         XCTAssertEqual(draft.id, draftID, target)

@@ -20,4 +20,4 @@
 //  V19/V22-pinned harnesses do exactly that).
 //
 
-typealias OPSSchemaCurrent = OPSSchemaV27
+typealias OPSSchemaCurrent = OPSSchemaV28

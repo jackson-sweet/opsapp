@@ -1,0 +1,30 @@
+Test Suite 'Selected tests' started at 2026-09-10 22:44:45.889.
+Test Suite 'OPSTests.xctest' started at 2026-09-10 22:44:45.890.
+Test Suite 'AppUpdateMigrationTests' started at 2026-09-10 22:44:45.890.
+Test Case '-[OPSTests.AppUpdateMigrationTests testDeclaredSchemaChecksumsStayImmutable]' started.
+Test Case '-[OPSTests.AppUpdateMigrationTests testDeclaredSchemaChecksumsStayImmutable]' passed (1.191 seconds).
+Test Suite 'AppUpdateMigrationTests' passed at 2026-09-10 22:44:47.082.
+	 Executed 1 test, with 0 failures (0 unexpected) in 1.191 (1.192) seconds
+Test Suite 'CatalogDataFoundationTests' started at 2026-09-10 22:44:47.082.
+Test Case '-[OPSTests.CatalogDataFoundationTests testMigrationPlanStagesHaveModelSetDeltasAcrossAllVersions]' started.
+Test Case '-[OPSTests.CatalogDataFoundationTests testMigrationPlanStagesHaveModelSetDeltasAcrossAllVersions]' passed (0.007 seconds).
+Test Suite 'CatalogDataFoundationTests' passed at 2026-09-10 22:44:47.090.
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.007 (0.008) seconds
+Test Suite 'DeckMergeBaseMigrationTests' started at 2026-09-10 22:44:47.090.
+Test Case '-[OPSTests.DeckMergeBaseMigrationTests testMigratedDirtyDrawingStaysUnsentWhenFirstSaveHasUnchangedContent]' started.
+Test Case '-[OPSTests.DeckMergeBaseMigrationTests testMigratedDirtyDrawingStaysUnsentWhenFirstSaveHasUnchangedContent]' passed (2.433 seconds).
+Test Case '-[OPSTests.DeckMergeBaseMigrationTests testReleasedV16PreservesUnsentDrawingAndOutboxThroughEveryAdjacentStage]' started.
+Test Case '-[OPSTests.DeckMergeBaseMigrationTests testReleasedV16PreservesUnsentDrawingAndOutboxThroughEveryAdjacentStage]' passed (1.834 seconds).
+Test Case '-[OPSTests.DeckMergeBaseMigrationTests testReleasedV16ThroughV25KeepFrozenDeckModel]' started.
+Test Case '-[OPSTests.DeckMergeBaseMigrationTests testReleasedV16ThroughV25KeepFrozenDeckModel]' passed (0.001 seconds).
+Test Case '-[OPSTests.DeckMergeBaseMigrationTests testReleasedV25PreservesUnsentVisitPacketAndDrawingAcrossUpgradeAndReopen]' started.
+Test Case '-[OPSTests.DeckMergeBaseMigrationTests testReleasedV25PreservesUnsentVisitPacketAndDrawingAcrossUpgradeAndReopen]' passed (1.794 seconds).
+Test Case '-[OPSTests.DeckMergeBaseMigrationTests testWidenedDebugV25OpensAtV26PreservingMergeBaseAndStoppedOutbox]' started.
+Test Case '-[OPSTests.DeckMergeBaseMigrationTests testWidenedDebugV25OpensAtV26PreservingMergeBaseAndStoppedOutbox]' passed (1.892 seconds).
+Test Suite 'DeckMergeBaseMigrationTests' passed at 2026-09-10 22:44:55.045.
+	 Executed 5 tests, with 0 failures (0 unexpected) in 7.954 (7.955) seconds
+Test Suite 'OPSTests.xctest' passed at 2026-09-10 22:44:55.045.
+	 Executed 7 tests, with 0 failures (0 unexpected) in 9.153 (9.156) seconds
+Test Suite 'Selected tests' passed at 2026-09-10 22:44:55.045.
+	 Executed 7 tests, with 0 failures (0 unexpected) in 9.153 (9.156) seconds
+** TEST SUCCEEDED **

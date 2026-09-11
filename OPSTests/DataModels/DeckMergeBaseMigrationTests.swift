@@ -28,7 +28,7 @@ final class DeckMergeBaseMigrationTests: XCTestCase {
                 ObjectIdentifier($0) == ObjectIdentifier(OPSSchemaLegacyDeckDesignV25.DeckDesign.self)
             })
         }
-        XCTAssertEqual(OPSSchemaCurrent.versionIdentifier, Schema.Version(27, 0, 0))
+        XCTAssertEqual(OPSSchemaCurrent.versionIdentifier, Schema.Version(28, 0, 0))
         XCTAssertEqual(OPSMigrationPlan.schemas.count, OPSMigrationPlan.stages.count + 1)
     }
 
@@ -53,7 +53,7 @@ final class DeckMergeBaseMigrationTests: XCTestCase {
                 id: "identity-1", siteVisitId: visit.id, companyId: visit.companyId,
                 searchText: "Partial contact", notes: "Call after measurements", createdBy: "user-1"
             ))
-            let answer = SiteVisitChecklistAnswer(
+            let answer = OPSSchemaLegacyPhoneV27.SiteVisitChecklistAnswer(
                 id: "answer-1", siteVisitId: visit.id, companyId: visit.companyId,
                 opportunityId: nil, siteVisitTypeId: nil, fieldId: "width", label: "Width",
                 kind: .shortText, required: true, sortOrder: 1, answerValue: .text("Unsent answer")
@@ -180,8 +180,8 @@ final class DeckMergeBaseMigrationTests: XCTestCase {
         return deck
     }
 
-    private func makeOperation() -> SyncOperation {
-        let operation = SyncOperation(
+    private func makeOperation() -> OPSSchemaLegacyPhoneV27.SyncOperation {
+        let operation = OPSSchemaLegacyPhoneV27.SyncOperation(
             entityType: SyncEntityType.deckDesign.rawValue, entityId: "deck-1", operationType: "update",
             payload: payload, changedFields: ["drawing_data"], dependsOnId: "visit-parent-operation"
         )

@@ -1460,7 +1460,7 @@ enum OPSSchemaCommon {
         // Core data models
         TaskTemplate.self,
         TaskStatusOption.self,
-        SyncOperation.self,
+        OPSSchemaLegacyPhoneV27.SyncOperation.self,
         OpsContact.self,
 
         // Supabase-backed models
@@ -1786,9 +1786,19 @@ enum OPSSchemaCommon {
     /// project creation.
     static let v11SiteVisitCaptureModels: [any PersistentModel.Type] = [
         SiteVisitCaptureArtifact.self,
-        SiteVisitType.self,
-        SiteVisitChecklistAnswer.self
+        OPSSchemaLegacyPhoneV27.SiteVisitType.self,
+        OPSSchemaLegacyPhoneV27.SiteVisitChecklistAnswer.self
     ]
+
+    /// V28 adds durable form write-state and operation actor/receipt custody.
+    static let v28SiteVisitCaptureModels: [any PersistentModel.Type] = [
+        SiteVisitCaptureArtifact.self, SiteVisitType.self, SiteVisitChecklistAnswer.self
+    ]
+
+    static let v28CommonModels: [any PersistentModel.Type] = unchangedModels.map {
+        ObjectIdentifier($0) == ObjectIdentifier(OPSSchemaLegacyPhoneV27.SyncOperation.self)
+            ? SyncOperation.self : $0
+    }
 
     /// Site-visit identity draft as it shipped from V12 through V19.
     static let v12SiteVisitIdentityModels: [any PersistentModel.Type] = [

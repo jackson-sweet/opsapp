@@ -184,7 +184,8 @@ enum OPSMigrationPlan: SchemaMigrationPlan {
             OPSSchemaV24.self,
             OPSSchemaV25.self,
             OPSSchemaV26.self,
-            OPSSchemaV27.self
+            OPSSchemaV27.self,
+            OPSSchemaV28.self
         ]
     }
 
@@ -215,9 +216,17 @@ enum OPSMigrationPlan: SchemaMigrationPlan {
             addPhaseCAppointmentFieldsV23toV24,
             addProjectPrimarySubClientV24toV25,
             addDeckDrawingMergeBaseV25toV26,
-            addProjectPhotoTaskLinkV26toV27
+            addProjectPhotoTaskLinkV26toV27,
+            addSiteVisitWriteCustodyV27toV28
         ]
     }
+
+    /// New custody fields are nullable. Existing unsent bytes and lifecycle
+    /// state remain untouched; actor/base authority cannot be invented.
+    static let addSiteVisitWriteCustodyV27toV28 = MigrationStage.lightweight(
+        fromVersion: OPSSchemaV27.self,
+        toVersion: OPSSchemaV28.self
+    )
 
     /// V26 → V27: nullable `ProjectPhoto.taskId`. Purely additive — an
     /// installed photo documents no task until someone assigns one, so there is

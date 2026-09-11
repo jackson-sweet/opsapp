@@ -1,0 +1,81 @@
+Test Suite 'Selected tests' started at 2026-09-10 22:41:53.760.
+Test Suite 'OPSTests.xctest' started at 2026-09-10 22:41:53.760.
+Test Suite 'AppUpdateMigrationTests' started at 2026-09-10 22:41:53.760.
+Test Case '-[OPSTests.AppUpdateMigrationTests testAppUpdateChangesHaveMigrationBoundaryAfterV15]' started.
+Test Case '-[OPSTests.AppUpdateMigrationTests testAppUpdateChangesHaveMigrationBoundaryAfterV15]' passed (0.002 seconds).
+Test Case '-[OPSTests.AppUpdateMigrationTests testCopiedDeviceV15StoreMigratesToCurrentWithoutLosingRows]' started.
+/Users/jacksonsweet/Projects/OPS/.worktrees/ops-mcp-site-visits-ios-p19/OPSTests/DataModels/AppUpdateMigrationTests.swift:582: -[OPSTests.AppUpdateMigrationTests testCopiedDeviceV15StoreMigratesToCurrentWithoutLosingRows] : Test skipped - Set OPS_V15_STORE_FIXTURE_DIR to run the real-device-store migration proof
+Test Case '-[OPSTests.AppUpdateMigrationTests testCopiedDeviceV15StoreMigratesToCurrentWithoutLosingRows]' skipped (0.008 seconds).
+Test Case '-[OPSTests.AppUpdateMigrationTests testCopiedDeviceV25StoreMigratesToCurrentPreservingCustody]' started.
+/Users/jacksonsweet/Projects/OPS/.worktrees/ops-mcp-site-visits-ios-p19/OPSTests/DataModels/AppUpdateMigrationTests.swift:645: -[OPSTests.AppUpdateMigrationTests testCopiedDeviceV25StoreMigratesToCurrentPreservingCustody] : Test skipped - Set OPS_V25_STORE_FIXTURE_DIR to run the copied V25 migration proof
+Test Case '-[OPSTests.AppUpdateMigrationTests testCopiedDeviceV25StoreMigratesToCurrentPreservingCustody]' skipped (0.001 seconds).
+Test Case '-[OPSTests.AppUpdateMigrationTests testDeclaredSchemaChecksumsStayImmutable]' started.
+/Users/jacksonsweet/Projects/OPS/.worktrees/ops-mcp-site-visits-ios-p19/OPSTests/DataModels/AppUpdateMigrationTests.swift:462: error: -[OPSTests.AppUpdateMigrationTests testDeclaredSchemaChecksumsStayImmutable] : XCTAssertEqual failed: ("["5.0.0": "vC15HLF5jIdpohgK7MWL5dDWZuvwArkTWOTKlQj9/Ss=", "22.0.0": "eC+SK6hnbDCpGUfTXLNa6HM8kbkyRDa2NJYo4AjpRac=", "10.0.0": "D8haLrJCjg0Oi1Sf56HSP7+8WJa/Xjn2F02vSK6q67U=", "11.0.0": "EtUVgvcwFIYMACpowSmgQ+AWmaHccj7a+wPJzxN1zkQ=", "21.0.0": "VHM9EhVOi1CbSgmB6NLaj6+t6axSMRwM10+KuHHp7Mk=", "4.0.0": "5MIHlBGDgHtpIoYzWuGMTS2rRPN14UxPXDnKmEB1IzU=", "2.0.0": "B6UkwPBEVvYVVb5K31vYzN0gRzk9rZnt310GcAIoN10=", "25.0.0": "oDrDy3ePGUW2ZiuwOISzdvuUZ8yf5LtXt42AFLxtTrs=", "23.0.0": "xMfw9OVEefQ7H2zeJ23H1Nenc5gen9oTdCDzhkHq2IQ=", "28.0.0": "nKgJeuKrTdQESe0YctzHunky4wMIqOpHYSoPkjdozIk=", "20.0.0": "tTObVcTx355uIygjcb3etZWyVT6IxNZuxlFBFpnf9so=", "6.0.0": "cuJD9AKCOKmDPrFXy0SIPrD/dyw22Vdd658i3naEE0s=", "1.0.0": "Zp6WziOzPt8vxYeM8QsgW3zArsRoQ46d884kul5I8so=", "26.0.0": "W/BL26OkKY5G0Ed7qNE0Bc9SjxDXSTK+LsRyd/fTKy8=", "18.0.0": "XNnekbvP0lF+NiRGsydY0jD+lfBBeNgaVEntWqN1mG0=", "7.0.0": "8cvxdmF256/taxBf4+Kwddgs/4SIlr5DcjI29Xz0Mxw=", "15.0.0": "mFW4cSIxny6ksYQ8VtN0+K4F6DUNqLzqZMwmzYPIQ4k=", "12.0.0": "gqt1DQpfA2hWaXE7PerZxWA/Rif7mSvPOO+k1lenYXQ=", "17.0.0": "4LuaDMBeYwjIqHccTve1ovFx7pxujCm6BqUE+v6PfmA=", "9.0.0": "Tih0bor3KCUxGavnsG3obpFJhsknd5xVE/4Va5M/2eo=", "3.0.0": "xcoq6HX48u0MoDwJHFBNgBqUuKW2WUUbuJ8rYWyOBFM=", "24.0.0": "MRC17UrUeJf5F8UUA9R6PxyQGisAb6y/65ntfSBajlI=", "27.0.0": "wNxm3mAbSCkX1hA4U2omHeoqVkPWQnY3JHBiFYWu6SI=", "8.0.0": "JkCm+uv5TV1JPvSqYTWkrL7db+SaUKwwdVQv/iK+7Ac=", "14.0.0": "WJlrumgUy2zz5/EwYCpC4H82Hwcq5vA6lFQFxh+y/fs=", "13.0.0": "kJlmNBYw0+3aPmyBf5mhVmLwpvTTDfcvfPOGtrY6guE=", "19.0.0": "Sve9vBfB4DsOQj5Rpr58IUYySJIL8dmjuigs8GvXf38=", "16.0.0": "bl7j0QKqc1l2ysvyPW8XjfFZzWT6xib83kVUTe80PJ4="]") is not equal to ("["9.0.0": "Tih0bor3KCUxGavnsG3obpFJhsknd5xVE/4Va5M/2eo=", "23.0.0": "xMfw9OVEefQ7H2zeJ23H1Nenc5gen9oTdCDzhkHq2IQ=", "18.0.0": "XNnekbvP0lF+NiRGsydY0jD+lfBBeNgaVEntWqN1mG0=", "21.0.0": "VHM9EhVOi1CbSgmB6NLaj6+t6axSMRwM10+KuHHp7Mk=", "2.0.0": "B6UkwPBEVvYVVb5K31vYzN0gRzk9rZnt310GcAIoN10=", "4.0.0": "5MIHlBGDgHtpIoYzWuGMTS2rRPN14UxPXDnKmEB1IzU=", "15.0.0": "mFW4cSIxny6ksYQ8VtN0+K4F6DUNqLzqZMwmzYPIQ4k=", "13.0.0": "kJlmNBYw0+3aPmyBf5mhVmLwpvTTDfcvfPOGtrY6guE=", "14.0.0": "WJlrumgUy2zz5/EwYCpC4H82Hwcq5vA6lFQFxh+y/fs=", "19.0.0": "Sve9vBfB4DsOQj5Rpr58IUYySJIL8dmjuigs8GvXf38=", "12.0.0": "gqt1DQpfA2hWaXE7PerZxWA/Rif7mSvPOO+k1lenYXQ=", "22.0.0": "eC+SK6hnbDCpGUfTXLNa6HM8kbkyRDa2NJYo4AjpRac=", "27.0.0": "wNxm3mAbSCkX1hA4U2omHeoqVkPWQnY3JHBiFYWu6SI=", "3.0.0": "xcoq6HX48u0MoDwJHFBNgBqUuKW2WUUbuJ8rYWyOBFM=", "16.0.0": "bl7j0QKqc1l2ysvyPW8XjfFZzWT6xib83kVUTe80PJ4=", "10.0.0": "D8haLrJCjg0Oi1Sf56HSP7+8WJa/Xjn2F02vSK6q67U=", "8.0.0": "JkCm+uv5TV1JPvSqYTWkrL7db+SaUKwwdVQv/iK+7Ac=", "26.0.0": "W/BL26OkKY5G0Ed7qNE0Bc9SjxDXSTK+LsRyd/fTKy8=", "5.0.0": "vC15HLF5jIdpohgK7MWL5dDWZuvwArkTWOTKlQj9/Ss=", "24.0.0": "MRC17UrUeJf5F8UUA9R6PxyQGisAb6y/65ntfSBajlI=", "11.0.0": "EtUVgvcwFIYMACpowSmgQ+AWmaHccj7a+wPJzxN1zkQ=", "6.0.0": "cuJD9AKCOKmDPrFXy0SIPrD/dyw22Vdd658i3naEE0s=", "20.0.0": "tTObVcTx355uIygjcb3etZWyVT6IxNZuxlFBFpnf9so=", "7.0.0": "8cvxdmF256/taxBf4+Kwddgs/4SIlr5DcjI29Xz0Mxw=", "1.0.0": "Zp6WziOzPt8vxYeM8QsgW3zArsRoQ46d884kul5I8so=", "25.0.0": "oDrDy3ePGUW2ZiuwOISzdvuUZ8yf5LtXt42AFLxtTrs=", "17.0.0": "4LuaDMBeYwjIqHccTve1ovFx7pxujCm6BqUE+v6PfmA="]") - Declared SwiftData schemas are immutable. Freeze a changed model under its released shape, then add a new schema and adjacent migration stage.
+Test Case '-[OPSTests.AppUpdateMigrationTests testDeclaredSchemaChecksumsStayImmutable]' failed (2.978 seconds).
+Test Case '-[OPSTests.AppUpdateMigrationTests testHostedTestStoreStaysInMemoryWithoutAppGroupStorage]' started.
+Test Case '-[OPSTests.AppUpdateMigrationTests testHostedTestStoreStaysInMemoryWithoutAppGroupStorage]' passed (0.076 seconds).
+Test Case '-[OPSTests.AppUpdateMigrationTests testProductionStoreConfigurationPinsThePrimaryAppGroup]' started.
+Test Case '-[OPSTests.AppUpdateMigrationTests testProductionStoreConfigurationPinsThePrimaryAppGroup]' passed (0.001 seconds).
+Test Case '-[OPSTests.AppUpdateMigrationTests testReleasedPhoneModelsStayFrozenBeforeV28]' started.
+Test Case '-[OPSTests.AppUpdateMigrationTests testReleasedPhoneModelsStayFrozenBeforeV28]' passed (0.002 seconds).
+Test Case '-[OPSTests.AppUpdateMigrationTests testReleasedV15DoesNotReferenceWidenedLiveModels]' started.
+Test Case '-[OPSTests.AppUpdateMigrationTests testReleasedV15DoesNotReferenceWidenedLiveModels]' passed (0.000 seconds).
+Test Case '-[OPSTests.AppUpdateMigrationTests testReleasedV18DoesNotReferenceWidenedLiveOpportunity]' started.
+Test Case '-[OPSTests.AppUpdateMigrationTests testReleasedV18DoesNotReferenceWidenedLiveOpportunity]' passed (0.000 seconds).
+Test Case '-[OPSTests.AppUpdateMigrationTests testReleasedV19DoesNotReferenceWidenedLiveSiteVisitModels]' started.
+Test Case '-[OPSTests.AppUpdateMigrationTests testReleasedV19DoesNotReferenceWidenedLiveSiteVisitModels]' passed (0.001 seconds).
+Test Case '-[OPSTests.AppUpdateMigrationTests testReleasedV22DoesNotReferenceWidenedLiveSiteVisit]' started.
+Test Case '-[OPSTests.AppUpdateMigrationTests testReleasedV22DoesNotReferenceWidenedLiveSiteVisit]' passed (0.000 seconds).
+Test Case '-[OPSTests.AppUpdateMigrationTests testReleasedV26DoesNotReferenceWidenedLiveProjectPhoto]' started.
+Test Case '-[OPSTests.AppUpdateMigrationTests testReleasedV26DoesNotReferenceWidenedLiveProjectPhoto]' passed (0.001 seconds).
+Test Case '-[OPSTests.AppUpdateMigrationTests testV10StoreMigratesToCurrentPreservingOpportunityAndDeckDesign]' started.
+Test Case '-[OPSTests.AppUpdateMigrationTests testV10StoreMigratesToCurrentPreservingOpportunityAndDeckDesign]' passed (2.203 seconds).
+Test Case '-[OPSTests.AppUpdateMigrationTests testV15StoreMigratesToCurrentPreservingOpportunityAndDeckDesign]' started.
+Test Case '-[OPSTests.AppUpdateMigrationTests testV15StoreMigratesToCurrentPreservingOpportunityAndDeckDesign]' passed (1.871 seconds).
+Test Case '-[OPSTests.AppUpdateMigrationTests testV18StoreMigratesToV19PreservingOpportunityAndAddingActionRequiredTimestamp]' started.
+Test Case '-[OPSTests.AppUpdateMigrationTests testV18StoreMigratesToV19PreservingOpportunityAndAddingActionRequiredTimestamp]' passed (1.717 seconds).
+Test Case '-[OPSTests.AppUpdateMigrationTests testV22StoreMigratesToV24PreservingSiteVisitAndDefaultingServerFields]' started.
+Test Case '-[OPSTests.AppUpdateMigrationTests testV22StoreMigratesToV24PreservingSiteVisitAndDefaultingServerFields]' passed (1.748 seconds).
+Test Case '-[OPSTests.AppUpdateMigrationTests testV24StoreMigratesToV25PreservingProjectAndPrimaryContact]' started.
+Test Case '-[OPSTests.AppUpdateMigrationTests testV24StoreMigratesToV25PreservingProjectAndPrimaryContact]' passed (1.733 seconds).
+Test Case '-[OPSTests.AppUpdateMigrationTests testV25AddsPrimaryContactProjectionWithoutChangingReleasedProject]' started.
+Test Case '-[OPSTests.AppUpdateMigrationTests testV25AddsPrimaryContactProjectionWithoutChangingReleasedProject]' passed (0.001 seconds).
+Test Case '-[OPSTests.AppUpdateMigrationTests testV26StoreMigratesToV27PreservingPhotoAndDefaultingTaskLink]' started.
+Test Case '-[OPSTests.AppUpdateMigrationTests testV26StoreMigratesToV27PreservingPhotoAndDefaultingTaskLink]' passed (1.743 seconds).
+Test Case '-[OPSTests.AppUpdateMigrationTests testV27PacketAndOutboxMigrateToV28PreservingEveryStoredField]' started.
+Test Case '-[OPSTests.AppUpdateMigrationTests testV27PacketAndOutboxMigrateToV28PreservingEveryStoredField]' passed (1.964 seconds).
+Test Case '-[OPSTests.AppUpdateMigrationTests testWidenedProjectPhotoLowercasesTaskLinkAtEveryEntryPoint]' started.
+Test Case '-[OPSTests.AppUpdateMigrationTests testWidenedProjectPhotoLowercasesTaskLinkAtEveryEntryPoint]' passed (0.002 seconds).
+Test Suite 'AppUpdateMigrationTests' failed at 2026-09-10 22:42:09.817.
+	 Executed 21 tests, with 2 tests skipped and 1 failure (0 unexpected) in 16.053 (16.057) seconds
+Test Suite 'SiteVisitFieldWorkflowTests' started at 2026-09-10 22:42:09.817.
+Test Case '-[OPSTests.SiteVisitFieldWorkflowTests testAcceptCurrentUnknownRemainsEmptyWhenCaptureReopens]' started.
+Test Case '-[OPSTests.SiteVisitFieldWorkflowTests testAcceptCurrentUnknownRemainsEmptyWhenCaptureReopens]' passed (0.094 seconds).
+Test Case '-[OPSTests.SiteVisitFieldWorkflowTests testBufferedBlankTextClearHasEmptyWireValueAndPreservesAttemptedAudit]' started.
+Test Case '-[OPSTests.SiteVisitFieldWorkflowTests testBufferedBlankTextClearHasEmptyWireValueAndPreservesAttemptedAudit]' passed (0.102 seconds).
+Test Case '-[OPSTests.SiteVisitFieldWorkflowTests testDiscardRejectsBookedVisitBeforeLocalTombstones]' started.
+Test Case '-[OPSTests.SiteVisitFieldWorkflowTests testDiscardRejectsBookedVisitBeforeLocalTombstones]' passed (0.024 seconds).
+Test Case '-[OPSTests.SiteVisitFieldWorkflowTests testDiscardUIClosesUnsentAndSyncedPacketsWithoutUploadingChildren]' started.
+Test Case '-[OPSTests.SiteVisitFieldWorkflowTests testDiscardUIClosesUnsentAndSyncedPacketsWithoutUploadingChildren]' passed (0.219 seconds).
+Test Case '-[OPSTests.SiteVisitFieldWorkflowTests testHydrationSelectsOnlyRealMarkupAndPreservesExplicitClearingAcrossReopen]' started.
+Test Case '-[OPSTests.SiteVisitFieldWorkflowTests testHydrationSelectsOnlyRealMarkupAndPreservesExplicitClearingAcrossReopen]' passed (0.036 seconds).
+Test Case '-[OPSTests.SiteVisitFieldWorkflowTests testInboundClearAndUnknownSurviveFreshAndCleanMergeWhileUntouchedHydrates]' started.
+Test Case '-[OPSTests.SiteVisitFieldWorkflowTests testInboundClearAndUnknownSurviveFreshAndCleanMergeWhileUntouchedHydrates]' passed (0.180 seconds).
+Test Suite 'SiteVisitFieldWorkflowTests' passed at 2026-09-10 22:42:10.474.
+	 Executed 6 tests, with 0 failures (0 unexpected) in 0.655 (0.657) seconds
+Test Suite 'SiteVisitMigrationTests' started at 2026-09-10 22:42:10.474.
+Test Case '-[OPSTests.SiteVisitMigrationTests test_v10StoreMigratesToCurrent_preservingOpportunityIdAndAllowingUnlinkedVisit]' started.
+Test Case '-[OPSTests.SiteVisitMigrationTests test_v10StoreMigratesToCurrent_preservingOpportunityIdAndAllowingUnlinkedVisit]' passed (1.728 seconds).
+Test Case '-[OPSTests.SiteVisitMigrationTests test_v14StoreMigratesToV15_preservingRowsAndAllowingLoggedActivityId]' started.
+Test Case '-[OPSTests.SiteVisitMigrationTests test_v14StoreMigratesToV15_preservingRowsAndAllowingLoggedActivityId]' passed (1.712 seconds).
+Test Case '-[OPSTests.SiteVisitMigrationTests test_v19StoreMigratesStraightToCurrent_preservingEntireVisitPacket]' started.
+Test Case '-[OPSTests.SiteVisitMigrationTests test_v19StoreMigratesStraightToCurrent_preservingEntireVisitPacket]' passed (1.702 seconds).
+Test Case '-[OPSTests.SiteVisitMigrationTests test_v19StoreMigratesToV20_preservingEntireVisitPacketAndDefaultingCloudFields]' started.
+Test Case '-[OPSTests.SiteVisitMigrationTests test_v19StoreMigratesToV20_preservingEntireVisitPacketAndDefaultingCloudFields]' passed (1.698 seconds).
+Test Suite 'SiteVisitMigrationTests' passed at 2026-09-10 22:42:17.316.
+	 Executed 4 tests, with 0 failures (0 unexpected) in 6.840 (6.841) seconds
+Test Suite 'OPSTests.xctest' failed at 2026-09-10 22:42:17.316.
+	 Executed 31 tests, with 2 tests skipped and 1 failure (0 unexpected) in 23.548 (23.556) seconds
+Test Suite 'Selected tests' failed at 2026-09-10 22:42:17.316.
+	 Executed 31 tests, with 2 tests skipped and 1 failure (0 unexpected) in 23.548 (23.556) seconds
+** TEST FAILED **

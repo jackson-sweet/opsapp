@@ -377,6 +377,72 @@ final class AppUpdateMigrationTests: XCTestCase {
         )
     }
 
+    func testReleasedPhoneModelsStayFrozenBeforeV28() {
+        for version in OPSMigrationPlan.schemas where version.versionIdentifier != OPSSchemaCurrent.versionIdentifier {
+            XCTAssertTrue(contains(OPSSchemaLegacyPhoneV27.SyncOperation.self, in: version))
+            XCTAssertFalse(contains(SyncOperation.self, in: version))
+            if version.models.contains(where: { ObjectIdentifier($0) == ObjectIdentifier(OPSSchemaLegacyPhoneV27.SiteVisitType.self) }) {
+                XCTAssertFalse(contains(SiteVisitType.self, in: version))
+                XCTAssertTrue(contains(OPSSchemaLegacyPhoneV27.SiteVisitChecklistAnswer.self, in: version))
+                XCTAssertFalse(contains(SiteVisitChecklistAnswer.self, in: version))
+            }
+        }
+        XCTAssertTrue(contains(SyncOperation.self, in: OPSSchemaCurrent.self))
+        XCTAssertTrue(contains(SiteVisitType.self, in: OPSSchemaCurrent.self))
+        XCTAssertTrue(contains(SiteVisitChecklistAnswer.self, in: OPSSchemaCurrent.self))
+    }
+
+    func testV27PacketAndOutboxMigrateToV28PreservingEveryStoredField() throws {
+        let key = SymmetricKey(size: .bits256)
+        let timestamp = Date(timeIntervalSince1970: 1_700_000_123)
+        let baseline = try autoreleasepool {
+            let container = try privateProofContainer(OPSSchemaV27.self, at: storeURL, migrate: false)
+            let context = ModelContext(container)
+            let form = OPSSchemaLegacyPhoneV27.SiteVisitType(id: "legacy-form", companyId: "company",
+                slug: "scope", name: "Pending form", descriptionText: "Original scope", isSystemTemplate: true,
+                isDefault: true, sortOrder: 12, fields: [.init(id: "scope", label: "Original field", kind: .measurement, required: true, sortOrder: 3)], createdAt: timestamp)
+            form.updatedAt = timestamp.addingTimeInterval(1); form.deletedAt = timestamp.addingTimeInterval(2)
+            form.lastSyncedAt = timestamp.addingTimeInterval(-1); form.needsSync = true
+            let answer = OPSSchemaLegacyPhoneV27.SiteVisitChecklistAnswer(id: "legacy-answer", siteVisitId: "legacy-visit", companyId: "company",
+                opportunityId: "lead", siteVisitTypeId: form.id, fieldId: "scope", label: "Original field", kind: .measurement,
+                required: true, helpText: "Measured in sunlight", sortOrder: 3, answerValue: .text("18 in"), createdBy: "original-actor", createdAt: timestamp)
+            answer.updatedAt = timestamp.addingTimeInterval(3); answer.deletedAt = timestamp.addingTimeInterval(4)
+            answer.lastSyncedAt = timestamp.addingTimeInterval(-2); answer.needsSync = true
+            let operation = OPSSchemaLegacyPhoneV27.SyncOperation(entityType: "siteVisitChecklistAnswer", entityId: answer.id,
+                operationType: "update", payload: Data("original-payload".utf8), changedFields: ["answer_value", "deleted_at"],
+                previousValues: Data("original-before".utf8), priority: 2, dependsOnId: "original-parent")
+            operation.createdAt = timestamp; operation.retryCount = 7; operation.lastAttemptedAt = timestamp.addingTimeInterval(5)
+            operation.status = "parked"; operation.lastError = "original-error"; operation.requiresWiFi = true
+            operation.completedAt = timestamp.addingTimeInterval(6); operation.serverConfirmedAt = timestamp.addingTimeInterval(7)
+            context.insert(form); context.insert(answer); context.insert(operation); try context.save()
+            return try privateStoreSnapshot(container, legacyDeck: false, legacyPhone: true, key: key)
+        }
+        let metadata = try NSPersistentStoreCoordinator.metadataForPersistentStore(type: .sqlite, at: storeURL)
+        XCTAssertEqual(metadata[NSPersistentStoreModelVersionChecksumKey] as? String, "wNxm3mAbSCkX1hA4U2omHeoqVkPWQnY3JHBiFYWu6SI=", "Source is the released V27 graph")
+        for migrate in [true, false] {
+            try autoreleasepool {
+                let container = try privateProofContainer(OPSSchemaCurrent.self, at: storeURL, migrate: migrate)
+                let after = try privateStoreSnapshot(container, legacyDeck: false, key: key)
+                XCTAssertEqual(Set(after.keys), Set(baseline.keys))
+                for entity in baseline.keys {
+                    XCTAssertEqual(after[entity]?.count, baseline[entity]?.count, entity)
+                    XCTAssertEqual(after[entity]?.digest, baseline[entity]?.digest, entity)
+                }
+                let context = ModelContext(container)
+                let form = try XCTUnwrap(context.fetch(FetchDescriptor<SiteVisitType>()).first)
+                let answer = try XCTUnwrap(context.fetch(FetchDescriptor<SiteVisitChecklistAnswer>()).first)
+                let operation = try XCTUnwrap(context.fetch(FetchDescriptor<SyncOperation>()).first)
+                XCTAssertNil(form.siteVisitWriteStateData); XCTAssertNil(answer.siteVisitWriteStateData)
+                XCTAssertNil(operation.siteVisitWriteActorId); XCTAssertNil(operation.siteVisitWriteAttemptedAt)
+                XCTAssertNil(operation.siteVisitWriteReceiptData); XCTAssertNil(operation.siteVisitWriteResolutionData)
+                XCTAssertNil(operation.siteVisitWriteResolutionHistoryData)
+                XCTAssertTrue(form.needsSync); XCTAssertTrue(answer.needsSync); XCTAssertEqual(operation.status, "parked")
+            }
+        }
+        let finalMetadata = try NSPersistentStoreCoordinator.metadataForPersistentStore(type: .sqlite, at: storeURL)
+        XCTAssertEqual(finalMetadata[NSStoreModelVersionIdentifiersKey] as? [String], ["28.0.0"])
+    }
+
     func testDeclaredSchemaChecksumsStayImmutable() throws {
         let fixtureURL = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -634,8 +700,8 @@ final class AppUpdateMigrationTests: XCTestCase {
                 }
                 let reopenedMetadata = try NSPersistentStoreCoordinator.metadataForPersistentStore(
                     type: .sqlite, at: copyURL)
-                XCTAssertTrue(reopenedMetadata[NSStoreModelVersionIdentifiersKey] as? [String] == ["26.0.0"],
-                              "Copied-store migration did not persist the V26 schema")
+                XCTAssertTrue(reopenedMetadata[NSStoreModelVersionIdentifiersKey] as? [String] == [String(describing: OPSSchemaCurrent.versionIdentifier)],
+                              "Copied-store migration did not persist the current schema")
             }
         } catch {
             // SwiftData/filesystem error descriptions can contain record values
@@ -674,10 +740,11 @@ final class AppUpdateMigrationTests: XCTestCase {
     /// All persisted scalar fields for the visit packet, decks, outbox, media,
     /// leads, clients, contacts, notes and primary-contact projection. Project
     /// relationships are represented by stable IDs, never SQLite row numbers.
-    private func privateStoreSnapshot(_ container: ModelContainer, legacyDeck: Bool,
+    private func privateStoreSnapshot(_ container: ModelContainer, legacyDeck: Bool, legacyPhone: Bool? = nil,
                                       key: SymmetricKey) throws -> [String: PrivateStoreDigest] {
         let context = ModelContext(container)
         context.autosaveEnabled = false
+        let usesLegacyPhone = legacyPhone ?? legacyDeck
         var result: [String: PrivateStoreDigest] = [:]
         func capture<T: PersistentModel>(_ type: T.Type, _ name: String,
                                          fields: (T) -> [Any?]) throws {
@@ -716,21 +783,36 @@ final class AppUpdateMigrationTests: XCTestCase {
             r.deckDesignId, r.includedInProjectReview, r.capturedAt, r.createdBy, r.createdAt,
             r.updatedAt, r.deletedAt, r.needsSync, r.lastSyncedAt
         ] }
+        if usesLegacyPhone {
+        try capture(OPSSchemaLegacyPhoneV27.SiteVisitChecklistAnswer.self, "answers") { r in [
+            r.id, r.siteVisitId, r.companyId, r.opportunityId, r.siteVisitTypeId, r.fieldId, r.label,
+            r.kind.rawValue, r.required, r.helpText, r.sortOrder, r.answerValueData, r.createdBy,
+            r.createdAt, r.updatedAt, r.deletedAt, r.needsSync, r.lastSyncedAt
+        ] }
+        } else {
         try capture(SiteVisitChecklistAnswer.self, "answers") { r in [
             r.id, r.siteVisitId, r.companyId, r.opportunityId, r.siteVisitTypeId, r.fieldId, r.label,
             r.kind.rawValue, r.required, r.helpText, r.sortOrder, r.answerValueData, r.createdBy,
             r.createdAt, r.updatedAt, r.deletedAt, r.needsSync, r.lastSyncedAt
         ] }
+        }
         try capture(SiteVisitIdentityDraft.self, "identity drafts") { r in [
             r.id, r.siteVisitId, r.companyId, r.opportunityId, r.clientId, r.subClientId, r.searchText,
             r.clientName, r.contactName, r.preferredEmail, r.additionalEmailsJSON, r.phoneNumber,
             r.address, r.notes, r.createdBy, r.createdAt, r.updatedAt, r.lastCommittedAt,
             r.deletedAt, r.needsSync, r.lastSyncedAt
         ] }
+        if usesLegacyPhone {
+        try capture(OPSSchemaLegacyPhoneV27.SiteVisitType.self, "visit types") { r in [
+            r.id, r.companyId, r.slug, r.name, r.descriptionText, r.isSystemTemplate, r.isDefault,
+            r.sortOrder, r.fieldsData, r.createdAt, r.updatedAt, r.deletedAt, r.needsSync, r.lastSyncedAt
+        ] }
+        } else {
         try capture(SiteVisitType.self, "visit types") { r in [
             r.id, r.companyId, r.slug, r.name, r.descriptionText, r.isSystemTemplate, r.isDefault,
             r.sortOrder, r.fieldsData, r.createdAt, r.updatedAt, r.deletedAt, r.needsSync, r.lastSyncedAt
         ] }
+        }
         if legacyDeck {
             try capture(OPSSchemaLegacyDeckDesignV25.DeckDesign.self, "decks") { r in [
                 r.id, r.companyId, r.projectId, r.opportunityId, r.title, r.drawingDataJSON,
@@ -749,21 +831,37 @@ final class AppUpdateMigrationTests: XCTestCase {
             XCTAssertTrue(decks.filter(\.needsSync).allSatisfy(\.hasUnsyncedDrawing),
                           "Migrated dirty drawing custody must remain unsent")
         }
+        if usesLegacyPhone {
+        try capture(OPSSchemaLegacyPhoneV27.SyncOperation.self, "outbox") { r in [
+            r.id, r.entityType, r.entityId, r.operationType, r.payload, r.changedFields, r.createdAt,
+            r.retryCount, r.lastAttemptedAt, r.status, r.lastError, r.previousValues, r.priority,
+            r.requiresWiFi, r.dependsOnId, r.completedAt, r.serverConfirmedAt
+        ] }
+        } else {
         try capture(SyncOperation.self, "outbox") { r in [
             r.id, r.entityType, r.entityId, r.operationType, r.payload, r.changedFields, r.createdAt,
             r.retryCount, r.lastAttemptedAt, r.status, r.lastError, r.previousValues, r.priority,
             r.requiresWiFi, r.dependsOnId, r.completedAt, r.serverConfirmedAt
         ] }
+        }
         try capture(LocalPhoto.self, "local photos") { r in [
             r.id, r.companyId, r.entityType, r.entityId, r.localPath, r.thumbnailPath, r.uploadedURL,
             r.fileSize, r.mimeType, r.width, r.height, r.capturedAt, r.latitude, r.longitude,
             r.uploadProgress, r.uploadRetryCount, r.status, r.createdAt, r.deletedAt, r.lastSyncedAt, r.needsSync
         ] }
+        if legacyDeck {
+        try capture(OPSSchemaLegacyProjectPhotoV26.ProjectPhoto.self, "project photos") { r in [
+            r.id, r.projectId, r.companyId, r.url, r.thumbnailURL, r.renderedURL, r.source,
+            r.siteVisitId, r.uploadedBy, r.caption, r.isClientVisible, r.takenAt,
+            r.createdAt, r.updatedAt, r.deletedAt, r.lastSyncedAt, r.needsSync
+        ] }
+        } else {
         try capture(ProjectPhoto.self, "project photos") { r in [
             r.id, r.projectId, r.companyId, r.url, r.thumbnailURL, r.renderedURL, r.source,
             r.siteVisitId, r.uploadedBy, r.caption, r.isClientVisible, r.takenAt,
             r.createdAt, r.updatedAt, r.deletedAt, r.lastSyncedAt, r.needsSync
         ] }
+        }
         try capture(PhotoAnnotation.self, "photo annotations") { r in [
             r.id, r.projectId, r.companyId, r.photoURL, r.annotationURL, r.note, r.authorId,
             r.createdAt, r.updatedAt, r.deletedAt, r.renderedPhotoURL, r.lastSyncedAt, r.needsSync,

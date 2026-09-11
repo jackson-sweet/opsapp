@@ -1,0 +1,24 @@
+{
+  "source": "combined-tests-2.xcresult",
+  "tested_commit": "354ff585e10520d0967e9f36d1dc733256457f0f",
+  "passed": 74,
+  "failed": 0,
+  "skipped": 0,
+  "classes": {
+    "DataActorExecutorTests": 4,
+    "DataActorInboundLifetimeTests": 8,
+    "DataActorStartupSuspensionTests": 5,
+    "DataActorStartupTests": 6,
+    "DataActorSuspensionTransactionTests": 2,
+    "InboundChangeSignalDataActorTests": 6,
+    "OutboundLifecycleTests": 7,
+    "PhotoPrefetchLifetimeTests": 2,
+    "PhotoProcessorSuspensionTests": 2,
+    "SyncCursorInvariantTests": 7,
+    "SyncExecutionCoordinatorTests": 11,
+    "SyncFollowUpRequestTests": 9,
+    "SyncRecoverySchedulingTests": 1,
+    "SyncSuspensionRegressionTests": 4
+  },
+  "combined_bundle_caveat": "75 of 77 passed; two keyboard screenshot tests failed due to app-host UI testing capture capability. All 74 sync checks passed."
+}

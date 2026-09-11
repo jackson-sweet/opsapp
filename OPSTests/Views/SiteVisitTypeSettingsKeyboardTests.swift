@@ -238,41 +238,52 @@ final class SiteVisitTypeSettingsKeyboardTests: XCTestCase {
         let host = UIHostingController(rootView: SettingsContainer(state: state))
         window.endEditing(true)
         window.rootViewController = host
-        defer {
-            window.endEditing(true)
-            XCTAssertTrue(waitUntil { keyboard.pending.isEmpty && !keyboard.isVisible })
-            // Let SwiftUI dismiss each presentation before changing its parent.
-            // Competing binding/UIKit dismissals can deinitialize an active
-            // SwiftUI presentation and throw InvalidTransition during teardown.
-            state.editorDraft = nil
-            XCTAssertTrue(waitUntil {
-                guard let cover = host.presentedViewController else { return true }
-                return cover.presentedViewController == nil && cover.transitionCoordinator == nil
-            })
-            state.destination = nil
-            XCTAssertTrue(waitUntil {
-                host.presentedViewController == nil && host.transitionCoordinator == nil
-            })
-            window.rootViewController = originalRoot
+        var assertionError: Error?
+        do {
             window.layoutIfNeeded()
-            keyboard.stop()
+            state.destination = .siteVisitTypes
+            try require(waitUntil {
+                guard let cover = host.presentedViewController else { return false }
+                return cover.view.window === window && !cover.isBeingPresented && cover.transitionCoordinator == nil
+            }, "The settings cover must finish presenting before its editor opens")
+            let cover = try XCTUnwrap(host.presentedViewController)
+            state.editorDraft = state.draft
+            try require(waitUntil { cover.presentedViewController != nil }, "The editor sheet must present from the settings cover")
+            let session = try Session(
+                window: window, root: host, cover: cover,
+                sheet: XCTUnwrap(cover.presentedViewController), state: state, keyboard: keyboard
+            )
+            try settle(session) { self.hasInputs(in: session.sheet.view) }
+            _ = try inputs(in: session)
+            try assertions(session)
+        } catch {
+            assertionError = error
         }
+
+        // Do not pump UIKit's run loop while a Swift error unwinds through a
+        // defer. Preserve and rethrow the original error after all cleanup so
+        // framework-internal caught errors cannot obscure the failing phase.
+        print("SiteVisitKeyboard teardown: keyboard hide")
+        window.endEditing(true)
+        XCTAssertTrue(waitUntil { keyboard.pending.isEmpty && !keyboard.isVisible })
+        // Let SwiftUI dismiss each presentation before changing its parent.
+        print("SiteVisitKeyboard teardown: editor sheet")
+        state.editorDraft = nil
+        XCTAssertTrue(waitUntil {
+            guard let cover = host.presentedViewController else { return true }
+            return cover.presentedViewController == nil && cover.transitionCoordinator == nil
+        })
+        print("SiteVisitKeyboard teardown: settings cover")
+        state.destination = nil
+        XCTAssertTrue(waitUntil {
+            host.presentedViewController == nil && host.transitionCoordinator == nil
+        })
+        print("SiteVisitKeyboard teardown: original root")
+        window.rootViewController = originalRoot
         window.layoutIfNeeded()
-        state.destination = .siteVisitTypes
-        try require(waitUntil {
-            guard let cover = host.presentedViewController else { return false }
-            return cover.view.window === window && !cover.isBeingPresented && cover.transitionCoordinator == nil
-        }, "The settings cover must finish presenting before its editor opens")
-        let cover = try XCTUnwrap(host.presentedViewController)
-        state.editorDraft = state.draft
-        try require(waitUntil { cover.presentedViewController != nil }, "The editor sheet must present from the settings cover")
-        let session = try Session(
-            window: window, root: host, cover: cover,
-            sheet: XCTUnwrap(cover.presentedViewController), state: state, keyboard: keyboard
-        )
-        try settle(session) { self.hasInputs(in: session.sheet.view) }
-        _ = try inputs(in: session)
-        try assertions(session)
+        keyboard.stop()
+        print("SiteVisitKeyboard teardown: complete")
+        if let assertionError { throw assertionError }
     }
 
     private func hasInputs(in view: UIView) -> Bool {

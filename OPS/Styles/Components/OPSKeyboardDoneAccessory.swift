@@ -190,6 +190,10 @@ final class OPSKeyboardDoneAccessoryCoordinator: NSObject {
 
     private let notificationCenter: NotificationCenter
     private var isStarted = false
+    private var lifecycle = 0
+    private let textFieldAccessories = NSMapTable<UITextField, OPSKeyboardDoneAccessoryView>(
+        keyOptions: .weakMemory, valueOptions: .strongMemory
+    )
 
     init(notificationCenter: NotificationCenter = .default) {
         self.notificationCenter = notificationCenter
@@ -216,6 +220,7 @@ final class OPSKeyboardDoneAccessoryCoordinator: NSObject {
 
     func stop() {
         guard isStarted else { return }
+        lifecycle += 1
         notificationCenter.removeObserver(
             self,
             name: UITextField.textDidBeginEditingNotification,
@@ -244,6 +249,16 @@ final class OPSKeyboardDoneAccessoryCoordinator: NSObject {
     @objc private func textFieldDidBeginEditing(_ notification: Notification) {
         guard let textField = notification.object as? UITextField else { return }
         installAccessoryIfNeeded(on: textField, reloadIfActive: true)
+
+        // SwiftUI can replace the accessory while completing the focus update,
+        // after UIKit's didBegin notification has installed ours. Reconcile once
+        // after that update, preserving the same responder-owned DONE control.
+        let observedLifecycle = lifecycle
+        DispatchQueue.main.async { [weak self, weak textField] in
+            guard let self, self.isStarted, self.lifecycle == observedLifecycle,
+                  let textField, textField.isFirstResponder else { return }
+            self.installAccessoryIfNeeded(on: textField, reloadIfActive: true)
+        }
     }
 
     @objc private func textViewDidBeginEditing(_ notification: Notification) {
@@ -255,13 +270,15 @@ final class OPSKeyboardDoneAccessoryCoordinator: NSObject {
         on textField: UITextField,
         reloadIfActive: Bool
     ) {
-        guard !(textField.inputAccessoryView is OPSKeyboardDoneAccessoryView) else {
+        if let accessory = textField.inputAccessoryView as? OPSKeyboardDoneAccessoryView {
+            textFieldAccessories.setObject(accessory, forKey: textField)
             return
         }
 
-        textField.inputAccessoryView = OPSKeyboardDoneAccessoryView(
-            editingResponder: textField
-        )
+        let accessory = textFieldAccessories.object(forKey: textField)
+            ?? OPSKeyboardDoneAccessoryView(editingResponder: textField)
+        textFieldAccessories.setObject(accessory, forKey: textField)
+        textField.inputAccessoryView = accessory
         if reloadIfActive, textField.isFirstResponder {
             textField.reloadInputViews()
         }

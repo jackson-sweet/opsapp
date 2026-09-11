@@ -1,0 +1,50 @@
+[
+  {
+    "test": "OverdueReviewViewportTests/testLongRowsStayWithinNarrowViewport()",
+    "file": "overdue-review-375-standard-bottom-geometry.txt"
+  },
+  {
+    "test": "OverdueReviewViewportTests/testLongRowsStayWithinNarrowViewport()",
+    "file": "overdue-review-375-standard-bottom.png"
+  },
+  {
+    "test": "OverdueReviewViewportTests/testLongRowsStayWithinNarrowViewport()",
+    "file": "overdue-review-375-standard-top-geometry.txt"
+  },
+  {
+    "test": "OverdueReviewViewportTests/testLongRowsStayWithinNarrowViewport()",
+    "file": "overdue-review-375-standard-top.png"
+  },
+  {
+    "test": "OverdueReviewViewportTests/testLongRowsStayWithinNarrowViewportAtLargestAccessibilityType()",
+    "file": "overdue-review-375-accessibility5-bottom-geometry.txt"
+  },
+  {
+    "test": "OverdueReviewViewportTests/testLongRowsStayWithinNarrowViewportAtLargestAccessibilityType()",
+    "file": "overdue-review-375-accessibility5-bottom.png"
+  },
+  {
+    "test": "OverdueReviewViewportTests/testLongRowsStayWithinNarrowViewportAtLargestAccessibilityType()",
+    "file": "overdue-review-375-accessibility5-top-geometry.txt"
+  },
+  {
+    "test": "OverdueReviewViewportTests/testLongRowsStayWithinNarrowViewportAtLargestAccessibilityType()",
+    "file": "overdue-review-375-accessibility5-top.png"
+  },
+  {
+    "test": "OverdueReviewViewportTests/testLongRowsStayWithinReferenceViewport()",
+    "file": "overdue-review-390-standard-bottom-geometry.txt"
+  },
+  {
+    "test": "OverdueReviewViewportTests/testLongRowsStayWithinReferenceViewport()",
+    "file": "overdue-review-390-standard-bottom.png"
+  },
+  {
+    "test": "OverdueReviewViewportTests/testLongRowsStayWithinReferenceViewport()",
+    "file": "overdue-review-390-standard-top-geometry.txt"
+  },
+  {
+    "test": "OverdueReviewViewportTests/testLongRowsStayWithinReferenceViewport()",
+    "file": "overdue-review-390-standard-top.png"
+  }
+]

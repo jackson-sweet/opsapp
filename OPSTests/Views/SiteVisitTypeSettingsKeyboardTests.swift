@@ -84,6 +84,8 @@ final class SiteVisitTypeSettingsKeyboardTests: XCTestCase {
         private(set) var hiddenCount = 0
         private(set) var pending = Set<Notification.Name>()
         private(set) var lastEvent = CACurrentMediaTime()
+        private(set) var editingEvents: [String] = []
+        private let startedAt = CACurrentMediaTime()
         weak var accessoryWindow: UIWindow?
 
         override init() {
@@ -95,9 +97,44 @@ final class SiteVisitTypeSettingsKeyboardTests: XCTestCase {
             ] {
                 NotificationCenter.default.addObserver(self, selector: #selector(receive(_:)), name: name, object: nil)
             }
+            for name in [
+                UITextField.textDidBeginEditingNotification, UITextField.textDidEndEditingNotification,
+                UITextView.textDidBeginEditingNotification, UITextView.textDidEndEditingNotification
+            ] {
+                NotificationCenter.default.addObserver(self, selector: #selector(receiveEditing(_:)), name: name, object: nil)
+            }
         }
 
         func stop() { NotificationCenter.default.removeObserver(self) }
+
+        func recordEditing(_ phase: String, responder: UIView?) {
+            let elapsed = CACurrentMediaTime() - startedAt
+            editingEvents.append("\(elapsed): \(phase)\n\(Self.describe(responder))")
+        }
+
+        static func describe(_ responder: UIView?) -> String {
+            guard let responder else { return "responder=nil" }
+            func describeView(_ view: UIView?) -> String {
+                guard let view else { return "nil" }
+                return "\(type(of: view))@\(ObjectIdentifier(view)) frame=\(view.frame) bounds=\(view.bounds) screen=\(UIAccessibility.convertToScreenCoordinates(view.bounds, in: view)) window=\(view.window.map { String(describing: ObjectIdentifier($0)) } ?? "nil") superview=\(view.superview.map { String(describing: type(of: $0)) } ?? "nil")"
+            }
+            return """
+            responder=\(describeView(responder)) firstResponder=\(responder.isFirstResponder)
+            accessory=\(describeView(responder.inputAccessoryView)) canonical=\(responder.inputAccessoryView is OPSKeyboardDoneAccessoryView)
+            accessoryController=\(responder.inputAccessoryViewController.map { String(describing: type(of: $0)) } ?? "nil")
+            """
+        }
+
+        @objc private func receiveEditing(_ notification: Notification) {
+            guard let responder = notification.object as? UIView else { return }
+            let phase = notification.name.rawValue
+            recordEditing("\(phase) immediate", responder: responder)
+            // Observe UIKit's real notification and the following main-queue
+            // turn. Never install an accessory or synthesize an editing event.
+            DispatchQueue.main.async { [weak self, weak responder] in
+                self?.recordEditing("\(phase) next main-queue turn", responder: responder)
+            }
+        }
 
         @objc private func receive(_ notification: Notification) {
             guard notification.userInfo?[UIResponder.keyboardIsLocalUserInfoKey] as? Bool != false else { return }
@@ -203,10 +240,19 @@ final class SiteVisitTypeSettingsKeyboardTests: XCTestCase {
         window.rootViewController = host
         defer {
             window.endEditing(true)
+            XCTAssertTrue(waitUntil { keyboard.pending.isEmpty && !keyboard.isVisible })
+            // Let SwiftUI dismiss each presentation before changing its parent.
+            // Competing binding/UIKit dismissals can deinitialize an active
+            // SwiftUI presentation and throw InvalidTransition during teardown.
             state.editorDraft = nil
+            XCTAssertTrue(waitUntil {
+                guard let cover = host.presentedViewController else { return true }
+                return cover.presentedViewController == nil && cover.transitionCoordinator == nil
+            })
             state.destination = nil
-            host.dismiss(animated: false)
-            XCTAssertTrue(waitUntil { host.presentedViewController == nil })
+            XCTAssertTrue(waitUntil {
+                host.presentedViewController == nil && host.transitionCoordinator == nil
+            })
             window.rootViewController = originalRoot
             window.layoutIfNeeded()
             keyboard.stop()
@@ -251,7 +297,10 @@ final class SiteVisitTypeSettingsKeyboardTests: XCTestCase {
     private func focus(_ responder: UIView, in session: Session) throws -> OPSKeyboardDoneAccessoryView {
         let wasVisible = session.keyboard.isVisible
         let shownCount = session.keyboard.shownCount
-        try require(responder.becomeFirstResponder(), "The real editor must accept UIKit focus")
+        session.keyboard.recordEditing("before becomeFirstResponder", responder: responder)
+        let acceptedFocus = responder.becomeFirstResponder()
+        session.keyboard.recordEditing("after becomeFirstResponder accepted=\(acceptedFocus)", responder: responder)
+        try require(acceptedFocus, "The real editor must accept UIKit focus")
         try settle(session, tracking: responder) {
             guard responder.isFirstResponder,
                   let accessory = responder.inputAccessoryView as? OPSKeyboardDoneAccessoryView else { return false }
@@ -318,7 +367,56 @@ final class SiteVisitTypeSettingsKeyboardTests: XCTestCase {
         attachment.name = "site-visit-keyboard-unsettled-geometry"
         attachment.lifetime = .keepAlways
         add(attachment)
-        try require(false, "Keyboard and the same editor sheet did not finish settling; software keyboard must be enabled")
+        captureFailureDiagnostics(session, tracking: view)
+        try require(false, "Keyboard and the same editor sheet did not finish settling; inspect focus diagnostics before classifying the failure")
+    }
+
+    private func captureFailureDiagnostics(_ session: Session, tracking view: UIView?) {
+        let liveInputs = descendants(of: UITextField.self, in: session.sheet.view).map { $0 as UIView }
+            + descendants(of: UITextView.self, in: session.sheet.view).map { $0 as UIView }
+        let accessory = view?.inputAccessoryView as? OPSKeyboardDoneAccessoryView
+        let diagnostics = """
+        App delegate: \(UIApplication.shared.delegate.map { String(describing: type(of: $0)) } ?? "nil")
+        Keyboard shown=\(session.keyboard.shownCount) hidden=\(session.keyboard.hiddenCount) pending=\(session.keyboard.pending.map(\.rawValue).sorted())
+        Tracked field still in live sheet: \(view.map { tracked in liveInputs.contains { $0 === tracked } } ?? false)
+        Tracked: \(KeyboardObservation.describe(view))
+        DONE gate: \(accessory.map { doneVisibilityFailure($0, in: session) ?? "visible" } ?? "tracked input has no canonical accessory")
+        Live inputs:\n\(liveInputs.map { KeyboardObservation.describe($0) }.joined(separator: "\n"))
+        Real editing event timeline:\n\(session.keyboard.editingEvents.joined(separator: "\n"))
+        """
+        let text = XCTAttachment(string: diagnostics)
+        text.name = "site-visit-keyboard-focus-diagnostics"
+        text.lifetime = .keepAlways
+        add(text)
+
+        // Best-effort failure context, explicitly separate from passing proof.
+        // Remote keyboard pixels may be unavailable when its accessory is not
+        // attached; no nonblank or visibility claim is made for this attachment.
+        let screen = session.window.screen.bounds
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        var windows = session.window.windowScene?.windows ?? [session.window]
+        if let accessoryWindow = view?.inputAccessoryView?.window,
+           !windows.contains(where: { $0 === accessoryWindow }) { windows.append(accessoryWindow) }
+        windows.sort { $0.windowLevel < $1.windowLevel }
+        let image = UIGraphicsImageRenderer(bounds: screen, format: format).image { context in
+            UIColor(OPSStyle.Colors.background).setFill()
+            context.fill(screen)
+            for window in windows where !window.isHidden && window.alpha > 0.01 {
+                for hostedView in window.subviews where !hostedView.isHidden && hostedView.alpha > 0.01 {
+                    let frame = screenFrame(hostedView)
+                    guard frame.intersects(screen) else { continue }
+                    context.cgContext.saveGState()
+                    context.cgContext.translateBy(x: frame.minX, y: frame.minY)
+                    hostedView.drawHierarchy(in: CGRect(origin: .zero, size: frame.size), afterScreenUpdates: true)
+                    context.cgContext.restoreGState()
+                }
+            }
+        }
+        let context = XCTAttachment(image: image)
+        context.name = "site-visit-keyboard-failure-context-unverified"
+        context.lifetime = .keepAlways
+        add(context)
     }
 
     private func presentationFingerprint(_ session: Session, tracking view: UIView?) -> String {
@@ -349,9 +447,15 @@ final class SiteVisitTypeSettingsKeyboardTests: XCTestCase {
     }
 
     private func doneIsVisible(_ accessory: OPSKeyboardDoneAccessoryView, in session: Session) -> Bool {
+        doneVisibilityFailure(accessory, in: session) == nil
+    }
+
+    private func doneVisibilityFailure(_ accessory: OPSKeyboardDoneAccessoryView, in session: Session) -> String? {
         let button = accessory.doneButton
         guard let window = button.window, window.screen === session.window.screen,
-              button.isEnabled, button.accessibilityIdentifier == "ops.keyboard.done" else { return false }
+              button.isEnabled, button.accessibilityIdentifier == "ops.keyboard.done" else {
+            return "DONE detached, on another screen, disabled, or missing its identifier"
+        }
         let frame = screenFrame(button)
         let screen = window.screen.bounds
         let keyboard = session.keyboard.frame.intersection(screen)
@@ -359,31 +463,35 @@ final class SiteVisitTypeSettingsKeyboardTests: XCTestCase {
               frame.height >= OPSStyle.Layout.touchTargetMin - tolerance,
               screen.contains(frame), screenFrame(window).contains(frame),
               keyboard.height > accessory.bounds.height + OPSStyle.Layout.touchTargetMin,
-              frame.minY >= keyboard.minY - tolerance, frame.maxY <= keyboard.maxY + tolerance else { return false }
+              frame.minY >= keyboard.minY - tolerance, frame.maxY <= keyboard.maxY + tolerance else {
+            return "DONE geometry invalid: button=\(frame) accessory=\(accessory.bounds) keyboard=\(keyboard) window=\(screenFrame(window))"
+        }
 
         var effectiveAlpha: Float = 1
         var next: UIView? = button
         while let current = next {
             guard !current.isHidden, current.alpha > 0.01, !current.layer.isHidden,
-                  current.layer.opacity > 0.01 else { return false }
+                  current.layer.opacity > 0.01 else { return "Hidden or transparent DONE ancestor: \(type(of: current))" }
             effectiveAlpha *= current.layer.presentation()?.opacity ?? current.layer.opacity
             if let presentation = current.layer.presentation() {
                 guard !presentation.isHidden, presentation.opacity > 0.01,
                       abs(presentation.frame.minX - current.layer.frame.minX) <= tolerance,
                       abs(presentation.frame.minY - current.layer.frame.minY) <= tolerance,
                       abs(presentation.frame.width - current.layer.frame.width) <= tolerance,
-                      abs(presentation.frame.height - current.layer.frame.height) <= tolerance else { return false }
+                      abs(presentation.frame.height - current.layer.frame.height) <= tolerance else {
+                    return "Unsettled DONE ancestor: \(type(of: current)) model=\(current.layer.frame) presentation=\(presentation.frame)"
+                }
             }
             if current.clipsToBounds && !screenFrame(current).insetBy(dx: -tolerance, dy: -tolerance).contains(frame) {
-                return false
+                return "Clipped DONE ancestor: \(type(of: current)) frame=\(screenFrame(current)) button=\(frame)"
             }
             next = current.superview
         }
-        guard effectiveAlpha > 0.01 else { return false }
+        guard effectiveAlpha > 0.01 else { return "DONE combined opacity=\(effectiveAlpha)" }
         let center = CGPoint(x: frame.midX, y: frame.midY)
         let point = window.convert(center, from: window.screen.coordinateSpace)
-        guard let hit = window.hitTest(point, with: nil) else { return false }
-        return hit === button || hit.isDescendant(of: button)
+        guard let hit = window.hitTest(point, with: nil) else { return "DONE center hit no view" }
+        return hit === button || hit.isDescendant(of: button) ? nil : "DONE center hit \(type(of: hit))"
     }
 
     private func screenFrame(_ view: UIView) -> CGRect {

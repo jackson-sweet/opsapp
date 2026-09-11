@@ -1,5 +1,11 @@
 # Phase 19 phone verification
 
+## Parent integration — 2026-09-11
+
+The complete phase is now integrated with main `b08de104` in `187a36d6` and locally fast-forwarded after one combined app-hosted regression: **138 passed, 2 optional private-store-copy skips, 0 failures**. All historical checksums, populated V27→V28 independent reopen, field recovery, calendar compatibility and settings inputs passed. This supersedes the earlier split-run limitation for the selected suites below, not the signed-device or release limits. Exact source, tests, raw result paths and independent Xcode summary are in [the parent integration report](parent-integration-20260911.md).
+
+## Original phase evidence
+
 Implementation is local and committed through `b15bf20f302fd0c9690e91714114c979ad91d4b4`, from baseline `8553b1b4`. No signed distribution, production migration, company activation, real-provider write, push or release was performed. Independent final integration review is retained in the sibling web phase artifacts.
 
 ## Field workflow and custody

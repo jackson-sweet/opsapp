@@ -240,8 +240,10 @@ struct BooksExpenseRow: View {
     @ViewBuilder
     private var receiptThumb: some View {
         if hasReceipt {
-            // Real thumbnail — thumb URL first, full receipt as the fallback
-            // (same resolution order as the batch-review hub). While loading —
+            // Real thumbnail — compact ledger rows use the lightweight object
+            // first; batch review intentionally uses the authoritative full
+            // receipt so historical square thumbnails cannot hide content.
+            // While loading —
             // and on a fetch failure — the abstract receipt block stands in:
             // it still reads "receipt attached", which is the truth the pill
             // logic keys off. Only a missing URL gets the rose no-receipt state.
@@ -249,12 +251,13 @@ struct BooksExpenseRow: View {
                let url = URL(string: raw) {
                 AsyncImage(url: url) { phase in
                     if case .success(let image) = phase {
-                        image.resizable().scaledToFill()
+                        ExpenseReceiptThumbnailImage(image: image)
                     } else {
                         receiptPlaceholder
                     }
                 }
                 .frame(width: 34, height: 42)
+                .background(OPSStyle.Colors.background)
                 .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: 3, style: .continuous).strokeBorder(Color.white.opacity(0.14), lineWidth: 1))
             } else {

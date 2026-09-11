@@ -15,6 +15,14 @@ enum SiteVisitArtifactVariant: String, Codable, CaseIterable {
     case thumbnail
 }
 
+/// Receipt-specific image preparation kept separate from avatar/logo crops.
+/// This seam lets the receipt contract be verified without any network calls.
+enum ExpenseReceiptImagePreparation {
+    static func thumbnail(from image: UIImage, maxPixelSize: CGFloat = 512) -> UIImage {
+        ImageDownsampler.downsample(image: image, maxPixelSize: maxPixelSize)
+    }
+}
+
 /// Service for handling image uploads using presigned URLs from ops-web
 @MainActor
 class PresignedURLUploadService {
@@ -292,9 +300,9 @@ class PresignedURLUploadService {
             contentType: "image/jpeg"
         )
 
-        // Thumbnail (512px square, quality 0.7). Best-effort — reuse the full
-        // URL for both if thumbnail generation or upload fails.
-        guard let thumbData = resizeImageToSquare(image, maxSize: 512)
+        // Thumbnail (512px longest edge, source aspect preserved, quality 0.7).
+        // Best-effort — reuse the full URL for both if generation or upload fails.
+        guard let thumbData = ExpenseReceiptImagePreparation.thumbnail(from: image)
             .jpegData(compressionQuality: 0.7) else {
             return (url: fullPresign.publicUrl, thumbnailUrl: fullPresign.publicUrl)
         }

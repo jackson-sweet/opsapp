@@ -9,6 +9,23 @@
 import SwiftUI
 import SwiftData
 
+/// Shared receipt rendering policy for compact Books surfaces.
+struct ExpenseReceiptThumbnailImage: View {
+    let image: Image
+
+    var body: some View {
+        image
+            .resizable()
+            .scaledToFit()
+    }
+}
+
+enum ExpenseReceiptDisplaySource {
+    static func reviewURL(full: String?, thumbnail: String?) -> String? {
+        full ?? thumbnail
+    }
+}
+
 struct ExpenseBatchDetailView: View {
     let batch: ExpenseBatchDTO
     @ObservedObject var viewModel: ExpenseViewModel
@@ -499,16 +516,18 @@ struct ExpenseBatchDetailView: View {
 
     private func receiptThumbnail(_ expense: ExpenseDTO) -> some View {
         Group {
-            if let thumbUrl = expense.receiptThumbnailUrl ?? expense.receiptImageUrl,
-               let url = URL(string: thumbUrl) {
+            if let receiptUrl = ExpenseReceiptDisplaySource.reviewURL(
+                full: expense.receiptImageUrl,
+                thumbnail: expense.receiptThumbnailUrl
+            ), let url = URL(string: receiptUrl) {
                 Button {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    receiptImageUrl = thumbUrl
+                    receiptImageUrl = receiptUrl
                     showReceiptViewer = true
                 } label: {
                     AsyncImage(url: url) { phase in
                         if case .success(let image) = phase {
-                            image.resizable().scaledToFill()
+                            ExpenseReceiptThumbnailImage(image: image)
                         } else if case .failure = phase {
                             receiptPlaceholder
                         } else {
@@ -518,6 +537,7 @@ struct ExpenseBatchDetailView: View {
                         }
                     }
                     .frame(width: 60, height: 80)
+                    .background(OPSStyle.Colors.background)
                     .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.smallCornerRadius))
                     .overlay(
                         RoundedRectangle(cornerRadius: OPSStyle.Layout.smallCornerRadius)

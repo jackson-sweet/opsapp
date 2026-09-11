@@ -140,6 +140,32 @@ enum Feedback {
     // MARK: - Job board (projects, clients, task types)
 
     enum JobBoard {
+        /// One immutable destination per newly created project. Legacy/tutorial
+        /// notifications without a real identity remain plain confirmations.
+        static func projectCreated(
+            title: String,
+            projectID: String?,
+            openProject: @escaping (String) -> Void
+        ) -> Toast {
+            let title = title.trimmingCharacters(in: .whitespacesAndNewlines)
+            let label = title.isEmpty ? "// PROJECT CREATED" : "// PROJECT CREATED · \(title.uppercased())"
+            guard let projectID = projectID?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !projectID.isEmpty,
+                  !projectID.uppercased().hasPrefix("DEMO_") else {
+                return Toast(label: label, tone: .success)
+            }
+            return Toast(
+                label: label,
+                tone: .success,
+                autoDismissAfter: 6,
+                action: ToastAction(label: "VIEW", accessibilityLabel: "View project") {
+                    openProject(projectID)
+                },
+                bodyTapInvokesAction: true,
+                coalescingKey: "project-created:\(projectID)"
+            )
+        }
+
         static let taskTypeCreated = Toast(label: "// TASK TYPE ADDED", tone: .success)
         static let taskTypeUpdated = Toast(label: "// TASK TYPE UPDATED", tone: .success)
         static let statusChanged   = Toast(label: "// STATUS CHANGED", tone: .success)

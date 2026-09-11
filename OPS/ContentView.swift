@@ -608,10 +608,6 @@ struct PINGatedView: View {
     @State private var showTaskCreatedMessage = false
     @State private var createdTaskTypeName: String = ""
 
-    // State for project creation success message
-    @State private var showProjectCreatedMessage = false
-    @State private var createdProjectTitle: String = ""
-
     // State for client creation success message
     @State private var showClientCreatedMessage = false
     @State private var createdClientName: String = ""
@@ -702,13 +698,7 @@ struct PINGatedView: View {
                         showTaskCreatedMessage = true
                     }
                     .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ProjectCreatedSuccess"))) { notification in
-                        // Show success message when project is created
-                        if let projectTitle = notification.userInfo?["projectTitle"] as? String {
-                            createdProjectTitle = projectTitle
-                        } else {
-                            createdProjectTitle = ""
-                        }
-                        showProjectCreatedMessage = true
+                        ToastCenter.shared.present(ProjectCreationCompletion.toast(for: notification))
 
                         // Track project creation for Google Ads
                         Task {
@@ -842,16 +832,6 @@ struct PINGatedView: View {
                     isPresented: $showTaskCreatedMessage,
                     title: "TASK CREATED",
                     subtitle: createdTaskTypeName.isEmpty ? nil : createdTaskTypeName,
-                    type: .success,
-                    autoDismissAfter: 3.0
-                )
-                .zIndex(2)
-
-                // Project created success notification
-                PushInMessage(
-                    isPresented: $showProjectCreatedMessage,
-                    title: "PROJECT CREATED",
-                    subtitle: createdProjectTitle.isEmpty ? nil : createdProjectTitle,
                     type: .success,
                     autoDismissAfter: 3.0
                 )

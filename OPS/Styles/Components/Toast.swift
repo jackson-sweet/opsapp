@@ -96,6 +96,11 @@ struct ToastAction {
     }
 }
 
+enum ToastTapTarget: Equatable {
+    case message
+    case action
+}
+
 // MARK: - Toast value
 
 struct Toast: Identifiable, Equatable {
@@ -105,6 +110,12 @@ struct Toast: Identifiable, Equatable {
     let autoDismissAfter: TimeInterval
     /// Optional trailing tap-through. `nil` → plain dismiss-on-tap toast.
     let action: ToastAction?
+    /// Opt-in for confirmations whose entire pill opens the created entity.
+    /// Other message taps keep their existing dismiss-only behavior.
+    let bodyTapInvokesAction: Bool
+    /// Defaults to the label. Entity-specific actions can retain distinct
+    /// destinations even when two confirmations have identical visible copy.
+    let coalescingKey: String
     /// Whether presenting this toast fires its tone haptic. Default `true` —
     /// a toast normally confirms something the operator just did, and the
     /// haptic is the confirmation.
@@ -125,6 +136,8 @@ struct Toast: Identifiable, Equatable {
         tone: ToastTone,
         autoDismissAfter: TimeInterval = 3.0,
         action: ToastAction? = nil,
+        bodyTapInvokesAction: Bool = false,
+        coalescingKey: String? = nil,
         haptics: Bool = true,
         suppressesSyncStatusIndicator: Bool = false
     ) {
@@ -133,6 +146,8 @@ struct Toast: Identifiable, Equatable {
         self.tone = tone
         self.autoDismissAfter = autoDismissAfter
         self.action = action
+        self.bodyTapInvokesAction = bodyTapInvokesAction
+        self.coalescingKey = coalescingKey ?? label
         self.haptics = haptics
         self.suppressesSyncStatusIndicator = suppressesSyncStatusIndicator
     }
@@ -179,8 +194,8 @@ final class ToastCenter: ObservableObject {
         // Ensure the dedicated toast window exists before we show anything — this
         // is what lets a toast fired from inside a sheet appear ABOVE the sheet.
         ToastWindowController.shared.install()
-        if current?.label == toast.label { return }
-        if queue.last?.label == toast.label { return }
+        if current?.coalescingKey == toast.coalescingKey { return }
+        if queue.last?.coalescingKey == toast.coalescingKey { return }
         guard current != nil else {
             withAnimation(presentationAnimation) {
                 show(toast)
@@ -189,6 +204,17 @@ final class ToastCenter: ObservableObject {
         }
         queue.append(toast)
         trimQueue()
+    }
+
+    /// Resolve taps against the visible identity. A trailing button and its
+    /// parent gesture can never run one action twice or dismiss the next toast.
+    func handleTap(toastID: UUID, target: ToastTapTarget) {
+        guard let toast = current, toast.id == toastID else { return }
+        if target == .action || toast.bodyTapInvokesAction {
+            toast.action?.handler()
+        }
+        guard current?.id == toastID else { return }
+        dismiss()
     }
 
     /// Dismiss the visible toast and advance to the next queued one. Called by
@@ -321,9 +347,10 @@ struct ToastHostView: View {
         GeometryReader { geometry in
             VStack {
                 if let toast = center.current {
-                    ToastBanner(toast: toast, reduceMotion: reduceMotion) {
+                    ToastBanner(toast: toast, reduceMotion: reduceMotion) { target in
+                        guard center.current?.id == toast.id else { return }
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        center.dismiss()
+                        center.handleTap(toastID: toast.id, target: target)
                     }
                     .padding(.horizontal, OPSStyle.Layout.spacing3)
                     .padding(.top, geometry.safeAreaInsets.top + 8)
@@ -348,7 +375,7 @@ struct ToastHostView: View {
 private struct ToastBanner: View {
     let toast: Toast
     let reduceMotion: Bool
-    let onTap: () -> Void
+    let onTap: (ToastTapTarget) -> Void
 
     var body: some View {
         HStack(spacing: 0) {
@@ -377,7 +404,7 @@ private struct ToastBanner: View {
         )
         .background(ToastInteractionRegionReader())
         .contentShape(Rectangle())
-        .onTapGesture { onTap() }
+        .onTapGesture { onTap(.message) }
         .onAppear {
             guard toast.haptics else { return }
             UINotificationFeedbackGenerator().notificationOccurred(toast.tone.hapticType)
@@ -385,7 +412,7 @@ private struct ToastBanner: View {
     }
 
     /// Icon + `//` label — the confirmation message. The banner-wide tap
-    /// gesture dismisses; this stays one combined VoiceOver element.
+    /// dismisses or invokes an opted-in action; VoiceOver follows that choice.
     private var messageRow: some View {
         HStack(spacing: 10) {
             Image(systemName: toast.tone.iconName)
@@ -401,7 +428,8 @@ private struct ToastBanner: View {
         .padding(.vertical, OPSStyle.Layout.spacing2_5)
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isButton)
-        .accessibilityHint("Tap to dismiss")
+        .accessibilityHint(toast.bodyTapInvokesAction ? (toast.action?.accessibilityLabel ?? "View") : "Tap to dismiss")
+        .accessibilityAction { onTap(.message) }
     }
 
     /// 1pt tone hairline separating the message from the tap-through action.
@@ -417,8 +445,7 @@ private struct ToastBanner: View {
     /// toast through the same path as a body tap.
     private func actionButton(_ action: ToastAction) -> some View {
         Button {
-            action.handler()
-            onTap()
+            onTap(.action)
         } label: {
             HStack(spacing: 5) {
                 Text(action.label)

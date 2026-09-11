@@ -26,6 +26,17 @@ def simctl(*args):
     return subprocess.run(["xcrun", "simctl", *args], check=True, capture_output=True, text=True, timeout=15).stdout.strip()
 
 
+def capture_cache(udid):
+    container = Path(simctl("get_app_container", udid, BUNDLE, "data")).resolve(strict=True)
+    if udid not in {p.upper() for p in container.parts} or container.parent.name != "Application":
+        raise RuntimeError("Unexpected simulator app data container")
+    cache = container / "Library" / "Caches" / "OPSKeyboardScreenshotProof"
+    if cache.is_symlink() or not cache.resolve().is_relative_to(container):
+        raise RuntimeError("Capture cache must stay inside the selected app container")
+    cache.mkdir(parents=True, exist_ok=True)
+    return cache
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--udid", required=True, help="Explicitly owned, already booted simulator UUID")
@@ -35,18 +46,27 @@ def main():
     devices = json.loads(simctl("list", "devices", "booted", "-j"))["devices"]
     if not any(d["udid"].upper() == udid and d["state"] == "Booted" for group in devices.values() for d in group):
         raise RuntimeError("The selected simulator is not booted")
-    container = Path(simctl("get_app_container", udid, BUNDLE, "data")).resolve(strict=True)
-    if udid not in {p.upper() for p in container.parts} or container.parent.name != "Application":
-        raise RuntimeError("Unexpected simulator app data container")
-    cache = container / "Library" / "Caches" / "OPSKeyboardScreenshotProof"
-    if cache.is_symlink() or not cache.resolve().is_relative_to(container):
-        raise RuntimeError("Capture cache must stay inside the selected app container")
-    cache.mkdir(parents=True, exist_ok=True)
     started = time.time()
     deadline = time.monotonic() + args.max_seconds
     seen, completed = set(), set()
-    print(json.dumps({"ready": True, "simulator": udid, "cache": str(cache)}), flush=True)
+    cache, next_resolution = None, 0
     while time.monotonic() < deadline:
+        # Xcode replaces the app data container when installing the test host.
+        # Follow only this exact simulator/bundle binding, retaining the original
+        # freshness boundary. The temporary uninstall gap is a bounded retry.
+        if time.monotonic() >= next_resolution:
+            try:
+                current_cache = capture_cache(udid)
+            except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
+                cache = None
+            else:
+                if current_cache != cache:
+                    print(json.dumps({"ready": True, "simulator": udid, "cache": str(current_cache)}), flush=True)
+                cache = current_cache
+            next_resolution = time.monotonic() + 1
+        if cache is None:
+            time.sleep(0.1)
+            continue
         for request_file in cache.glob("*.request.json"):
             if request_file.name in seen:
                 continue

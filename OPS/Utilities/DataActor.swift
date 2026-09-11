@@ -78,13 +78,13 @@ actor DataActor {
         }
     }
     private func outboundScope() -> OutboundScope? {
-        guard !Task.isCancelled, let generation = outboundLifetime.snapshot() else { return nil }
+        guard SyncExecutionContext.isCurrent, let generation = outboundLifetime.snapshot() else { return nil }
         return OutboundScope(generation: generation,
             userID: UserDefaults.standard.string(forKey: "currentUserId")?.lowercased(),
             companyID: UserDefaults.standard.string(forKey: "currentUserCompanyId")?.lowercased())
     }
     private func outboundIsCurrent(_ scope: OutboundScope, handle: OutboundHandle? = nil) -> Bool {
-        guard !Task.isCancelled, outboundLifetime.isCurrent(scope.generation),
+        guard SyncExecutionContext.isCurrent, outboundLifetime.isCurrent(scope.generation),
               scope.userID == UserDefaults.standard.string(forKey: "currentUserId")?.lowercased(),
               scope.companyID == UserDefaults.standard.string(forKey: "currentUserCompanyId")?.lowercased() else { return false }
         guard let handle else { return true }
@@ -116,7 +116,9 @@ actor DataActor {
 
     private func currentModelTransaction(_ block: () throws -> Void) throws {
         guard outboundScope() != nil else { throw CancellationError() }
-        try modelContext.transaction(block: block)
+        try SyncExecutionContext.withTransaction {
+            try modelContext.transaction(block: block)
+        }
     }
 
     #if DEBUG
@@ -207,7 +209,7 @@ actor DataActor {
         try checkCurrent()
         await cleanupDuplicateTaskTypes()
         try checkCurrent()
-        await rewireRelationships()
+        try await rewireRelationships()
         try checkCurrent()
     }
 
@@ -486,7 +488,7 @@ actor DataActor {
         }
 
         // Link FK columns into SwiftData relationship references inside a transaction.
-        linkAllRelationships()
+        try linkAllRelationships()
 
         flushInboundChangeSignal()
 
@@ -565,7 +567,7 @@ actor DataActor {
             }
         }
 
-        linkAllRelationships()
+        try linkAllRelationships()
 
         flushInboundChangeSignal()
 
@@ -624,7 +626,7 @@ actor DataActor {
             }
         }
 
-        linkAllRelationships()
+        try linkAllRelationships()
         flushInboundChangeSignal()
 
         print("[DataActor] ======== SCHEDULE SYNC COMPLETE ========")
@@ -6694,152 +6696,90 @@ actor DataActor {
 
     // MARK: - Relationship Linking
 
-    /// After all entities are pulled, walk the graph and wire FK string columns
-    /// into SwiftData @Relationship properties. Runs inside a single transaction
-    /// so partial linking never reaches the store.
-    ///
-    /// Non-throwing by design (matches InboundProcessor.linkAllRelationships) — a
-    /// failed fetch or transaction is logged and the sync continues. The caller
-    /// does NOT observe the failure; relationships will re-link on next sync.
-    ///
-    /// Ported from InboundProcessor.linkAllRelationships. All `context` references
-    /// become `self.modelContext`; manual `try context.save()` is replaced by the
-    /// surrounding `currentModelTransaction { }` block.
-    ///
-    /// Public wrapper so callers outside the sync flow can trigger a rewire —
-    /// specifically after `cleanupDuplicateTasks` deletes a duplicate, since
-    /// `pickFreshestIndex` may keep the copy whose `teamMembers: [User]`
-    /// relationship was never wired (the actor-inserted echo copy). The stored
-    /// `teamMemberIdsString` is canonical; `linkAllRelationships` rebuilds the
-    /// `[User]` array from it so the UI shows avatars without waiting for the
-    /// next sync.
-    func rewireRelationships() async {
-        linkAllRelationships()
+    /// Rebuild derived relationship references in bounded transactions. Each
+    /// chunk is durable before the next starts; interruption propagates so a
+    /// partial graph cannot be reported as a completed pull or advance cursors.
+    /// A later pass idempotently finishes remaining links.
+    func rewireRelationships() async throws {
+        try linkAllRelationships()
     }
 
-    private func linkAllRelationships() {
-        print("[DataActor] Linking all relationships...")
+    private func linkAllRelationships() throws {
+        try checkActiveModelSession()
+        let projects = try modelContext.fetch(FetchDescriptor<Project>())
+        let tasks = try modelContext.fetch(FetchDescriptor<ProjectTask>())
+        let clients = try modelContext.fetch(FetchDescriptor<Client>())
+        let taskTypes = try modelContext.fetch(FetchDescriptor<TaskType>())
+        let users = try modelContext.fetch(FetchDescriptor<User>())
+        // This hydrates a transient convenience property, not a persisted edit.
+        try ProjectPrimaryContactProjection.hydrate(projects: projects, in: modelContext)
 
-        do {
-            try currentModelTransaction {
-                let projects = try modelContext.fetch(FetchDescriptor<Project>())
-                let tasks = try modelContext.fetch(FetchDescriptor<ProjectTask>())
-                let clients = try modelContext.fetch(FetchDescriptor<Client>())
-                let taskTypes = try modelContext.fetch(FetchDescriptor<TaskType>())
-                let users = try modelContext.fetch(FetchDescriptor<User>())
-                try ProjectPrimaryContactProjection.hydrate(
-                    projects: projects,
-                    in: modelContext
-                )
+        var clientById: [String: Client] = [:]
+        for client in clients { clientById[client.id] = client }
+        var taskTypeById: [String: TaskType] = [:]
+        for taskType in taskTypes { taskTypeById[taskType.id] = taskType }
+        var userById: [String: User] = [:]
+        var userByIdCaseInsensitive: [String: User] = [:]
+        for user in users {
+            userById[user.id] = user
+            userByIdCaseInsensitive[user.id.lowercased()] = user
+        }
+        var projectById: [String: Project] = [:]
+        for project in projects { projectById[project.id] = project }
 
-                // Build id-lookup dictionaries — last-wins to safely handle duplicates.
-                var clientById: [String: Client] = [:]
-                for c in clients { clientById[c.id] = c }
-                var taskTypeById: [String: TaskType] = [:]
-                for t in taskTypes { taskTypeById[t.id] = t }
-                var userById: [String: User] = [:]
-                for u in users { userById[u.id] = u }
-                var projectById: [String: Project] = [:]
-                for p in projects { projectById[p.id] = p }
-
-                // Link projects → client and team members
-                for project in projects {
-                    if let clientId = project.clientId, let client = clientById[clientId] {
-                        if project.client?.id != clientId {
-                            project.client = client
-                        }
-                    }
-                    let memberIds = project.getTeamMemberIds()
-                    let members = memberIds.compactMap { userById[$0] }
-                    if Set(project.teamMembers.map(\.id)) != Set(members.map(\.id)) {
-                        project.teamMembers = members
-                    }
-                }
-
-                // Build a case-insensitive user lookup as a fallback — some User
-                // records may have been persisted with UPPERCASE ids from legacy
-                // paths even though Supabase canonicalizes to lowercase. A
-                // straight dictionary lookup misses those, leaving task avatars
-                // blank even when the member string is correct.
-                var userByIdCaseInsensitive: [String: User] = [:]
-                for u in users { userByIdCaseInsensitive[u.id.lowercased()] = u }
-
-                // Link tasks → project, task type, team members
-                for task in tasks {
-                    if let project = projectById[task.projectId] {
-                        if task.project?.id != project.id {
-                            task.project = project
-                        }
-                    }
-                    if let taskType = taskTypeById[task.taskTypeId] {
-                        if task.taskType?.id != taskType.id {
-                            task.taskType = taskType
-                        }
-                    }
-                    let memberIds = task.getTeamMemberIds()
-                    // Try exact match first, then case-insensitive fallback.
-                    let members = memberIds.compactMap { id -> User? in
-                        userById[id] ?? userByIdCaseInsensitive[id.lowercased()]
-                    }
-
-                    // Diagnostic: log when the member string can't be fully
-                    // resolved so we can distinguish "users not in store" from
-                    // "users in store but id case mismatch" from "partial
-                    // miss." Remove once this class of bug is confirmed dead.
-                    if !memberIds.isEmpty && members.count != memberIds.count {
-                        let missing = memberIds.filter { id in
-                            userById[id] == nil && userByIdCaseInsensitive[id.lowercased()] == nil
-                        }
-                        let totalUsers = userById.count
-                        let sampleIds = Array(userById.keys.prefix(3))
-                        print("[DataActor] ⚠️ task \(task.id): resolved \(members.count)/\(memberIds.count) member ids. missing=\(missing) storeUserCount=\(totalUsers) sampleStoreIds=\(sampleIds)")
-                    }
-
-                    if Set(task.teamMembers.map(\.id)) != Set(members.map(\.id)) {
-                        task.teamMembers = members
-                    }
-                }
+        try linkRelationshipBatches(projects) { project in
+            if let clientId = project.clientId, let client = clientById[clientId],
+               project.client?.id != clientId {
+                project.client = client
             }
-            // Catalog models keep relationships as id-typed scalars + first-class
-            // junction entities (CatalogItemTag, CatalogVariantOptionValue), so
-            // there's no SwiftData @Relationship to wire up after a sync.
-            // Mirrors InboundProcessor.linkAllRelationships's catalog no-op.
-            print("[DataActor] Catalog data has no post-merge linking pass (junctions are first-class)")
-
-            // Legacy InventoryItem keeps a SwiftData @Relationship to its
-            // InventoryUnit and InventoryTags (used by InventoryView for tag
-            // chips + unit display). The scalar `unitId` / `tagIds` are the
-            // server-authoritative state — wire the @Relationships up after
-            // every sync so the queries don't see stale references.
-            try currentModelTransaction {
-                let inventoryItems = try modelContext.fetch(FetchDescriptor<InventoryItem>())
-                let inventoryUnits = try modelContext.fetch(FetchDescriptor<InventoryUnit>())
-                let inventoryTags = try modelContext.fetch(FetchDescriptor<InventoryTag>())
-
-                var unitById: [String: InventoryUnit] = [:]
-                for u in inventoryUnits { unitById[u.id] = u }
-                var tagById: [String: InventoryTag] = [:]
-                for t in inventoryTags { tagById[t.id] = t }
-
-                for item in inventoryItems {
-                    if let unitId = item.unitId, let unit = unitById[unitId] {
-                        if item.unit?.id != unitId {
-                            item.unit = unit
-                        }
-                    } else if item.unit != nil && item.unitId == nil {
-                        item.unit = nil
-                    }
-
-                    let resolvedTags = item.tagIds.compactMap { tagById[$0] }
-                    if Set(item.tags.map(\.id)) != Set(resolvedTags.map(\.id)) {
-                        item.tags = resolvedTags
-                    }
-                }
+            let members = project.getTeamMemberIds().compactMap { userById[$0] }
+            if Set(project.teamMembers.map(\.id)) != Set(members.map(\.id)) {
+                project.teamMembers = members
             }
-            print("[DataActor] Linked inventory items → units + tags")
-            print("[DataActor] Relationships linked")
-        } catch {
-            print("[DataActor] Relationship linking failed: \(error) — skipping")
+        }
+        try linkRelationshipBatches(tasks) { task in
+            if let project = projectById[task.projectId], task.project?.id != project.id {
+                task.project = project
+            }
+            if let taskType = taskTypeById[task.taskTypeId], task.taskType?.id != taskType.id {
+                task.taskType = taskType
+            }
+            let members = task.getTeamMemberIds().compactMap { userById[$0] ?? userByIdCaseInsensitive[$0.lowercased()] }
+            if Set(task.teamMembers.map(\.id)) != Set(members.map(\.id)) {
+                task.teamMembers = members
+            }
+        }
+
+        try checkActiveModelSession()
+        let inventoryItems = try modelContext.fetch(FetchDescriptor<InventoryItem>())
+        let inventoryUnits = try modelContext.fetch(FetchDescriptor<InventoryUnit>())
+        let inventoryTags = try modelContext.fetch(FetchDescriptor<InventoryTag>())
+        var unitById: [String: InventoryUnit] = [:]
+        for unit in inventoryUnits { unitById[unit.id] = unit }
+        var tagById: [String: InventoryTag] = [:]
+        for tag in inventoryTags { tagById[tag.id] = tag }
+        try linkRelationshipBatches(inventoryItems) { item in
+            if let unitId = item.unitId, let unit = unitById[unitId] {
+                if item.unit?.id != unitId { item.unit = unit }
+            } else if item.unit != nil && item.unitId == nil {
+                item.unit = nil
+            }
+            let tags = item.tagIds.compactMap { tagById[$0] }
+            if Set(item.tags.map(\.id)) != Set(tags.map(\.id)) { item.tags = tags }
+        }
+        try checkActiveModelSession()
+    }
+
+    private func linkRelationshipBatches<Model>(_ models: [Model], update: (Model) -> Void) throws {
+        // A bounded number of parent records per commit prevents the old
+        // whole-store relationship save. This is not a guarantee about an
+        // arbitrarily stalled SQLite write; the execution scope also reserves
+        // time before expiration and prevents the next chunk from starting.
+        let chunkSize = 32
+        for start in stride(from: 0, to: models.count, by: chunkSize) {
+            try currentModelTransaction {
+                for model in models[start..<min(start + chunkSize, models.count)] { update(model) }
+            }
         }
     }
 }

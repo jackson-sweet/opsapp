@@ -13,11 +13,30 @@ import Foundation
 import Network
 
 @MainActor
+protocol PhotoDataUploading {
+    func uploadImageData(_ data: Data, filename: String, folder: String) async throws -> String
+}
+
+extension PresignedURLUploadService: PhotoDataUploading {}
+
+@MainActor
 final class PhotoProcessor {
 
     // MARK: - Dependencies
 
-    private let uploadService = PresignedURLUploadService.shared
+    private let uploadService: any PhotoDataUploading
+    private var isProcessingUploads = false
+    private let lifetime = OutboundSessionLifetime()
+
+    init(uploadService: (any PhotoDataUploading)? = nil) {
+        self.uploadService = uploadService ?? PresignedURLUploadService.shared
+    }
+
+    func invalidate() { lifetime.invalidate() }
+
+    private func canContinue(_ generation: UInt64) -> Bool {
+        SyncExecutionContext.isCurrent && lifetime.isCurrent(generation)
+    }
 
     // MARK: - Constants
 
@@ -100,6 +119,11 @@ final class PhotoProcessor {
     /// Fetches all LocalPhoto records needing upload and processes them
     /// with adaptive concurrency based on connectivity quality.
     func processUploadQueue(context: ModelContext, connectivity: ConnectivityManager) async {
+        let container = context.container
+        defer { withExtendedLifetime(container) {} }
+        guard !isProcessingUploads, let generation = lifetime.snapshot(), canContinue(generation) else { return }
+        isProcessingUploads = true
+        defer { isProcessingUploads = false }
         guard connectivity.shouldUploadPhotos else {
             return
         }
@@ -109,7 +133,7 @@ final class PhotoProcessor {
         do {
             let descriptor = FetchDescriptor<LocalPhoto>(
                 predicate: #Predicate<LocalPhoto> {
-                    $0.status == "local" || $0.status == "failed"
+                    $0.status == "local" || $0.status == "failed" || $0.status == "uploading"
                 }
             )
             photosToUpload = try context.fetch(descriptor)
@@ -136,6 +160,7 @@ final class PhotoProcessor {
         let batches = stride(from: 0, to: photosToUpload.count, by: maxConcurrent)
 
         for batchStart in batches {
+            guard canContinue(generation) else { return }
             // Re-check connectivity before each batch
             guard connectivity.shouldUploadPhotos else {
                 print("[PhotoProcessor] Connectivity dropped, pausing upload queue")
@@ -147,30 +172,37 @@ final class PhotoProcessor {
 
             // Apply retry cap and mark eligible photos as uploading
             var batch: [LocalPhoto] = []
-            for photo in batchSlice {
-                if photo.uploadRetryCount >= 20 {
-                    photo.status = "permanently_failed"
-                    print("[PHOTO_SYNC] Photo \(photo.id) permanently failed after 20 retries")
-                    continue
+            do {
+                try SyncExecutionContext.withTransaction {
+                    for photo in batchSlice {
+                        // A suspended attempt is still the same attempt; a
+                        // system interruption must not exhaust the retry cap.
+                        if photo.status != "uploading" {
+                            if photo.uploadRetryCount >= 20 {
+                                photo.status = "permanently_failed"
+                                continue
+                            }
+                            photo.uploadRetryCount += 1
+                        }
+                        photo.status = "uploading"
+                        photo.uploadProgress = 0
+                        batch.append(photo)
+                    }
+                    try context.save()
                 }
-                photo.uploadRetryCount += 1
-                photo.status = "uploading"
-                photo.uploadProgress = 0
-                batch.append(photo)
-            }
-            try? context.save()
+            } catch { return }
 
             // Upload concurrently within batch
             await withTaskGroup(of: Void.self) { group in
                 for photo in batch {
                     group.addTask { [weak self] in
                         guard let self else { return }
-                        await self.processOneUpload(photo, context: context)
+                        await self.processOneUpload(photo, context: context, generation: generation)
                     }
                 }
             }
 
-            try? context.save()
+            guard canContinue(generation) else { return }
         }
 
         // Check disk usage after processing the batch
@@ -201,21 +233,27 @@ final class PhotoProcessor {
     /// Auto-bug fires when (a) any permanent error hits, or (b) the
     /// in-session cap is exhausted with a non-pure-transient cause (the
     /// latter signals "something is wrong beyond bad signal").
-    private func processOneUpload(_ photo: LocalPhoto, context: ModelContext) async {
+    private func processOneUpload(_ photo: LocalPhoto, context: ModelContext, generation: UInt64) async {
         let backoffSeconds: [TimeInterval] = [1, 5, 15, 60]
         var lastError: Error?
         var lastKind: UploadErrorKind?
 
         for attempt in 0..<backoffSeconds.count {
+            guard canContinue(generation) else { return }
             do {
                 let publicURL = try await uploadPhoto(photo)
-                photo.uploadedURL = publicURL
-                photo.status = "uploaded"
-                photo.uploadProgress = 1.0
-                photo.needsSync = false
-                photo.lastSyncedAt = Date()
+                guard canContinue(generation) else { return }
+                try SyncExecutionContext.withTransaction {
+                    photo.uploadedURL = publicURL
+                    photo.status = "uploaded"
+                    photo.uploadProgress = 1.0
+                    photo.needsSync = false
+                    photo.lastSyncedAt = Date()
+                    try context.save()
+                }
                 return
             } catch {
+                guard canContinue(generation), !(error is CancellationError) else { return }
                 lastError = error
                 let kind = UploadErrorClassifier.classify(error)
                 lastKind = kind
@@ -253,8 +291,14 @@ final class PhotoProcessor {
         // uploadRetryCount on the LocalPhoto bumps once per processUploadQueue
         // pass, not once per in-session attempt — so 4 in-session retries
         // count as 1 cross-session attempt against the 20 cap.
-        photo.status = "failed"
-        photo.uploadProgress = 0
+        guard canContinue(generation) else { return }
+        do {
+            try SyncExecutionContext.withTransaction {
+                photo.status = "failed"
+                photo.uploadProgress = 0
+                try context.save()
+            }
+        } catch { return }
 
         // Auto-bug only if the cap-exhaust cause is NOT a pure transient
         // (e.g. unknown error or repeated 5xx with no recovery). Pure
@@ -275,6 +319,7 @@ final class PhotoProcessor {
                     "cross_session_retry_count": photo.uploadRetryCount
                 ]
             )
+            guard canContinue(generation) else { return }
             DebugLogger.shared.log(
                 "PhotoProcessor in-session retries exhausted for \(photo.id): \(error)",
                 level: .warning,

@@ -19,10 +19,10 @@ final class BackgroundSyncScheduler {
     static let processingTaskId = "com.ops.sync.processing"
 
     /// Called when a refresh task fires — should push pending operations
-    var onRefreshTask: (() async -> Void)?
+    var onRefreshTask: (@MainActor () async -> Bool)?
 
     /// Called when a processing task fires — should do full sync + photo upload + cleanup
-    var onProcessingTask: (() async -> Void)?
+    var onProcessingTask: (@MainActor () async -> Bool)?
 
     private init() {}
 
@@ -72,36 +72,36 @@ final class BackgroundSyncScheduler {
     }
 
     private func handleRefreshTask(_ task: BGAppRefreshTask) {
-        scheduleRefresh() // schedule next
-
-        let syncTask = Task {
-            await onRefreshTask?()
-        }
-
-        task.expirationHandler = {
-            syncTask.cancel()
-        }
-
-        Task {
-            await syncTask.value
-            task.setTaskCompleted(success: true)
+        scheduleRefresh()
+        let scope = SyncExecutionScope()
+        task.expirationHandler = { scope.close() }
+        Task { @MainActor [weak self] in
+            do {
+                let completed = try await SyncExecutionCoordinator.shared.runSystemTask(scope: scope) { [weak self] in
+                    guard let handler = self?.onRefreshTask else { return false }
+                    return await handler()
+                }
+                task.setTaskCompleted(success: completed)
+            } catch {
+                task.setTaskCompleted(success: false)
+            }
         }
     }
 
     private func handleProcessingTask(_ task: BGProcessingTask) {
-        scheduleProcessing() // schedule next
-
-        let syncTask = Task {
-            await onProcessingTask?()
-        }
-
-        task.expirationHandler = {
-            syncTask.cancel()
-        }
-
-        Task {
-            await syncTask.value
-            task.setTaskCompleted(success: true)
+        scheduleProcessing()
+        let scope = SyncExecutionScope()
+        task.expirationHandler = { scope.close() }
+        Task { @MainActor [weak self] in
+            do {
+                let completed = try await SyncExecutionCoordinator.shared.runSystemTask(scope: scope) { [weak self] in
+                    guard let handler = self?.onProcessingTask else { return false }
+                    return await handler()
+                }
+                task.setTaskCompleted(success: completed)
+            } catch {
+                task.setTaskCompleted(success: false)
+            }
         }
     }
 }

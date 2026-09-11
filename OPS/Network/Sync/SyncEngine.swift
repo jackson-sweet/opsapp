@@ -81,7 +81,8 @@ final class SyncEngine {
     private var connectivity: ConnectivityManager?
     private var syncCycleID: UUID?
     private var syncInProgress: Bool = false
-    private var syncRequestedWhileInProgress: Bool = false
+    private let syncFollowUp = SyncFollowUpRequest()
+    private let execution: SyncExecutionCoordinator
     private let pushDrainCoordinator = SyncPushDrainCoordinator()
     private var recoveryTask: Task<Void, Never>?
     private var recoveryTaskID: UUID?
@@ -105,7 +106,7 @@ final class SyncEngine {
     /// edits only wake pushPending() and never rediscover historical graphs.
     func requestRecovery() {
         recoveryRequested = true
-        guard recoveryTask == nil else { return }
+        guard SyncExecutionContext.isCurrent, recoveryTask == nil, execution.acceptsOrdinaryWork || SyncExecutionContext.scope != nil else { return }
         let taskID = UUID()
         recoveryTaskID = taskID
         let generation = lifecycleGeneration
@@ -119,11 +120,11 @@ final class SyncEngine {
                 if self.recoveryTaskID == taskID {
                     self.recoveryTask = nil
                     self.recoveryTaskID = nil
-                    if self.recoveryRequested && !Task.isCancelled { self.requestRecovery() }
+                    if self.recoveryRequested && SyncExecutionContext.isCurrent { self.requestRecovery() }
                 }
             }
             @MainActor func scopeIsCurrent() -> Bool {
-                !Task.isCancelled && generation == self.lifecycleGeneration
+                SyncExecutionContext.isCurrent && generation == self.lifecycleGeneration
                     && self.currentUserId?.lowercased() == userID
                     && UserDefaults.standard.string(forKey: "currentUserCompanyId")?.lowercased() == companyID
             }
@@ -140,6 +141,10 @@ final class SyncEngine {
     }
 
     private func runRecoveryPass() async {
+        await performExecution(name: "sync-recovery", showsStatus: false) { await self.runRecoveryPassAdmitted() }
+    }
+
+    private func runRecoveryPassAdmitted() async {
         guard await awaitDataActorReadiness() else { return }
         guard let context = modelContext else { return }
         let generation = lifecycleGeneration
@@ -147,7 +152,7 @@ final class SyncEngine {
         let userId = currentUserId?.lowercased()
         guard !companyId.isEmpty else { return }
         func scopeIsCurrent() -> Bool {
-            !Task.isCancelled && generation == lifecycleGeneration
+            SyncExecutionContext.isCurrent && generation == lifecycleGeneration
                 && currentUserId?.lowercased() == userId
                 && UserDefaults.standard.string(forKey: "currentUserCompanyId")?.lowercased() == companyId
         }
@@ -205,6 +210,7 @@ final class SyncEngine {
 
     #if DEBUG
     var hasRecoveryTaskForTesting: Bool { recoveryTask != nil }
+    var hasPendingRecoveryForTesting: Bool { recoveryRequested }
     func awaitScheduledRecoveryForTesting() async { await recoveryTask?.value }
     /// Deterministic test seam invoked after every discard mutation and delete
     /// registration, immediately before SwiftData commits the transaction.
@@ -257,9 +263,30 @@ final class SyncEngine {
     /// only this tracker remains.
     private let spotlightTracker = SpotlightSyncTracker()
 
+    /// Interruption retains one foreground retry and cannot publish successful
+    /// completion or advance cursors from an expired continuation.
+    @discardableResult
+    private func performExecution(
+        name: String,
+        showsStatus: Bool = true,
+        operation: @escaping @MainActor () async -> Void
+    ) async -> Bool {
+        let generation = lifecycleGeneration
+        do {
+            try await execution.run(name: name) { await operation() }
+            return true
+        } catch {
+            guard generation == lifecycleGeneration else { return false }
+            syncFollowUp.request()
+            if showsStatus && !syncInProgress { statusText = "Sync paused" }
+            return false
+        }
+    }
+
     // MARK: - Lifecycle
 
-    init(dimensionedPendingSyncer: DimensionedPendingSyncing? = nil) {
+    init(dimensionedPendingSyncer: DimensionedPendingSyncing? = nil, execution: SyncExecutionCoordinator? = nil) {
+        self.execution = execution ?? .shared
         self.dimensionedPendingSyncer = dimensionedPendingSyncer ?? DimensionedPhotoSyncManager.shared
     }
 
@@ -284,6 +311,7 @@ final class SyncEngine {
             self.dataActorStartup = nil
         }
         outboundProcessor?.invalidate()
+        photoProcessor?.invalidate()
         self.dataActor?.retireAndDrainModelWork()
         lifecycleGeneration += 1
         recoveryTask?.cancel()
@@ -294,7 +322,7 @@ final class SyncEngine {
         self.dataActor = dataActor
         syncCycleID = nil
         syncInProgress = false
-        syncRequestedWhileInProgress = false
+        syncFollowUp.cancel(preservingRequest: false)
         isSyncing = false
         isPerformingInitialSync = false
         dataActor?.resumeOutboundWork()
@@ -361,16 +389,30 @@ final class SyncEngine {
         // when those tasks fire.
         let scheduler = BackgroundSyncScheduler.shared
         scheduler.onRefreshTask = { [weak self] in
-            await self?.pushPending()
+            guard let self, self.modelContext === modelContext,
+                  connectivity.shouldAttemptSync else { return false }
+            let generation = self.lifecycleGeneration
+            guard await self.awaitDataActorReadiness(),
+                  self.lifecycleGeneration == generation, self.modelContext === modelContext,
+                  let session = self.sessionScope() else { return false }
+            let pushed = await self.performPushPending()
+            return pushed && self.sessionIsCurrent(session) && !self.hasError
         }
         scheduler.onProcessingTask = { [weak self] in
-            await self?.triggerSync()
-            await self?.photoProcessor?.processUploadQueue(
+            guard let self, self.modelContext === modelContext else { return false }
+            let generation = self.lifecycleGeneration
+            guard await self.awaitDataActorReadiness(),
+                  self.lifecycleGeneration == generation, self.modelContext === modelContext,
+                  let session = self.sessionScope() else { return false }
+            guard await self.performTriggerSync(), self.sessionIsCurrent(session) else { return false }
+            await self.photoProcessor?.processUploadQueue(
                 context: modelContext,
                 connectivity: connectivity
             )
-            self?.cleanupCompletedOperations()
-            self?.purgeExpiredPendingWork()
+            guard self.sessionIsCurrent(session) else { return false }
+            self.cleanupCompletedOperations()
+            self.purgeExpiredPendingWork()
+            return self.sessionIsCurrent(session) && !self.hasError
         }
         self.backgroundScheduler = scheduler
 
@@ -482,7 +524,7 @@ final class SyncEngine {
         // The old pass no longer owns these flags, so its guarded defer will
         // intentionally leave replacement state alone.
         syncInProgress = false
-        syncRequestedWhileInProgress = false
+        syncFollowUp.cancel(preservingRequest: false)
         isSyncing = false
         isPerformingInitialSync = false
         lifecycleGeneration += 1
@@ -513,7 +555,7 @@ final class SyncEngine {
     }
 
     private func sessionScope() -> SessionScope? {
-        guard !Task.isCancelled, let context = modelContext else { return nil }
+        guard SyncExecutionContext.isCurrent, let context = modelContext else { return nil }
         return SessionScope(generation: lifecycleGeneration,
             contextID: ObjectIdentifier(context), container: context.container,
             startupID: dataActorStartup.map(ObjectIdentifier.init),
@@ -524,7 +566,7 @@ final class SyncEngine {
     }
 
     private func sessionIsCurrent(_ scope: SessionScope) -> Bool {
-        guard !Task.isCancelled, let context = modelContext else { return false }
+        guard SyncExecutionContext.isCurrent, let context = modelContext else { return false }
         return lifecycleGeneration == scope.generation
             && ObjectIdentifier(context) == scope.contextID
             && dataActorStartup.map(ObjectIdentifier.init) == scope.startupID
@@ -535,7 +577,7 @@ final class SyncEngine {
     }
 
     private func awaitDataActorReadiness() async -> Bool {
-        guard !Task.isCancelled else { return false }
+        guard SyncExecutionContext.isCurrent else { return false }
         guard FeatureFlags.useDataActor, let startup = dataActorStartup else {
             return true // Explicit legacy/standalone integrations keep their existing path.
         }
@@ -543,7 +585,7 @@ final class SyncEngine {
         let generation = lifecycleGeneration
         let userID = currentUserId?.lowercased()
         let companyID = UserDefaults.standard.string(forKey: "currentUserCompanyId")?.lowercased()
-        guard let actor = await startup.value(), !Task.isCancelled,
+        guard let actor = await startup.value(), SyncExecutionContext.isCurrent,
               generation == lifecycleGeneration, dataActorStartup === startup,
               modelContext === context,
               currentUserId?.lowercased() == userID,
@@ -593,10 +635,12 @@ final class SyncEngine {
     ///
     /// Safe to call multiple times.
     func stopForLogoutSync() {
+        syncFollowUp.cancel(preservingRequest: false)
         syncCycleID = nil
         retireRealtimeProcessor()
         dataActorStartup?.invalidate()
         outboundProcessor?.invalidate()
+        photoProcessor?.invalidate()
         self.dataActor?.retireAndDrainModelWork()
         lifecycleGeneration += 1
         recoveryRequested = false
@@ -645,6 +689,10 @@ final class SyncEngine {
 
     /// Processes the photo upload queue.
     func processPhotoUploads() async {
+        await performExecution(name: "sync-photos") { await self.processPhotoUploadsAdmitted() }
+    }
+
+    private func processPhotoUploadsAdmitted() async {
         guard let modelContext, let connectivity else { return }
         await photoProcessor?.processUploadQueue(context: modelContext, connectivity: connectivity)
     }
@@ -1331,6 +1379,10 @@ final class SyncEngine {
     /// Intentionally does NOT acquire the `syncInProgress` lock — it's a
     /// single-row fetch that is safe to run alongside other syncs.
     func syncCompanyNow() async {
+        await performExecution(name: "sync-company", showsStatus: false) { await self.syncCompanyNowAdmitted() }
+    }
+
+    private func syncCompanyNowAdmitted() async {
         guard connectivity?.shouldAttemptSync == true else {
             print("[SYNC_ENGINE] syncCompanyNow: network unavailable — skipping")
             return
@@ -1373,6 +1425,10 @@ final class SyncEngine {
     /// touches `statusText` / `isSyncing` — it is a single-row read, not a sync
     /// pass, and must not present itself to the operator as one.
     func syncClientNow(clientId: String) async {
+        await performExecution(name: "sync-client", showsStatus: false) { await self.syncClientNowAdmitted(clientId: clientId) }
+    }
+
+    private func syncClientNowAdmitted(clientId: String) async {
         guard !clientId.isEmpty else { return }
 
         guard connectivity?.shouldAttemptSync == true else {
@@ -1403,22 +1459,35 @@ final class SyncEngine {
 
     /// Triggers a full push-then-pull cycle, guarding against concurrent syncs.
     func triggerSync() async {
-        guard await awaitDataActorReadiness() else { return }
-        guard let session = sessionScope() else { return }
+        _ = await performTriggerSync()
+    }
+
+    private func performTriggerSync() async -> Bool {
+        var synced = false
+        let completed = await performExecution(name: "sync-cycle") {
+            synced = await self.triggerSyncAdmitted()
+        }
+        return completed && synced
+    }
+
+    private func triggerSyncAdmitted() async -> Bool {
+        guard await awaitDataActorReadiness() else { return false }
+        guard let session = sessionScope() else { return false }
         guard !syncInProgress else {
-            syncRequestedWhileInProgress = true
+            syncFollowUp.request()
             print(
                 "[SYNC_ENGINE] Sync already in progress — queued one follow-up"
             )
-            return
+            return false
         }
 
         guard connectivity?.shouldAttemptSync == true else {
             print("[SYNC_ENGINE] Network not available — skipping sync")
             statusText = "Offline — changes queued"
-            return
+            return false
         }
 
+        syncFollowUp.consumePending()
         let cycleID = UUID()
         syncCycleID = cycleID
         syncInProgress = true
@@ -1439,31 +1508,34 @@ final class SyncEngine {
 
         // Push local changes first, then pull server changes
         await pushPending()
-        guard sessionIsCurrent(session) else { return }
+        guard sessionIsCurrent(session) else { return false }
         await syncPendingLocalArtifacts()
-        guard sessionIsCurrent(session) else { return }
+        guard sessionIsCurrent(session) else { return false }
         await pullDelta()
-        guard sessionIsCurrent(session) else { return }
+        guard sessionIsCurrent(session) else { return false }
 
         // This cycle pushes before it pulls. If the pull restored a parent that
         // had been in deleted-parent custody, release and drain that exact packet
         // now instead of waiting for the next periodic trigger.
         if releaseRestoredParentSiteVisitChains() {
             await pushPending()
-            guard sessionIsCurrent(session) else { return }
+            guard sessionIsCurrent(session) else { return false }
         }
 
         if !hasError {
             statusText = "Synced"
             kickoffPhotoPrefetch()
         }
+        return !hasError
     }
 
     private func drainQueuedSyncRequest() {
-        guard syncRequestedWhileInProgress else { return }
-        syncRequestedWhileInProgress = false
-        Task { @MainActor [weak self] in
-            await self?.triggerSync()
+        syncFollowUp.scheduleIfAdmitted(canStart: { [weak self] in
+            guard let self else { return false }
+            return self.execution.acceptsOrdinaryWork && !self.syncInProgress
+        }) { [weak self] in
+            guard let self else { return false }
+            return await self.performTriggerSync()
         }
     }
 
@@ -1513,6 +1585,10 @@ final class SyncEngine {
     /// Performs a full sync of all entities in dependency order.
     /// Used for initial sync or manual full-refresh.
     func fullSync() async {
+        await performExecution(name: "sync-full") { await self.fullSyncAdmitted() }
+    }
+
+    private func fullSyncAdmitted() async {
         guard await awaitDataActorReadiness() else { return }
         guard let session = sessionScope() else { return }
         requestRecovery()
@@ -1544,6 +1620,7 @@ final class SyncEngine {
             return
         }
 
+        syncFollowUp.consumePending()
         let cycleID = UUID()
         syncCycleID = cycleID
         syncInProgress = true
@@ -1662,6 +1739,14 @@ final class SyncEngine {
     /// Still pushes pending local ops so an offline edit isn't stranded.
     @discardableResult
     func refreshScheduleData(companyId requestedCompanyId: String? = nil) async -> Bool {
+        var refreshed = false
+        let completed = await performExecution(name: "sync-schedule") {
+            refreshed = await self.refreshScheduleDataAdmitted(companyId: requestedCompanyId)
+        }
+        return completed && refreshed
+    }
+
+    private func refreshScheduleDataAdmitted(companyId requestedCompanyId: String?) async -> Bool {
         guard await awaitDataActorReadiness() else { return false }
         guard let session = sessionScope() else { return false }
         // Briefly defer to an in-flight sync rather than racing it.
@@ -1692,6 +1777,7 @@ final class SyncEngine {
             return false
         }
 
+        syncFollowUp.consumePending()
         let cycleID = UUID()
         syncCycleID = cycleID
         syncInProgress = true
@@ -1772,21 +1858,35 @@ final class SyncEngine {
 
     /// Pushes all pending local operations to the server via OutboundProcessor.
     func pushPending() async {
-        guard let modelContext, let connectivity else { return }
-        guard connectivity.shouldAttemptSync else { return }
-        guard await awaitDataActorReadiness() else { return }
-        guard let session = sessionScope() else { return }
+        _ = await performPushPending()
+    }
+
+    private func performPushPending() async -> Bool {
+        var pushed = false
+        let completed = await performExecution(name: "sync-push") {
+            pushed = await self.pushPendingAdmitted()
+        }
+        return completed && pushed
+    }
+
+    private func pushPendingAdmitted() async -> Bool {
+        guard let modelContext, let connectivity else { return false }
+        guard connectivity.shouldAttemptSync else { return false }
+        guard await awaitDataActorReadiness() else { return false }
+        guard let session = sessionScope() else { return false }
         let generation = lifecycleGeneration
         // Legacy children need their recovered parent before the first send.
         // The recovery task clears this slot before its own final upload wakeup.
         if let recoveryTask { await recoveryTask.value }
-        guard sessionIsCurrent(session) else { return }
-        guard generation == lifecycleGeneration, !Task.isCancelled else { return }
+        guard sessionIsCurrent(session) else { return false }
+        guard generation == lifecycleGeneration, !Task.isCancelled else { return false }
+        var didFinish = false
         await pushDrainCoordinator.run {
             guard self.sessionIsCurrent(session), generation == self.lifecycleGeneration,
                   connectivity.shouldAttemptSync else { return }
             let pending = self.getPendingOperations()
             guard !pending.isEmpty else {
+                didFinish = true
                 print("[SYNC_ENGINE] No pending operations to push")
                 return
             }
@@ -1820,8 +1920,9 @@ final class SyncEngine {
                 completedProjectTaskIds: completedProjectTaskIds
             )
             self.refreshPendingCount()
+            didFinish = true
         }
-        guard sessionIsCurrent(session) else { return }
+        return sessionIsCurrent(session) && didFinish
 
     }
 
@@ -2234,6 +2335,10 @@ final class SyncEngine {
 
     /// Pulls delta changes from the server since the last sync timestamp via InboundProcessor.
     func pullDelta() async {
+        await performExecution(name: "sync-delta") { await self.pullDeltaAdmitted() }
+    }
+
+    private func pullDeltaAdmitted() async {
         guard await awaitDataActorReadiness() else { return }
         guard let session = sessionScope() else { return }
         guard let modelContext else {
@@ -2304,6 +2409,10 @@ final class SyncEngine {
 
     /// Pulls delta changes from a specific timestamp (used for Realtime catch-up).
     private func deltaSyncSince(_ date: Date) async {
+        await performExecution(name: "sync-catch-up") { await self.deltaSyncSinceAdmitted(date) }
+    }
+
+    private func deltaSyncSinceAdmitted(_ date: Date) async {
         guard await awaitDataActorReadiness() else { return }
         guard let session = sessionScope() else { return }
         guard let modelContext else { return }

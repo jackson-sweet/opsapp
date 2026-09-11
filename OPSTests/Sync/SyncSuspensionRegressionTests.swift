@@ -95,7 +95,10 @@ final class SyncSuspensionRegressionTests: XCTestCase {
         let allowance = ControlledSyncAllowance()
         let execution = SyncExecutionCoordinator(allowance: allowance)
         let engine = SyncEngine(dimensionedPendingSyncer: SuspensionNoopDimensions(), execution: execution)
-        engine.configure(modelContext: container.mainContext, connectivity: SuspensionOnlineConnectivity())
+        // Recovery is explicitly requested below. Real NWPathMonitor events
+        // must not schedule a second, independently admitted recovery while
+        // this test checks whether the closed parent's task released its slot.
+        engine.configure(modelContext: container.mainContext, connectivity: SuspensionRecoveryConnectivity())
         defer { engine.stopForLogoutSync() }
         let parentScope = SyncExecutionScope()
         await SyncExecutionContext.$scope.withValue(parentScope) {
@@ -153,6 +156,11 @@ private actor SuspensionPullCounter {
 @MainActor
 private final class SuspensionOnlineConnectivity: ConnectivityManager {
     override var shouldAttemptSync: Bool { true }
+}
+
+@MainActor
+private final class SuspensionRecoveryConnectivity: ConnectivityManager {
+    override var shouldAttemptSync: Bool { false }
 }
 
 private final class SuspensionNoopDimensions: DimensionedPendingSyncing {

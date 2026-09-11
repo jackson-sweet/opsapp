@@ -132,6 +132,7 @@ final class PhotoPrefetchService: ObservableObject {
     /// other teardown path) can cancel the pass and prevent downloads from
     /// completing under a signed-out user's directory.
     private var prefetchTask: Task<Void, Never>?
+    private var prefetchTaskID: UUID?
 
     // MARK: - UserDefaults Keys
 
@@ -182,12 +183,43 @@ final class PhotoPrefetchService: ObservableObject {
             return
         }
 
+        // ModelContext does not own its container. Capture it synchronously,
+        // before the queued task or profiler await can outlive the caller.
+        startPrefetch(container: modelContext.container, connectivity: connectivity)
+    }
+
+    private func startPrefetch(container: ModelContainer, connectivity: ConnectivityManager) {
         prefetchTask?.cancel()
+        let id = UUID()
+        prefetchTaskID = id
+        isPrefetching = true
         prefetchTask = Task { [weak self] in
-            await self?.runPrefetch(modelContext: modelContext, connectivity: connectivity)
-            self?.prefetchTask = nil
+            guard let self else { return }
+            defer {
+                if self.prefetchTaskID == id {
+                    self.prefetchTask = nil
+                    self.prefetchTaskID = nil
+                    self.isPrefetching = false
+                }
+            }
+            await self.runPrefetch(container: container, connectivity: connectivity)
         }
     }
+
+    #if DEBUG
+    private var beforeSnapshotForTesting: (() async -> Void)?
+    static func isolatedForTesting() -> PhotoPrefetchService { PhotoPrefetchService() }
+    /// Runs the real queued worker without network-admission timing in fixtures.
+    func startPrefetchForTesting(
+        context: ModelContext,
+        connectivity: ConnectivityManager,
+        beforeSnapshot: @escaping () async -> Void
+    ) -> Task<Void, Never>? {
+        beforeSnapshotForTesting = beforeSnapshot
+        startPrefetch(container: context.container, connectivity: connectivity)
+        return prefetchTask
+    }
+    #endif
 
     /// Cancel any in-flight prefetch pass. Call from the logout path so we
     /// don't keep pulling photos under a signed-out user. No-op if nothing
@@ -197,25 +229,31 @@ final class PhotoPrefetchService: ObservableObject {
         print("[PhotoPrefetch] Cancelling in-flight prefetch")
         task.cancel()
         prefetchTask = nil
+        prefetchTaskID = nil
+        isPrefetching = false
     }
 
     // MARK: - Prefetch Core
 
-    private func runPrefetch(modelContext: ModelContext, connectivity: ConnectivityManager) async {
-        isPrefetching = true
-        defer { isPrefetching = false }
+    private func runPrefetch(container: ModelContainer, connectivity: ConnectivityManager) async {
+        guard !Task.isCancelled else { return }
 
         let profiler = StorageProfiler.shared
         let downloader = PhotoDownloadManager.shared
 
         let startUsage = await profiler.backgroundUsageBytes(reconcile: true)
+        guard !Task.isCancelled else { return }
+        #if DEBUG
+        await beforeSnapshotForTesting?()
+        guard !Task.isCancelled else { return }
+        #endif
         let budget = profiler.budgetBytes
         print("[PhotoPrefetch] Starting pass — \(StorageProfiler.formatBytes(startUsage)) of \(StorageProfiler.formatBytes(budget)) used")
 
         let plan: PhotoPrefetchPlan
         do {
             plan = try await PhotoPrefetchProjectReader.plan(
-                container: modelContext.container, now: Date(),
+                container: container, now: Date(),
                 warmupProjectCap: firstLoadWarmupProjectCap, warmupPhotoCap: firstLoadWarmupPhotoCap
             )
         } catch {
@@ -256,6 +294,7 @@ final class PhotoPrefetchService: ObservableObject {
             if success { downloaded += 1 }
         }
 
+        guard !Task.isCancelled else { return }
         lastRunDownloaded = downloaded
         lastRunSkippedForBudget = skippedForBudget
         lastRunAt = Date()

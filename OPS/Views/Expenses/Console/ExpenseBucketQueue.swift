@@ -24,6 +24,9 @@ struct ExpenseBucketQueue: View {
     let onPay: (ExpenseBatchDTO) -> Void
     let onApproveGroup: (ExpensePersonGroup) -> Void
     let onPayGroup: (ExpensePersonGroup) -> Void
+    /// A successful RPC receipt stays locked even if its row readback failed.
+    var approvalLockedBatchIds: Set<String> = []
+    var approvalInFlightBatchIds: Set<String> = []
 
     /// Snapshot/preview support — start WITH CREW expanded.
     var initialCrewExpanded: Bool = false
@@ -74,7 +77,9 @@ struct ExpenseBucketQueue: View {
         let flagged = stats?.flagged ?? 0
         return BooksSwipeRow(
             rowID: "batch-\(batch.id)",
-            leading: (canApprove && flagged == 0) ? [approveAction(batch)] : [],
+            leading: (canApprove && flagged == 0 && !approvalLockedBatchIds.contains(batch.id)
+                && !approvalInFlightBatchIds.contains(batch.id))
+                ? [approveAction(batch)] : [],
             openRowID: $openRowID
         ) {
             batchRow(
@@ -83,6 +88,11 @@ struct ExpenseBucketQueue: View {
                 amountColor: OPSStyle.Colors.text
             ) {
                 metaText(batch.batchNumber)
+                if approvalLockedBatchIds.contains(batch.id) {
+                    metaText("APPROVAL SAVED")
+                } else if approvalInFlightBatchIds.contains(batch.id) {
+                    metaText("APPROVING")
+                }
                 metaText(nameFor(batch.submittedBy).uppercased())
                 if let count = stats?.count, count > 0 {
                     metaText("\(count) LINE\(count == 1 ? "" : "S")")
@@ -382,7 +392,10 @@ struct ExpenseBucketQueue: View {
 
     /// Clean = no flagged lines; bulk approve never touches flagged batches.
     private func cleanBatches(in group: ExpensePersonGroup) -> [ExpenseBatchDTO] {
-        group.batches.filter { (lineStats[$0.id]?.flagged ?? 0) == 0 }
+        group.batches.filter {
+            !approvalLockedBatchIds.contains($0.id) && !approvalInFlightBatchIds.contains($0.id)
+                && (lineStats[$0.id]?.flagged ?? 0) == 0
+        }
     }
 
     private func sinceLabel(_ group: ExpensePersonGroup) -> String {

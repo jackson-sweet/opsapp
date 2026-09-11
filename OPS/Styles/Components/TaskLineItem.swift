@@ -185,6 +185,7 @@ struct TaskLineItem: View {
             RoundedRectangle(cornerRadius: OPSStyle.Layout.cornerRadius)
                 .stroke(OPSStyle.Colors.cardBorder, lineWidth: OPSStyle.Layout.Border.standard)
         )
+        .bugReportPickable(.row, label: title)
         .scaleEffect(isLongPressing ? 0.95 : 1.0)
         .animation(OPSStyle.Animation.quick, value: isLongPressing)
         .if(onLongPress != nil) { view in

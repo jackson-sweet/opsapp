@@ -111,6 +111,8 @@ struct ProjectFormSheet: View {
 
     let mode: Mode
     let onSave: (Project) -> Void
+    @StateObject private var creationCompletion = ProjectCreationCompletion()
+    @Environment(\.projectCreationPresentationTarget) private var creationPresentationTarget
 
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var dataController: DataController
@@ -557,6 +559,13 @@ struct ProjectFormSheet: View {
                 tutorialModeProjectContent
             } else {
                 standardProjectContent
+            }
+        }
+        .background {
+            if mode.isCreate && !tutorialMode {
+                ProjectCreationDismissalObserver(completion: creationCompletion)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
             }
         }
         .task {
@@ -2814,11 +2823,20 @@ struct ProjectFormSheet: View {
                     // Use the resolved project title so auto-named projects (blank
                     // input) show the derived name in the toast, not an empty string.
                     if case .create = mode {
-                        NotificationCenter.default.post(
-                            name: Notification.Name("ProjectCreatedSuccess"),
-                            object: nil,
-                            userInfo: ["projectTitle": project.title]
-                        )
+                        if tutorialMode {
+                            // Tutorial owns its own completion/cleanup sequence.
+                            // No real project route is offered for demo entities.
+                            NotificationCenter.default.post(
+                                name: ProjectCreationCompletion.notificationName,
+                                object: nil,
+                                userInfo: ["projectTitle": project.title]
+                            )
+                        } else {
+                            creationCompletion.projectCreated(
+                                id: project.id, title: project.title,
+                                presentationTarget: creationPresentationTarget
+                            )
+                        }
                         // Wizard system: notify project saved
                         NotificationCenter.default.post(
                             name: Notification.Name("WizardProjectSaved"),
@@ -2837,9 +2855,14 @@ struct ProjectFormSheet: View {
 
                     onSave(project)
 
-                    // Brief delay for graceful dismissal
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    if mode.isCreate && !tutorialMode {
+                        // The toast waits for the real sheet dismissal callback.
                         dismiss()
+                    } else {
+                        // Preserve edit and tutorial completion sequencing.
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                            dismiss()
+                        }
                     }
                 }
             } catch {

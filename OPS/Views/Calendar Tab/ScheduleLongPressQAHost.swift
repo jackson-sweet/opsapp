@@ -196,7 +196,7 @@ struct ScheduleLongPressQAHost: View {
                 labeled("MONTH", id: "qa_card_month") {
                     EventBar(
                         span: monthSpan(for: task),
-                        cellHeight: OPSStyle.Layout.monthGridStandardHeightThreshold,
+                        cellHeight: OPSStyle.Layout.monthGridExpandedHeightThreshold,
                         dayWidth: OPSStyle.Layout.touchTargetMin,
                         onTap: {},
                         quickActions: quickActions,

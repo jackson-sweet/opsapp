@@ -133,7 +133,7 @@ final class CalendarMirrorService: ObservableObject {
         let existing = try? context.fetch(descriptor).first
 
         if let row = existing, let ek = store.event(withIdentifier: row.ekEventIdentifier) {
-            if row.contentHash != payload.canonicalHash {
+            if CalendarMirrorEventMapping.needsUpdate(payload: payload, event: ek, contentHash: row.contentHash) {
                 apply(payload: payload, to: ek, calendar: calendar)
                 try? store.save(ek, span: .thisEvent, commit: true)
                 row.contentHash = payload.canonicalHash
@@ -233,13 +233,7 @@ final class CalendarMirrorService: ObservableObject {
             }
 
             if let ek {
-                let driftedFields = ek.title != payload.title
-                    || ek.startDate != payload.startDate
-                    || ek.endDate != payload.endDate
-                    || ek.isAllDay != payload.isAllDay
-                    || (ek.notes ?? "") != payload.body
-                let hashChanged = row.contentHash != payload.canonicalHash
-                if driftedFields || hashChanged {
+                if CalendarMirrorEventMapping.needsUpdate(payload: payload, event: ek, contentHash: row.contentHash) {
                     apply(payload: payload, to: ek, calendar: calendar)
                     try? store.save(ek, span: .thisEvent, commit: true)
                     row.contentHash = payload.canonicalHash
@@ -378,12 +372,7 @@ final class CalendarMirrorService: ObservableObject {
 
     private func apply(payload: MirroredEventPayload, to ek: EKEvent, calendar: EKCalendar) {
         ek.calendar = calendar
-        ek.title = payload.title
-        ek.notes = payload.body
-        ek.url = payload.url
-        ek.isAllDay = payload.isAllDay
-        ek.startDate = payload.startDate
-        ek.endDate = payload.endDate
+        CalendarMirrorEventMapping.apply(payload: payload, to: ek)
     }
 
     private func buildPayload(
@@ -543,6 +532,31 @@ final class CalendarMirrorService: ObservableObject {
             UserDefaults.standard.set(false, forKey: enabledKey)
             self.isEnabled = false
         }
+    }
+}
+
+/// The in-memory EventKit boundary shared by immediate writes and reconciliation.
+/// It never requests access or saves an event; the service owns those effects.
+@MainActor
+enum CalendarMirrorEventMapping {
+    static func apply(payload: MirroredEventPayload, to event: EKEvent) {
+        event.title = payload.title
+        event.notes = payload.body
+        event.location = payload.location
+        event.url = payload.url
+        event.isAllDay = payload.isAllDay
+        event.startDate = payload.startDate
+        event.endDate = payload.endDate
+    }
+
+    static func needsUpdate(payload: MirroredEventPayload, event: EKEvent, contentHash: String) -> Bool {
+        contentHash != payload.canonicalHash
+            || event.title != payload.title
+            || event.startDate != payload.startDate
+            || event.endDate != payload.endDate
+            || event.isAllDay != payload.isAllDay
+            || (event.notes ?? "") != payload.body
+            || (event.location ?? "") != (payload.location ?? "")
     }
 }
 

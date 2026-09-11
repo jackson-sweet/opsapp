@@ -1,4 +1,5 @@
 import XCTest
+import EventKit
 @testable import OPS
 
 final class CalendarMirrorContentTests: XCTestCase {
@@ -215,6 +216,185 @@ final class CalendarMirrorContentTests: XCTestCase {
                 for: visit,
                 presentation: makePresentation(for: visit)
             )
+        )
+    }
+
+    func test_siteVisit_locationUsesCanonicalThenLeadThenVisitAddress() throws {
+        let cases: [(canonical: String?, lead: String?, snapshot: String?, expected: String?)] = [
+            (" Microsoft Teams \n", "418 Larchmont Ave", "903 Collinson St", "Microsoft Teams"),
+            (" \n", " 418 Larchmont Ave \n", "903 Collinson St", "418 Larchmont Ave"),
+            (nil, " \n", " 903 Collinson St \n", "903 Collinson St"),
+            (nil, nil, nil, nil),
+            (" \n", " \n", " \n", nil)
+        ]
+
+        for (index, row) in cases.enumerated() {
+            let visit = makeBookedVisit()
+            visit.appointmentLocation = row.canonical
+            visit.address = row.snapshot
+            let payload = try XCTUnwrap(CalendarMirrorContent.payload(
+                for: visit,
+                presentation: makePresentation(for: visit, address: row.lead)
+            ))
+            XCTAssertEqual(payload.location, row.expected, "Location precedence case \(index)")
+        }
+    }
+
+    func test_personalEvent_locationIsNormalizedSeparatelyFromNotes() {
+        let event = makeUserEvent(type: .personal, status: .none, title: "Dentist")
+        event.address = " 123 Main St \n"
+        event.notes = "Bring forms"
+        XCTAssertEqual(CalendarMirrorContent.payload(for: event).location, "123 Main St")
+
+        event.address = " \n"
+        XCTAssertNil(CalendarMirrorContent.payload(for: event).location)
+
+        event.address = nil
+        XCTAssertNil(CalendarMirrorContent.payload(for: event).location)
+    }
+
+    func test_task_locationUsesResolvedProjectAddress() throws {
+        let task = ProjectTask(
+            id: "task-1", projectId: "project-1", taskTypeId: "type-1", companyId: "company-1"
+        )
+        task.startDate = Date(timeIntervalSince1970: 1_800_000_000)
+        task.endDate = Date(timeIntervalSince1970: 1_800_086_400)
+        let cases: [(address: String?, expected: String?)] = [
+            (" 123 Main St \n", "123 Main St"),
+            (" \n", nil),
+            (nil, nil)
+        ]
+        for (index, row) in cases.enumerated() {
+            let payload = try XCTUnwrap(CalendarMirrorContent.payload(
+                for: task,
+                projectDisplayName: "Front stairs",
+                taskTypeDisplay: "Install",
+                address: row.address
+            ))
+            XCTAssertEqual(payload.location, row.expected, "Task location case \(index)")
+        }
+    }
+
+    func test_canonicalHash_tracksLocationEvenWhenNotesAreUnchanged() {
+        let first = makeLocationPayload("418 Larchmont Ave")
+        let repeated = makeLocationPayload("418 Larchmont Ave")
+        let moved = makeLocationPayload("903 Collinson St")
+        let removed = makeLocationPayload(nil)
+
+        XCTAssertEqual(first.canonicalHash, repeated.canonicalHash)
+        XCTAssertNotEqual(first.canonicalHash, moved.canonicalHash)
+        XCTAssertNotEqual(first.canonicalHash, removed.canonicalHash)
+    }
+
+    @MainActor
+    func test_eventMapping_writesNativeLocationWithoutDuplicatingAddressInNotes() throws {
+        let store = EKEventStore()
+        let event = EKEvent(eventStore: store)
+        let visit = makeBookedVisit()
+        let payload = try XCTUnwrap(CalendarMirrorContent.payload(
+            for: visit,
+            presentation: makePresentation(for: visit)
+        ))
+
+        CalendarMirrorEventMapping.apply(payload: payload, to: event)
+
+        XCTAssertEqual(event.location, "418 Larchmont Ave")
+        XCTAssertEqual(event.notes, "418 Larchmont Ave\nConfirm access with the site supervisor.\n// OPS · view in app")
+        XCTAssertEqual(event.title, "Site visit — Dana Whitfield")
+        XCTAssertEqual(event.url?.absoluteString, "ops://leads/cccccccc-cccc-4ccc-8ccc-cccccccccccc")
+        XCTAssertFalse(CalendarMirrorEventMapping.needsUpdate(
+            payload: payload, event: event, contentHash: payload.canonicalHash
+        ))
+    }
+
+    @MainActor
+    func test_eventMapping_repairsAnOldBlankLocationWithTheSameStoredHash() {
+        let store = EKEventStore()
+        let event = EKEvent(eventStore: store)
+        let payload = makeLocationPayload("418 Larchmont Ave")
+        CalendarMirrorEventMapping.apply(payload: payload, to: event)
+        // Existing app versions wrote every other field but left location empty.
+        event.location = nil
+
+        XCTAssertTrue(CalendarMirrorEventMapping.needsUpdate(
+            payload: payload, event: event, contentHash: payload.canonicalHash
+        ))
+        CalendarMirrorEventMapping.apply(payload: payload, to: event)
+        XCTAssertEqual(event.location, "418 Larchmont Ave")
+        XCTAssertFalse(CalendarMirrorEventMapping.needsUpdate(
+            payload: payload, event: event, contentHash: payload.canonicalHash
+        ))
+    }
+
+    @MainActor
+    func test_eventMapping_revertsLocationDriftWithoutChangingNotes() {
+        let store = EKEventStore()
+        let event = EKEvent(eventStore: store)
+        let payload = makeLocationPayload("418 Larchmont Ave")
+        CalendarMirrorEventMapping.apply(payload: payload, to: event)
+        event.location = "Wrong address"
+
+        XCTAssertTrue(CalendarMirrorEventMapping.needsUpdate(
+            payload: payload, event: event, contentHash: payload.canonicalHash
+        ))
+        CalendarMirrorEventMapping.apply(payload: payload, to: event)
+        XCTAssertEqual(event.location, "418 Larchmont Ave")
+        XCTAssertEqual(event.notes, "Confirm access.\n// OPS · view in app")
+    }
+
+    @MainActor
+    func test_eventMapping_replacesThenClearsRemovedLocation() {
+        let store = EKEventStore()
+        let event = EKEvent(eventStore: store)
+        let first = makeLocationPayload("418 Larchmont Ave")
+        CalendarMirrorEventMapping.apply(payload: first, to: event)
+
+        let moved = makeLocationPayload("903 Collinson St")
+        XCTAssertTrue(CalendarMirrorEventMapping.needsUpdate(
+            payload: moved, event: event, contentHash: first.canonicalHash
+        ))
+        CalendarMirrorEventMapping.apply(payload: moved, to: event)
+        XCTAssertEqual(event.location, "903 Collinson St")
+
+        let removed = makeLocationPayload(nil)
+        XCTAssertTrue(CalendarMirrorEventMapping.needsUpdate(
+            payload: removed, event: event, contentHash: moved.canonicalHash
+        ))
+        CalendarMirrorEventMapping.apply(payload: removed, to: event)
+        XCTAssertTrue((event.location ?? "").isEmpty)
+        XCTAssertEqual(event.notes, "Confirm access.\n// OPS · view in app")
+        XCTAssertFalse(CalendarMirrorEventMapping.needsUpdate(
+            payload: removed, event: event, contentHash: removed.canonicalHash
+        ))
+        event.location = ""
+        XCTAssertFalse(CalendarMirrorEventMapping.needsUpdate(
+            payload: removed, event: event, contentHash: removed.canonicalHash
+        ))
+    }
+
+    @MainActor
+    func test_eventMapping_refreshesTheStoredHashAfterPayloadUpgrade() {
+        let store = EKEventStore()
+        let event = EKEvent(eventStore: store)
+        let payload = makeLocationPayload("418 Larchmont Ave")
+        CalendarMirrorEventMapping.apply(payload: payload, to: event)
+
+        XCTAssertTrue(CalendarMirrorEventMapping.needsUpdate(
+            payload: payload, event: event, contentHash: "legacy-hash-without-location"
+        ))
+    }
+
+    private func makeLocationPayload(_ location: String?) -> MirroredEventPayload {
+        MirroredEventPayload(
+            opsId: "visit-1",
+            source: .siteVisit,
+            title: "Site visit — Dana Whitfield",
+            body: "Confirm access.\n// OPS · view in app",
+            location: location,
+            url: URL(string: "ops://leads/lead-1")!,
+            isAllDay: false,
+            startDate: Date(timeIntervalSince1970: 1_800_000_000),
+            endDate: Date(timeIntervalSince1970: 1_800_003_600)
         )
     }
 

@@ -2,18 +2,16 @@
 //  BugReportScreenshotViewer.swift
 //  OPS
 //
-//  The captured shot, full screen — and, when armed, the POINT AT IT surface
-//  (bug 5aabcc3a).
+//  The report's screenshot, full screen: drag down or CLOSE to leave. When the
+//  operator picked an element with POINT AT IT, it is outlined on the shot —
+//  the same outline the evidence card's thumbnail carries.
 //
-//  One view, two modes. Unarmed it is the plain enlarge view the bug report has
-//  always had: drag down to dismiss, CLOSE in the corner. Armed it takes exactly
-//  one tap and leaves. Drag-to-dismiss is suspended while armed — the operator
-//  is aiming, and a stray downward drag should not throw the aim away — so SKIP
-//  is the way out, and it is right where CLOSE was.
+//  Display only. Picking happens on the live app now (bug 14e5a792), not by
+//  aiming at this picture.
 //
-//  Extracted from `BugReportSheet` so it can be rendered on its own: a
-//  `fullScreenCover` presents outside its host's view, which means a snapshot
-//  of the sheet captures the sheet, never the cover.
+//  Kept as its own view so it can be rendered on its own: a `fullScreenCover`
+//  presents outside its host's view, so a snapshot of the sheet never
+//  captures the cover.
 //
 
 import SwiftUI
@@ -21,13 +19,8 @@ import UIKit
 
 struct BugReportScreenshotViewer: View {
     let image: UIImage?
-    /// Drawn whenever present, in either mode.
-    let mark: BugReportElementMark?
-    /// Armed for a single tap.
-    let isPointing: Bool
-    /// Called with a 0…1 position inside the image. A tap on the letterbox
-    /// never reaches here — the operator pointed at nothing.
-    let onPlace: (CGPoint) -> Void
+    /// The picked element, outlined when present.
+    let element: BugReportElementPick?
     let onClose: () -> Void
 
     @State private var dragOffset: CGFloat = 0
@@ -38,7 +31,7 @@ struct BugReportScreenshotViewer: View {
 
             if let image {
                 shot(image)
-                    .offset(y: isPointing ? 0 : dragOffset)
+                    .offset(y: dragOffset)
             }
 
             controls
@@ -50,74 +43,32 @@ struct BugReportScreenshotViewer: View {
 
     private func shot(_ image: UIImage) -> some View {
         GeometryReader { geo in
-            let rect = BugReportElementHitTest.fittedRect(
-                imageSize: image.size,
-                in: geo.size
-            )
-            ZStack {
+            ZStack(alignment: .topLeading) {
                 Image(uiImage: image)
                     .resizable()
                     .aspectRatio(contentMode: .fit)
                     .frame(width: geo.size.width, height: geo.size.height)
 
-                if let mark {
-                    markRing
-                        .position(
-                            x: rect.minX + mark.normalized.x * rect.width,
-                            y: rect.minY + mark.normalized.y * rect.height
-                        )
+                if let element {
+                    BugReportMarkOutline(
+                        element: element,
+                        imageSize: image.size,
+                        container: geo.size
+                    )
                 }
             }
             .contentShape(Rectangle())
-            .gesture(gesture(in: geo.size, imageSize: image.size))
+            .gesture(dismissGesture)
         }
     }
 
-    /// The one accent element on this surface: a ring on the spot, with a solid
-    /// centre so the exact point is unambiguous at any zoom.
-    ///
-    /// The dark halo underneath is legibility, not decoration — the mark can
-    /// land on a filled accent CTA, where a bare steel-blue ring disappears.
-    private var markRing: some View {
-        ZStack {
-            Circle()
-                .stroke(OPSStyle.Colors.background.opacity(0.6), lineWidth: 5)
-                .frame(width: 36, height: 36)
-            Circle()
-                .stroke(OPSStyle.Colors.primaryAccent, lineWidth: 2)
-                .frame(width: 36, height: 36)
-            Circle()
-                .fill(OPSStyle.Colors.background.opacity(0.6))
-                .frame(width: 9, height: 9)
-            Circle()
-                .fill(OPSStyle.Colors.primaryAccent)
-                .frame(
-                    width: OPSStyle.Layout.Indicator.dotSM,
-                    height: OPSStyle.Layout.Indicator.dotSM
-                )
-        }
-    }
-
-    // MARK: - Gestures
-
-    /// Armed: a zero-distance drag, read as a tap, places the mark. Unarmed:
-    /// the long-standing drag-down-to-dismiss.
-    private func gesture(in container: CGSize, imageSize: CGSize) -> some Gesture {
-        DragGesture(minimumDistance: isPointing ? 0 : 10)
+    private var dismissGesture: some Gesture {
+        DragGesture(minimumDistance: 10)
             .onChanged { value in
-                guard !isPointing, value.translation.height > 0 else { return }
+                guard value.translation.height > 0 else { return }
                 dragOffset = value.translation.height
             }
             .onEnded { value in
-                if isPointing {
-                    guard let normalized = BugReportElementHitTest.normalizedPoint(
-                        ofTap: value.location,
-                        in: container,
-                        imageSize: imageSize
-                    ) else { return }
-                    onPlace(normalized)
-                    return
-                }
                 if value.translation.height > 120 {
                     onClose()
                 }
@@ -131,29 +82,16 @@ struct BugReportScreenshotViewer: View {
 
     private var controls: some View {
         VStack {
-            HStack(alignment: .top) {
-                if isPointing {
-                    Text("[TAP THE SPOT]")
-                        .font(OPSStyle.Typography.captionBold)
-                        .tracking(0.5)
-                        .foregroundColor(OPSStyle.Colors.primaryText)
-                        .padding(.horizontal, OPSStyle.Layout.spacing2_5)
-                        .padding(.vertical, OPSStyle.Layout.spacing2)
-                        .background(OPSStyle.Colors.overlayMedium)
-                        .clipShape(Capsule())
-                        .padding(.leading, OPSStyle.Layout.spacing3)
-                        .allowsHitTesting(false)
-                }
-
+            HStack {
                 Spacer(minLength: 0)
 
                 Button(action: onClose) {
                     HStack(spacing: OPSStyle.Layout.spacing1) {
                         Image(systemName: OPSStyle.Icons.xmark)
                             .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .bold))
-                        Text(isPointing ? "SKIP" : "CLOSE")
+                        Text("CLOSE")
                             .font(OPSStyle.Typography.captionBold)
-                            .tracking(0.5)
+                            .tracking(OPSStyle.Typography.trackingCompact)
                     }
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .padding(.horizontal, OPSStyle.Layout.spacing2_5)
@@ -169,5 +107,38 @@ struct BugReportScreenshotViewer: View {
 
             Spacer()
         }
+    }
+}
+
+// MARK: - The outline on a shot
+
+/// The picked element's rect, drawn on an aspect-fit screenshot of any size.
+///
+/// `text` white at the outline weight, over a dark halo: the halo is what
+/// keeps the line readable when the element itself is white or light.
+struct BugReportMarkOutline: View {
+    let element: BugReportElementPick
+    let imageSize: CGSize
+    let container: CGSize
+
+    var body: some View {
+        let fitted = BugReportShotGeometry.fittedRect(imageSize: imageSize, in: container)
+        let rect = BugReportShotGeometry.project(
+            element.resolution.outlineRect,
+            from: element.viewport,
+            into: fitted
+        )
+        let scale = element.viewport.width > 0 ? fitted.width / element.viewport.width : 1
+        let radius = OPSStyle.Layout.buttonRadius * scale
+
+        ZStack(alignment: .topLeading) {
+            BugReportPickOutline(rect: rect, cornerRadius: radius)
+                .stroke(OPSStyle.Colors.overlayMedium, lineWidth: OPSStyle.Layout.Border.outline * 3)
+            BugReportPickOutline(rect: rect, cornerRadius: radius)
+                .stroke(OPSStyle.Colors.text, lineWidth: OPSStyle.Layout.Border.outline)
+        }
+        .frame(width: container.width, height: container.height, alignment: .topLeading)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 }

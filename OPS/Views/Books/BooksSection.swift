@@ -3,7 +3,7 @@
 //  OPS
 //
 //  Books Phase 2 — Pipeline split out to its own top-level tab (see
-//  `PIPELINE TAB - P1-1`). Books now lists three document types only.
+//  `PIPELINE TAB - P1-1`). Supplier bills are a first-class Books ledger.
 //
 
 import Foundation
@@ -11,6 +11,7 @@ import Foundation
 enum BooksSection: String, CaseIterable, Identifiable, Codable {
     case invoices  = "INVOICES"
     case estimates = "ESTIMATES"
+    case bills     = "BILLS"
     case expenses  = "EXPENSES"
 
     var id: String { rawValue }
@@ -20,6 +21,7 @@ enum BooksSection: String, CaseIterable, Identifiable, Codable {
         switch self {
         case .invoices:  return "finances.view"
         case .estimates: return "estimates.view"
+        case .bills:     return "accounting.view"
         case .expenses:  return "expenses.view"
         }
     }
@@ -29,6 +31,7 @@ enum BooksSection: String, CaseIterable, Identifiable, Codable {
         switch self {
         case .invoices:  return "New Invoice"
         case .estimates: return "New Estimate"
+        case .bills:     return "Capture Bill"
         case .expenses:  return "New Expense"
         }
     }

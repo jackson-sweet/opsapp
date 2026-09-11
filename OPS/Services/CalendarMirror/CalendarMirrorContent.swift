@@ -3,7 +3,7 @@
 //  OPS
 //
 //  Pure functions: convert CalendarUserEvent / ProjectTask into the
-//  title, body, URL, all-day flag, and stable canonical hash used by
+//  title, body, location, URL, all-day flag, and stable canonical hash used by
 //  the mirror writer + reconciler.
 //
 
@@ -15,6 +15,7 @@ struct MirroredEventPayload: Equatable {
     let source: MirrorSource
     let title: String
     let body: String
+    let location: String?
     let url: URL
     let isAllDay: Bool
     let startDate: Date
@@ -23,7 +24,7 @@ struct MirroredEventPayload: Equatable {
     /// Stable hash of all user-visible fields. Used to dedup writes and
     /// to detect drift (user-edited the EKEvent in iOS Calendar).
     var canonicalHash: String {
-        let canonical = "\(title)|\(startDate.timeIntervalSince1970)|\(endDate.timeIntervalSince1970)|\(body)|\(isAllDay ? "1" : "0")"
+        let canonical = "\(title)|\(startDate.timeIntervalSince1970)|\(endDate.timeIntervalSince1970)|\(body)|\(isAllDay ? "1" : "0")|\(location ?? "")"
         let digest = SHA256.hash(data: Data(canonical.utf8))
         return digest.map { String(format: "%02x", $0) }.joined()
     }
@@ -42,6 +43,7 @@ enum CalendarMirrorContent {
             source: .calendarUserEvent,
             title: title,
             body: body,
+            location: location(from: event.address),
             url: url,
             isAllDay: event.allDay,
             startDate: event.startDate,
@@ -90,6 +92,7 @@ enum CalendarMirrorContent {
             source: .projectTask,
             title: title,
             body: body,
+            location: location(from: address),
             url: url,
             isAllDay: isAllDay,
             startDate: resolvedStart,
@@ -149,6 +152,7 @@ enum CalendarMirrorContent {
                 address: presentation.address,
                 notes: presentation.detail
             ),
+            location: location(from: presentation.address),
             url: URL(string: "ops://leads/\(opportunityId)")!,
             isAllDay: false,
             startDate: start,
@@ -156,7 +160,13 @@ enum CalendarMirrorContent {
         )
     }
 
-    // MARK: - Body
+    // MARK: - Location and body
+
+    private static func location(from address: String?) -> String? {
+        guard let address else { return nil }
+        let trimmed = address.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
 
     private static func body(address: String?, notes: String?) -> String {
         var lines: [String] = []

@@ -42,6 +42,7 @@ struct FormField: View {
                 readOnlyValue
             }
         }
+        .bugReportPickable(.field, label: title)
     }
 
     @ViewBuilder
@@ -103,7 +104,7 @@ struct FormTextEditor: View {
     var isEditable: Bool = true
     var height: CGFloat = OPSStyle.Layout.inputHeight * 3
 
-    @FocusState private var isFocused: Bool
+    @State private var isFocused = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
@@ -132,44 +133,198 @@ struct FormTextEditor: View {
                     )
             }
         }
+        .onChange(of: isEditable) { _, editable in
+            if !editable { isFocused = false }
+        }
+        .bugReportPickable(.field, label: title)
     }
 
     private var editableEditor: some View {
-        ZStack(alignment: .topLeading) {
-            ZStack {
-                OPSStyle.Colors.surfaceInput
-                    .cornerRadius(OPSStyle.Layout.buttonRadius)
+        FormMultilineInput(
+            text: $text,
+            isFocused: $isFocused,
+            title: title,
+            placeholder: placeholder
+        )
+        .frame(height: height)
+        .background(OPSStyle.Colors.surfaceInput)
+        .cornerRadius(OPSStyle.Layout.buttonRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
+                .stroke(
+                    isFocused
+                        ? OPSStyle.Colors.inputFieldBorderFocus
+                        : OPSStyle.Colors.inputFieldBorder,
+                    lineWidth: OPSStyle.Layout.Border.standard
+                )
+        )
+        .animation(OPSStyle.Animation.hover, value: isFocused)
+    }
+}
 
-                TextEditor(text: $text)
-                    .font(OPSStyle.Typography.body)
-                    .foregroundColor(OPSStyle.Colors.text)
-                    .tint(OPSStyle.Colors.text)
-                    .focused($isFocused)
-                    .scrollContentBackground(.hidden)
-                    .background(OPSStyle.Colors.surfaceInput)
-                    .cornerRadius(OPSStyle.Layout.buttonRadius)
-            }
-            .frame(height: height)
-            .overlay(
-                RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius)
-                    .stroke(
-                        isFocused
-                            ? OPSStyle.Colors.inputFieldBorderFocus
-                            : OPSStyle.Colors.inputFieldBorder,
-                        lineWidth: OPSStyle.Layout.Border.standard
-                    )
+/// Owns the text-container insets; SwiftUI TextEditor otherwise retains its
+/// native inset while the placeholder uses the form's different token inset.
+private struct FormMultilineInput: UIViewRepresentable {
+    @Binding var text: String
+    @Binding var isFocused: Bool
+    let title: String
+    let placeholder: String
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(parent: self)
+    }
+
+    func makeUIView(context: Context) -> FormMultilineTextView {
+        let textView = FormMultilineTextView(frame: .zero, textContainer: nil)
+        textView.delegate = context.coordinator
+        // Prepare before focus; the app-wide editing notification remains the
+        // fallback for system-owned inputs, not this OPS-owned editor.
+        OPSKeyboardDoneAccessoryCoordinator.shared.prepare(textView)
+        return textView
+    }
+
+    func updateUIView(_ textView: FormMultilineTextView, context: Context) {
+        context.coordinator.parent = self
+        textView.accessibilityLabel = title
+        textView.accessibilityHint = placeholder.isEmpty ? nil : placeholder
+        textView.placeholderLabel.text = placeholder
+        textView.semanticContentAttribute = context.environment.layoutDirection == .rightToLeft
+            ? .forceRightToLeft : .forceLeftToRight
+        textView.updatePresentation()
+
+        // Ordinary typing already matches the binding. Do not replace that
+        // text (or marked text), which would move the caret or interrupt IME.
+        if textView.text != text, textView.markedTextRange == nil {
+            let selection = textView.selectedRange
+            textView.text = text
+            let length = (text as NSString).length
+            let location = min(selection.location, length)
+            textView.selectedRange = NSRange(
+                location: location,
+                length: min(selection.length, length - location)
             )
-            .animation(OPSStyle.Animation.hover, value: isFocused)
-
-            if text.isEmpty {
-                Text(placeholder)
-                    .font(OPSStyle.Typography.body)
-                    .foregroundColor(OPSStyle.Colors.text3)
-                    .padding(.horizontal, OPSStyle.Layout.spacing3)
-                    .padding(.vertical, OPSStyle.Layout.spacing3)
-                    .allowsHitTesting(false)
-            }
         }
+        textView.updatePlaceholder()
+    }
+
+    static func dismantleUIView(_ textView: FormMultilineTextView, coordinator: Coordinator) {
+        textView.delegate = nil
+        textView.resignFirstResponder()
+    }
+
+    final class Coordinator: NSObject, UITextViewDelegate {
+        var parent: FormMultilineInput
+
+        init(parent: FormMultilineInput) {
+            self.parent = parent
+        }
+
+        func textViewDidChange(_ textView: UITextView) {
+            parent.text = textView.text
+            (textView as? FormMultilineTextView)?.updatePlaceholder()
+        }
+
+        func textViewDidBeginEditing(_ textView: UITextView) {
+            parent.isFocused = true
+        }
+
+        func textViewDidEndEditing(_ textView: UITextView) {
+            parent.text = textView.text
+            parent.isFocused = false
+        }
+    }
+}
+
+final class FormMultilineTextView: UITextView {
+    let placeholderLabel = UILabel()
+    private let bodyFont: UIFont
+
+    init(
+        frame: CGRect,
+        textContainer: NSTextContainer?,
+        bodyFont: UIFont = OPSStyle.Typography.uiBody
+    ) {
+        self.bodyFont = bodyFont
+        super.init(frame: frame, textContainer: textContainer)
+        backgroundColor = .clear
+        textColor = UIColor(OPSStyle.Colors.text)
+        tintColor = UIColor(OPSStyle.Colors.text)
+        keyboardAppearance = .dark
+        autocapitalizationType = .sentences
+        autocorrectionType = .default
+        adjustsFontForContentSizeCategory = true
+        textContainerInset = UIEdgeInsets(
+            top: OPSStyle.Layout.spacing3,
+            left: OPSStyle.Layout.spacing3,
+            bottom: OPSStyle.Layout.spacing3,
+            right: OPSStyle.Layout.spacing3
+        )
+        self.textContainer.lineFragmentPadding = 0
+        setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+
+        placeholderLabel.textColor = UIColor(OPSStyle.Colors.text3)
+        placeholderLabel.numberOfLines = 0
+        placeholderLabel.isUserInteractionEnabled = false
+        placeholderLabel.isAccessibilityElement = false
+        addSubview(placeholderLabel)
+
+        updatePresentation()
+        registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) {
+            (view: FormMultilineTextView, _: UITraitCollection) in
+            view.updatePresentation()
+        }
+    }
+
+    required init?(coder: NSCoder) {
+        return nil
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        updatePresentation()
+    }
+
+    func updatePresentation() {
+        let selection = selectedRange
+        let scaledFont: UIFont
+        if bodyFont.fontDescriptor.object(forKey: .textStyle) != nil {
+            // uiBody falls back to a preferred system font if Mohave is absent.
+            // Preferred fonts already carry Dynamic Type scaling; passing one
+            // into UIFontMetrics again raises an exception.
+            scaledFont = UIFont.preferredFont(forTextStyle: .body, compatibleWith: traitCollection)
+        } else {
+            scaledFont = UIFontMetrics(forTextStyle: .body).scaledFont(
+                for: bodyFont,
+                compatibleWith: traitCollection
+            )
+        }
+        if font != scaledFont { font = scaledFont }
+        let alignment: NSTextAlignment = effectiveUserInterfaceLayoutDirection == .rightToLeft
+            ? .right : .left
+        if textAlignment != alignment { textAlignment = alignment }
+        // A typography/locale update must not act like a new editing session.
+        if selectedRange != selection { selectedRange = selection }
+        placeholderLabel.font = font
+        placeholderLabel.textAlignment = alignment
+        setNeedsLayout()
+    }
+
+    func updatePlaceholder() {
+        placeholderLabel.isHidden = !text.isEmpty
+        setNeedsLayout()
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        placeholderLabel.font = font
+        let width = max(bounds.width - textContainerInset.left - textContainerInset.right, 0)
+        let size = placeholderLabel.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude))
+        placeholderLabel.frame = CGRect(
+            x: textContainerInset.left,
+            y: textContainerInset.top,
+            width: width,
+            height: size.height
+        )
     }
 }
 
@@ -227,6 +382,7 @@ struct FormSelectField<Option: Hashable>: View {
             .accessibilityLabel(title)
             .accessibilityValue(optionName(selection))
         }
+        .bugReportPickable(.select, label: title)
     }
 }
 
@@ -280,6 +436,7 @@ struct FormToggle: View {
                     lineWidth: OPSStyle.Layout.Border.standard
                 )
         )
+        .bugReportPickable(.toggle, label: title)
     }
 }
 

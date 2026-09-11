@@ -4,12 +4,20 @@ import UIKit
 import XCTest
 @testable import OPS
 
-/// Reproduces MainTabView's two sibling presentation branches: the FAB/search
-/// branch owns a parent form and its creation child; ProjectSheetContainer
-/// independently owns the root project-details binding.
+/// Reproduces both MainTabView parent-sheet placements: the FAB owns a sibling
+/// branch; UniversalSearch and ContactDetail attach to the outer root container.
+/// ProjectSheetContainer independently owns the root project-details binding.
 @MainActor
 final class ProjectCreatedNestedPresentationTests: XCTestCase {
     func testRootProjectRouteOpensAboveNestedParentAndPreservesItsDraft() async throws {
+        try await assertNestedPresentation(parentPlacement: .siblingBranch)
+    }
+
+    func testRootProjectRouteOpensAboveOuterContainerParentAndPreservesItsDraft() async throws {
+        try await assertNestedPresentation(parentPlacement: .outerContainer)
+    }
+
+    private func assertNestedPresentation(parentPlacement: ParentSheetPlacement) async throws {
         let window = try AppHostWindow.acquire()
         let originalRoot = window.rootViewController
         let state = AppState()
@@ -25,7 +33,8 @@ final class ProjectCreatedNestedPresentationTests: XCTestCase {
             created.fulfill()
         }
         let host = UIHostingController(rootView: NestedCreationRoot(
-            presentation: presentation, appState: state, completion: completion, routes: routes
+            presentation: presentation, appState: state, completion: completion,
+            routes: routes, parentPlacement: parentPlacement
         ))
         defer {
             ToastCenter.shared.reset()
@@ -81,6 +90,11 @@ final class ProjectCreatedNestedPresentationTests: XCTestCase {
     }
 }
 
+private enum ParentSheetPlacement: Equatable {
+    case siblingBranch
+    case outerContainer
+}
+
 @MainActor
 private final class NestedCreationPresentation: ObservableObject {
     @Published var showParent = false
@@ -101,14 +115,41 @@ private struct NestedCreationRoot: View {
     @ObservedObject var appState: AppState
     let completion: ProjectCreationCompletion
     let routes: NotificationCenter
+    let parentPlacement: ParentSheetPlacement
 
     var body: some View {
-        ZStack {
-            // Matches the root FAB/search presentation branch.
-            Color.clear
+        container
+            .onReceive(routes.publisher(for: .openProjectDetails)) { notification in
+                guard let id = notification.userInfo?["projectId"] as? String else { return }
+                // Uses the actual presentation-state handoff called after the
+                // production route's local-first resolution and permission checks.
+                appState.viewProjectDetailsById(id)
+            }
+    }
+
+    @ViewBuilder
+    private var container: some View {
+        if parentPlacement == .outerContainer {
+            // UniversalSearch and ContactDetail attach outside MainTabView's
+            // ZStack, while ProjectSheetContainer remains a child inside it.
+            rootContents
                 .sheet(isPresented: $presentation.showParent) {
                     NestedCreationParent(presentation: presentation, completion: completion)
                 }
+        } else {
+            rootContents
+        }
+    }
+
+    private var rootContents: some View {
+        ZStack {
+            if parentPlacement == .siblingBranch {
+                // The FAB owns its sheet on a sibling inside MainTabView.
+                Color.clear
+                    .sheet(isPresented: $presentation.showParent) {
+                        NestedCreationParent(presentation: presentation, completion: completion)
+                    }
+            }
             // Matches the independent root ProjectSheetContainer branch.
             Color.clear
                 .sheet(isPresented: $appState.showProjectDetails, onDismiss: {
@@ -123,12 +164,6 @@ private struct NestedCreationRoot: View {
                             callback?()
                         })
                 }
-        }
-        .onReceive(routes.publisher(for: .openProjectDetails)) { notification in
-            guard let id = notification.userInfo?["projectId"] as? String else { return }
-            // Uses the actual presentation-state handoff called after the
-            // production route's local-first resolution and permission checks.
-            appState.viewProjectDetailsById(id)
         }
     }
 }

@@ -71,9 +71,13 @@ final class OverdueReviewViewportTests: XCTestCase {
         for viewport in [Viewport.narrow, .accessibility] {
             try withReview(in: viewport) { host, fixture in
                 var reached = Set<String>()
-                try visitDocument(in: host.view) { scroll, _ in
-                    let screenViewport = host.view.convert(host.view.bounds, to: nil)
-                    let scrollViewport = scroll.convert(scroll.bounds, to: nil)
+                try visitDocument(in: host.view, includingAccessibility: true) { scroll, _ in
+                    let screenViewport = UIAccessibility.convertToScreenCoordinates(
+                        host.view.bounds, in: host.view
+                    )
+                    let scrollViewport = UIAccessibility.convertToScreenCoordinates(
+                        scroll.bounds, in: scroll
+                    )
                     let nodes = accessibilityNodes(in: host.view)
                     let actions = nodes.filter { fixture.actionLabels.contains($0.label) }
 
@@ -139,9 +143,10 @@ final class OverdueReviewViewportTests: XCTestCase {
     /// its height estimate as long rows come into view.
     private func visitDocument(
         in view: UIView,
+        includingAccessibility: Bool = false,
         inspect: (UIScrollView, String) throws -> Void
     ) throws {
-        try settle(view) {
+        try settle(view, includingAccessibility: includingAccessibility) {
             scrollViews(in: view).contains {
                 $0.bounds.height > 0 && $0.contentSize.height > $0.bounds.height
             }
@@ -149,7 +154,7 @@ final class OverdueReviewViewportTests: XCTestCase {
         let scroll = try XCTUnwrap(scrollViews(in: view).first)
         let initialY = -scroll.adjustedContentInset.top
         scroll.setContentOffset(CGPoint(x: -scroll.adjustedContentInset.left, y: initialY), animated: false)
-        try settle(view)
+        try settle(view, includingAccessibility: includingAccessibility)
 
         var reachedBottom = false
         for step in 0..<100 {
@@ -186,7 +191,7 @@ final class OverdueReviewViewportTests: XCTestCase {
             scroll.setContentOffset(
                 CGPoint(x: -scroll.adjustedContentInset.left, y: nextY), animated: false
             )
-            try settle(view)
+            try settle(view, includingAccessibility: includingAccessibility)
         }
         XCTAssertTrue(reachedBottom, "Every overdue row must be reachable within the bounded traversal")
         XCTAssertGreaterThan(scroll.contentOffset.y, initialY + tolerance, "Fixture must exercise real vertical scrolling")
@@ -291,15 +296,27 @@ final class OverdueReviewViewportTests: XCTestCase {
 
     /// A ready predicate prevents quiescence in an empty @Query state from
     /// passing. Subsequent waits include scroll offsets, content sizes and the
-    /// entire laid-out view tree; no fixed pre-assertion sleep is used.
-    private func settle(_ view: UIView, ready: () -> Bool = { true }) throws {
+    /// entire laid-out view tree. AX cases additionally wait for published
+    /// labels/frames to stop changing after each scroll, since that pipeline
+    /// can trail UIKit layout. No fixed pre-assertion sleep is used.
+    private func settle(
+        _ view: UIView,
+        includingAccessibility: Bool = false,
+        ready: () -> Bool = { true }
+    ) throws {
         var previous = ""
         var stablePolls = 0
         let deadline = Date(timeIntervalSinceNow: 3)
         while Date() < deadline {
             view.window?.layoutIfNeeded()
             view.layoutIfNeeded()
-            let current = fingerprint(view)
+            var current = fingerprint(view)
+            if includingAccessibility {
+                current += "|AX|" + accessibilityNodes(in: view)
+                    .map { "\($0.label)|\($0.frame)" }
+                    .sorted()
+                    .joined(separator: ";")
+            }
             stablePolls = ready() && current == previous ? stablePolls + 1 : 0
             if stablePolls >= 3 { return }
             previous = current
@@ -363,7 +380,7 @@ final class OverdueReviewViewportTests: XCTestCase {
         let deadline = Date(timeIntervalSinceNow: 3)
         while Date() < deadline {
             if accessibilityNodes(in: probe.view).contains(where: { $0.label == "overdue-ax-probe" }) {
-                try settle(probe.view)
+                try settle(probe.view, includingAccessibility: true)
                 return
             }
             window.layoutIfNeeded()

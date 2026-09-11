@@ -509,10 +509,8 @@ final class SiteVisitTypeSettingsKeyboardTests: XCTestCase {
         UIAccessibility.convertToScreenCoordinates(view.bounds, in: view)
     }
 
-    /// Full screen-sized context drawn from the real windows' hosted views,
-    /// never UIWindow.drawHierarchy and never a cropped accessory-only canvas.
-    /// System keyboard pixels may live in a separate window. Compose both in
-    /// screen coordinates and fail explicitly if its key area cannot render.
+    /// Capture the device's actual composited screen. App-host drawHierarchy
+    /// cannot include the remote system keyboard; its blank keys are not proof.
     private func captureContext(
         _ session: Session, accessory: OPSKeyboardDoneAccessoryView? = nil, name: String
     ) throws {
@@ -521,110 +519,64 @@ final class SiteVisitTypeSettingsKeyboardTests: XCTestCase {
         try settle(session, tracking: responder)
         if let accessory { try require(doneIsVisible(accessory, in: session), "The captured DONE must be visible") }
         let screen = session.window.screen.bounds
-        var windows = session.window.windowScene?.windows ?? [session.window]
-        if let keyboardWindow = accessory?.window ?? session.keyboard.accessoryWindow,
-           !windows.contains(where: { $0 === keyboardWindow }) { windows.append(keyboardWindow) }
-        windows = windows.enumerated().sorted {
-            if $0.element.windowLevel == $1.element.windowLevel { return $0.offset < $1.offset }
-            return $0.element.windowLevel < $1.element.windowLevel
-        }.map(\.element)
-        let format = UIGraphicsImageRendererFormat()
-        format.scale = 1
-        format.opaque = false
-        // Validate keyboard pixels on a separate transparent canvas first.
-        // Editor text beneath an unrenderable remote keyboard must never make
-        // the keyboard's key-region check pass in the combined image.
-        let keyboardImage = try accessory.map {
-            try captureKeyboard($0, in: session, screen: screen, format: format, name: name)
-        }
-        var drawingSucceeded = true
-        let image = UIGraphicsImageRenderer(bounds: screen, format: format).image { context in
-            UIColor(OPSStyle.Colors.background).setFill()
-            context.fill(screen)
-            for window in windows where !window.isHidden && window.alpha > 0.01 {
-                for hostedView in window.subviews where !hostedView.isHidden && hostedView.alpha > 0.01 {
-                    let frame = screenFrame(hostedView)
-                    guard frame.intersects(screen) else { continue }
-                    context.cgContext.saveGState()
-                    context.cgContext.translateBy(x: frame.minX, y: frame.minY)
-                    drawingSucceeded = hostedView.drawHierarchy(
-                        in: CGRect(origin: .zero, size: frame.size), afterScreenUpdates: true
-                    ) && drawingSucceeded
-                    context.cgContext.restoreGState()
-                }
-            }
-            keyboardImage?.draw(in: screen)
-        }
-        let attachment = XCTAttachment(image: image)
+        let before = presentationFingerprint(session, tracking: responder)
+        let screenshot = XCUIScreen.main.screenshot()
+        // Preserve the untouched system capture even if validation below fails.
+        let attachment = XCTAttachment(screenshot: screenshot)
         attachment.name = name
         attachment.lifetime = .keepAlways
         add(attachment)
+
+        let nativeImage = screenshot.image
+        let after = presentationFingerprint(session, tracking: responder)
         let geometry = XCTAttachment(string: """
         Route scope: fixture settings cover -> fixture type list sheet -> actual SiteVisitTypeEditorView
+        Capture source: XCUIScreen.main.screenshot(), no view composition
         Screen: \(screen)
+        Native image: \(nativeImage.size) scale=\(nativeImage.scale) orientation=\(nativeImage.imageOrientation.rawValue)
         Sheet: \(screenFrame(session.sheet.view))
         Keyboard completed frame: \(session.keyboard.frame)
         DONE: \(accessory.map { screenFrame($0.doneButton) } ?? .zero)
-        \(presentationFingerprint(session, tracking: responder))
+        Before capture: \(before)
+        After capture: \(after)
         """)
         geometry.name = "\(name)-screen-geometry"
         geometry.lifetime = .keepAlways
         add(geometry)
-        try require(drawingSucceeded, "The app and keyboard hosted views must render successfully")
 
+        let horizontalScale = nativeImage.size.width / screen.width
+        let verticalScale = nativeImage.size.height / screen.height
+        try require(
+            horizontalScale.isFinite && verticalScale.isFinite && horizontalScale > 0 && verticalScale > 0
+                && abs(horizontalScale - verticalScale) < 0.001,
+            "The system screenshot must cover the full screen with a uniform coordinate scale"
+        )
+        // Normalize only the real screenshot pixels to one pixel per screen
+        // point. Nothing from the editor or an accessory view is composited in.
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = true
+        let image = UIGraphicsImageRenderer(bounds: screen, format: format).image { _ in
+            nativeImage.draw(in: screen)
+        }
+
+        if let accessory {
+            let keyboard = session.keyboard.frame.intersection(screen)
+            let pixels = try XCTUnwrap(image.cgImage?.cropping(to: keyboard.integral), "The real screen must contain the keyboard region")
+            let crop = XCTAttachment(image: UIImage(cgImage: pixels))
+            crop.name = "\(name)-keyboard-only"
+            crop.lifetime = .keepAlways
+            add(crop)
+            let keyTop = max(keyboard.minY, screenFrame(accessory).maxY)
+            let keys = CGRect(x: keyboard.minX, y: keyTop, width: keyboard.width, height: max(0, keyboard.maxY - keyTop))
+            try assertNonblank(image, region: keys, message: "The system screenshot has no visible keyboard keys; full keyboard proof is unavailable")
+            try require(doneIsVisible(accessory, in: session), "DONE must remain visible through the system capture")
+        }
+        try require(before == after, "The editor and keyboard geometry must stay unchanged during capture")
+        try require(session.window.windowScene?.activationState == .foregroundActive, "The captured editor must stay in the foreground scene")
         var editorRegion = screenFrame(session.sheet.view).intersection(screen)
         if accessory != nil { editorRegion.size.height = max(0, min(editorRegion.maxY, session.keyboard.frame.minY) - editorRegion.minY) }
         try assertNonblank(image, region: editorRegion, message: "The editor context rendered blank")
-    }
-
-    private func captureKeyboard(
-        _ accessory: OPSKeyboardDoneAccessoryView, in session: Session,
-        screen: CGRect, format: UIGraphicsImageRendererFormat, name: String
-    ) throws -> UIImage {
-        let window = try XCTUnwrap(accessory.window)
-        let hostedViews: [UIView]
-        if window !== session.window {
-            hostedViews = window.subviews
-        } else {
-            // Find a keyboard branch independent of the editor. No private
-            // UIKit class-name assumptions: reject a shared app-root subtree.
-            var branch: UIView = accessory
-            while let parent = branch.superview, parent !== window,
-                  !session.sheet.view.isDescendant(of: parent),
-                  !parent.isDescendant(of: session.sheet.view) {
-                branch = parent
-            }
-            try require(
-                branch !== accessory && !session.sheet.view.isDescendant(of: branch)
-                    && !branch.isDescendant(of: session.sheet.view),
-                "An independent keyboard hosted view is unavailable; full keyboard capture cannot be claimed"
-            )
-            hostedViews = [branch]
-        }
-        var rendered = true
-        let image = UIGraphicsImageRenderer(bounds: screen, format: format).image { context in
-            context.cgContext.clear(screen)
-            for view in hostedViews where !view.isHidden && view.alpha > 0.01 {
-                let frame = screenFrame(view)
-                guard frame.intersects(screen) else { continue }
-                context.cgContext.saveGState()
-                context.cgContext.translateBy(x: frame.minX, y: frame.minY)
-                rendered = view.drawHierarchy(
-                    in: CGRect(origin: .zero, size: frame.size), afterScreenUpdates: true
-                ) && rendered
-                context.cgContext.restoreGState()
-            }
-        }
-        let attachment = XCTAttachment(image: image)
-        attachment.name = "\(name)-keyboard-only"
-        attachment.lifetime = .keepAlways
-        add(attachment)
-        try require(rendered, "The independent keyboard hosted view must render successfully")
-        let keyboard = session.keyboard.frame.intersection(screen)
-        let keyTop = max(keyboard.minY, screenFrame(accessory).maxY)
-        let keys = CGRect(x: keyboard.minX, y: keyTop, width: keyboard.width, height: max(0, keyboard.maxY - keyTop))
-        try assertNonblank(image, region: keys, message: "System keyboard keys did not render independently; this is not full keyboard proof")
-        return image
     }
 
     private func assertNonblank(_ image: UIImage, region: CGRect, message: String) throws {

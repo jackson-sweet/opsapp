@@ -191,7 +191,7 @@ struct SiteVisitTypeSettingsView: View {
     }
 }
 
-private struct SiteVisitTypeEditorView: View {
+struct SiteVisitTypeEditorView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var dataController: DataController
 

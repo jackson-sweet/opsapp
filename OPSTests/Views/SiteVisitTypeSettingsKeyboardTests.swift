@@ -12,6 +12,7 @@
 import SwiftUI
 import UIKit
 import XCTest
+import CryptoKit
 @testable import OPS
 
 @MainActor
@@ -509,8 +510,51 @@ final class SiteVisitTypeSettingsKeyboardTests: XCTestCase {
         UIAccessibility.convertToScreenCoordinates(view.bounds, in: view)
     }
 
-    /// Capture the device's actual composited screen. App-host drawHierarchy
-    /// cannot include the remote system keyboard; its blank keys are not proof.
+    private struct ScreenCaptureRequest: Encodable {
+        let requestID: String
+        let name: String
+        let bundleID: String
+        let simulatorUDID: String
+        let requestedAt: TimeInterval
+    }
+
+    private struct ScreenCaptureReply: Decodable {
+        let requestID: String
+        let name: String
+        let bundleID: String
+        let simulatorUDID: String
+        let captureStartedAt: TimeInterval
+        let completedAt: TimeInterval
+        let sha256: String?
+        let error: String?
+    }
+
+    /// This visual integration suite requires the documented host-side
+    /// capture_keyboard_screens.py launcher. Missing capture fails, never skips.
+    private func requestScreenCapture(name: String) throws -> (data: Data, provenance: String) {
+        let simulator = try XCTUnwrap(ProcessInfo.processInfo.environment["SIMULATOR_UDID"], "Keyboard pixel proof requires the dedicated simulator launcher")
+        let bundle = try XCTUnwrap(Bundle.main.bundleIdentifier)
+        try require(bundle == "co.opsapp.ops.OPS", "Capture requests must belong to the OPS app host")
+        let cache = try XCTUnwrap(FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first)
+            .appendingPathComponent("OPSKeyboardScreenshotProof", isDirectory: true)
+        try FileManager.default.createDirectory(at: cache, withIntermediateDirectories: true)
+        let id = UUID().uuidString.lowercased()
+        let request = ScreenCaptureRequest(requestID: id, name: name, bundleID: bundle, simulatorUDID: simulator, requestedAt: Date().timeIntervalSince1970)
+        try JSONEncoder().encode(request).write(to: cache.appendingPathComponent("\(id).request.json"), options: .atomic)
+        let replyURL = cache.appendingPathComponent("\(id).ack.json")
+        try require(waitUntil(timeout: 20) { FileManager.default.fileExists(atPath: replyURL.path) }, "No simulator screenshot acknowledgment within 20 seconds; run capture_keyboard_screens.py before this visual suite")
+        let reply = try JSONDecoder().decode(ScreenCaptureReply.self, from: Data(contentsOf: replyURL))
+        try require(reply.requestID == id && reply.name == name && reply.bundleID == bundle && reply.simulatorUDID.caseInsensitiveCompare(simulator) == .orderedSame, "The screenshot acknowledgment must match this exact request and simulator")
+        try require(reply.error == nil, "Simulator screen capture failed: \(reply.error ?? "unknown")")
+        try require(reply.captureStartedAt >= request.requestedAt && reply.completedAt >= reply.captureStartedAt && reply.completedAt <= Date().timeIntervalSince1970 + 1, "The screenshot must be captured after its fresh request")
+        let data = try Data(contentsOf: cache.appendingPathComponent("\(id).png"))
+        let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        try require(reply.sha256 == digest, "The raw screenshot must match the acknowledged image bytes")
+        return (data, "simctl io screenshot; request=\(id); started=\(reply.captureStartedAt); completed=\(reply.completedAt); sha256=\(digest)")
+    }
+
+    /// Capture the device's actual composited screen. Hosted drawHierarchy
+    /// omits remote keys, and hosted XCUIScreen is denied UI-testing authority.
     private func captureContext(
         _ session: Session, accessory: OPSKeyboardDoneAccessoryView? = nil, name: String
     ) throws {
@@ -520,18 +564,18 @@ final class SiteVisitTypeSettingsKeyboardTests: XCTestCase {
         if let accessory { try require(doneIsVisible(accessory, in: session), "The captured DONE must be visible") }
         let screen = session.window.screen.bounds
         let before = presentationFingerprint(session, tracking: responder)
-        let screenshot = XCUIScreen.main.screenshot()
+        let screenshot = try requestScreenCapture(name: name)
         // Preserve the untouched system capture even if validation below fails.
-        let attachment = XCTAttachment(screenshot: screenshot)
+        let attachment = XCTAttachment(data: screenshot.data, uniformTypeIdentifier: "public.png")
         attachment.name = name
         attachment.lifetime = .keepAlways
         add(attachment)
 
-        let nativeImage = screenshot.image
+        let nativeImage = try XCTUnwrap(UIImage(data: screenshot.data), "The simulator must return a PNG screenshot")
         let after = presentationFingerprint(session, tracking: responder)
         let geometry = XCTAttachment(string: """
         Route scope: fixture settings cover -> fixture type list sheet -> actual SiteVisitTypeEditorView
-        Capture source: XCUIScreen.main.screenshot(), no view composition
+        Capture source: \(screenshot.provenance), no view composition
         Screen: \(screen)
         Native image: \(nativeImage.size) scale=\(nativeImage.scale) orientation=\(nativeImage.imageOrientation.rawValue)
         Sheet: \(screenFrame(session.sheet.view))

@@ -13,13 +13,13 @@ final class SiteVisitFieldWorkflowTests: XCTestCase {
         if let originalActor { UserDefaults.standard.set(originalActor, forKey: "currentUserId") } else { UserDefaults.standard.removeObject(forKey: "currentUserId") }
         containers.removeAll()
     }
-    func packet(synced: Bool = false) throws -> (ModelContainer, SiteVisitCaptureViewModel) {
+    func packet(synced: Bool = false, fields: [SiteVisitTypeFieldDefinition]? = nil) throws -> (ModelContainer, SiteVisitCaptureViewModel) {
         let schema = Schema(versionedSchema: OPSSchemaCurrent.self)
         let container = try ModelContainer(for: schema, configurations: ModelConfiguration(schema: schema, isStoredInMemoryOnly: true))
         containers.append(container)
         let context = ModelContext(container)
         let visit = SiteVisit(companyId: company, status: .inProgress, createdBy: actor)
-        let type = SiteVisitType(companyId: company, slug: "photo-check", name: "Photo check", fields: [
+        let type = SiteVisitType(companyId: company, slug: "photo-check", name: "Photo check", fields: fields ?? [
             .init(id: "photo", label: "Photo", kind: .photo, sortOrder: 0),
             .init(id: "markup", label: "Marked dimensions", kind: .photoMarkup, sortOrder: 1)])
         context.insert(type); try context.save()
@@ -145,6 +145,49 @@ final class SiteVisitFieldWorkflowTests: XCTestCase {
         let accepted = try XCTUnwrap(reopened.checklistAnswers.first { $0.id == answer.id })
         XCTAssertEqual(accepted.answerValue, .empty); XCTAssertEqual(accepted.writeState.answerState, "unknown")
         XCTAssertFalse(accepted.needsSync)
+    }
+
+    func testBufferedBlankTextClearHasEmptyWireValueAndPreservesAttemptedAudit() throws {
+        for kind in [SiteVisitFieldKind.shortText, .measurement] {
+            for blank in ["", " \n "] {
+                let (container, _) = try packet(fields: [.init(id: "scope", label: "Scope", kind: kind, sortOrder: 0)])
+                let context = ModelContext(container)
+                let answer = try XCTUnwrap(context.fetch(FetchDescriptor<SiteVisitChecklistAnswer>()).first)
+                answer.answerValue = .text("18 in"); answer.writeState = .init(revision: 3)
+                answer.needsSync = false; answer.lastSyncedAt = Date()
+                let old = try XCTUnwrap(context.fetch(FetchDescriptor<SyncOperation>()).first { $0.entityId == answer.id })
+                old.siteVisitWriteAttemptedAt = Date(); let bytes = old.payload; try context.save()
+                let vm = SiteVisitCaptureViewModel(opportunity: nil, companyId: company, userId: actor,
+                    modelContext: ModelContext(container), entryIntent: .resume(visitId: answer.siteVisitId))
+                vm.loadOrCreateVisit()
+                let edited = try XCTUnwrap(vm.checklistAnswers.first { $0.id == answer.id })
+                vm.bufferChecklistAnswer(edited, value: .text(blank))
+                XCTAssertTrue(vm.flushChecklistEdits()); XCTAssertNil(vm.errorMessage)
+                let verify = ModelContext(container)
+                let operations = try verify.fetch(FetchDescriptor<SyncOperation>())
+                let sent = try XCTUnwrap(operations.first { $0.id == old.id })
+                XCTAssertEqual(sent.payload, bytes)
+                let next = try XCTUnwrap(operations.first { $0.entityId == answer.id && $0.id != old.id })
+                let command = try XCTUnwrap(SiteVisitVersionedSync.command(next))
+                XCTAssertEqual(command.rows[0].values["answer_value"], .object([:]))
+                XCTAssertEqual(command.rows[0].before["answer_value"]?["text"], .string("18 in"))
+                XCTAssertEqual(command.rows[0].clearAnswer, true)
+                guard case .object(var values) = command.rows[0].values else { return XCTFail() }
+                values["write_revision"] = .number(4); values["answer_state"] = .string("cleared")
+                sent.status = "completed"; try verify.save()
+                let receipt = SiteVisitWriteReceipt(commandId: next.id, entity: "answer", outcome: "saved", reason: nil, rows: [.object(values)])
+                try SiteVisitVersionedSync.applyReceipt(receipt, to: next, command: command, resolutionData: nil,
+                    context: verify, companyId: company, actorId: actor)
+                let acknowledged = try XCTUnwrap(ModelContext(container).fetch(FetchDescriptor<SiteVisitChecklistAnswer>()).first)
+                XCTAssertFalse(acknowledged.needsSync); XCTAssertEqual(acknowledged.writeState.answerState, "cleared")
+                XCTAssertEqual(SiteVisitWriteModels.values(acknowledged)["answer_value"], .object([:]))
+                for value in [SiteVisitChecklistValue.text("0"), .text("18 in"), .bool(false)] {
+                    acknowledged.answerValue = value
+                    XCTAssertNotEqual(SiteVisitWriteModels.values(acknowledged)["answer_value"], .object([:]))
+                    XCTAssertNil(SiteVisitWriteModels.command(acknowledged).rows.first?.clearAnswer)
+                }
+            }
+        }
     }
 
     func testDiscardRejectsBookedVisitBeforeLocalTombstones() throws {

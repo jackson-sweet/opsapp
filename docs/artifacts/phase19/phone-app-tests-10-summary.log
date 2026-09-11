@@ -1,0 +1,22 @@
+Test Suite 'Selected tests' started at 2026-09-10 22:34:45.370.
+Test Suite 'OPSTests.xctest' started at 2026-09-10 22:34:45.370.
+Test Suite 'SiteVisitFieldWorkflowTests' started at 2026-09-10 22:34:45.370.
+Test Case '-[OPSTests.SiteVisitFieldWorkflowTests testAcceptCurrentUnknownRemainsEmptyWhenCaptureReopens]' started.
+Test Case '-[OPSTests.SiteVisitFieldWorkflowTests testAcceptCurrentUnknownRemainsEmptyWhenCaptureReopens]' passed (0.136 seconds).
+Test Case '-[OPSTests.SiteVisitFieldWorkflowTests testBufferedBlankTextClearHasEmptyWireValueAndPreservesAttemptedAudit]' started.
+Test Case '-[OPSTests.SiteVisitFieldWorkflowTests testBufferedBlankTextClearHasEmptyWireValueAndPreservesAttemptedAudit]' passed (0.132 seconds).
+Test Case '-[OPSTests.SiteVisitFieldWorkflowTests testDiscardRejectsBookedVisitBeforeLocalTombstones]' started.
+Test Case '-[OPSTests.SiteVisitFieldWorkflowTests testDiscardRejectsBookedVisitBeforeLocalTombstones]' passed (0.034 seconds).
+Test Case '-[OPSTests.SiteVisitFieldWorkflowTests testDiscardUIClosesUnsentAndSyncedPacketsWithoutUploadingChildren]' started.
+Test Case '-[OPSTests.SiteVisitFieldWorkflowTests testDiscardUIClosesUnsentAndSyncedPacketsWithoutUploadingChildren]' passed (0.078 seconds).
+Test Case '-[OPSTests.SiteVisitFieldWorkflowTests testHydrationSelectsOnlyRealMarkupAndPreservesExplicitClearingAcrossReopen]' started.
+Test Case '-[OPSTests.SiteVisitFieldWorkflowTests testHydrationSelectsOnlyRealMarkupAndPreservesExplicitClearingAcrossReopen]' passed (0.031 seconds).
+Test Case '-[OPSTests.SiteVisitFieldWorkflowTests testInboundClearAndUnknownSurviveFreshAndCleanMergeWhileUntouchedHydrates]' started.
+Test Case '-[OPSTests.SiteVisitFieldWorkflowTests testInboundClearAndUnknownSurviveFreshAndCleanMergeWhileUntouchedHydrates]' passed (0.181 seconds).
+Test Suite 'SiteVisitFieldWorkflowTests' passed at 2026-09-10 22:34:45.965.
+	 Executed 6 tests, with 0 failures (0 unexpected) in 0.593 (0.595) seconds
+Test Suite 'OPSTests.xctest' passed at 2026-09-10 22:34:45.965.
+	 Executed 6 tests, with 0 failures (0 unexpected) in 0.593 (0.595) seconds
+Test Suite 'Selected tests' passed at 2026-09-10 22:34:45.965.
+	 Executed 6 tests, with 0 failures (0 unexpected) in 0.593 (0.595) seconds
+** TEST SUCCEEDED **

@@ -36,9 +36,9 @@ enum SiteVisitWriteModels {
         let value = answer.answerValue
         var wire: [String: SiteVisitWriteJSON] = [:]
         if !value.artifactIds.isEmpty { wire["artifactIds"] = .array(value.artifactIds.map { .string($0.lowercased()) }) }
-        if let v = value.text { wire["text"] = .string(v) }
+        if let v = value.text, !v.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { wire["text"] = .string(v) }
         if let v = value.boolValue { wire["boolValue"] = .bool(v) }
-        if let v = value.choice { wire["choice"] = .string(v) }
+        if let v = value.choice, !v.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { wire["choice"] = .string(v) }
         if let v = value.deckDesignId { wire["deckDesignId"] = .string(v.lowercased()) }
         return .object([
             "id": .string(answer.id.lowercased()), "company_id": .string(answer.companyId.lowercased()),

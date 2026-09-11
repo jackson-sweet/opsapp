@@ -85,6 +85,7 @@ final class ProjectCreatedToastTests: XCTestCase {
             }
             XCTAssertNil(toast.action)
             XCTAssertFalse(toast.bodyTapInvokesAction)
+            XCTAssertFalse(toast.haptics)
         }
     }
 
@@ -95,6 +96,7 @@ final class ProjectCreatedToastTests: XCTestCase {
         XCTAssertEqual(toast.action?.accessibilityLabel, "View project")
         XCTAssertTrue(toast.bodyTapInvokesAction)
         XCTAssertEqual(toast.autoDismissAfter, 6)
+        XCTAssertFalse(toast.haptics)
         let unnamed = Feedback.JobBoard.projectCreated(title: "  ", projectID: "project-b") { _ in }
         XCTAssertEqual(unnamed.label, "// PROJECT CREATED")
     }

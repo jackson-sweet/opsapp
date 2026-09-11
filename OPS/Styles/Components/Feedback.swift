@@ -152,7 +152,7 @@ enum Feedback {
             guard let projectID = projectID?.trimmingCharacters(in: .whitespacesAndNewlines),
                   !projectID.isEmpty,
                   !projectID.uppercased().hasPrefix("DEMO_") else {
-                return Toast(label: label, tone: .success)
+                return Toast(label: label, tone: .success, haptics: false)
             }
             return Toast(
                 label: label,
@@ -162,7 +162,9 @@ enum Feedback {
                     openProject(projectID)
                 },
                 bodyTapInvokesAction: true,
-                coalescingKey: "project-created:\(projectID)"
+                coalescingKey: "project-created:\(projectID)",
+                // ProjectFormSheet already confirms the save with a haptic.
+                haptics: false
             )
         }
 

@@ -512,6 +512,7 @@ struct UniversalSearchSheet: View {
                     .environmentObject(dataController)
             }
         }
+        .projectCreationToastHost()
     }
 
     // MARK: - Search Bar

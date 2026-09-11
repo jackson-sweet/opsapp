@@ -4,9 +4,8 @@ import UIKit
 import XCTest
 @testable import OPS
 
-/// Reproduces both MainTabView parent-sheet placements: the FAB owns a sibling
-/// branch; UniversalSearch and ContactDetail attach to the outer root container.
-/// ProjectSheetContainer independently owns the root project-details binding.
+/// Exercises both real MainTabView parent-sheet placements with the production
+/// local host: the FAB's sibling branch and Search/Contact's outer container.
 @MainActor
 final class ProjectCreatedNestedPresentationTests: XCTestCase {
     func testRootProjectRouteOpensAboveNestedParentAndPreservesItsDraft() async throws {
@@ -17,17 +16,30 @@ final class ProjectCreatedNestedPresentationTests: XCTestCase {
         try await assertNestedPresentation(parentPlacement: .outerContainer)
     }
 
-    private func assertNestedPresentation(parentPlacement: ParentSheetPlacement) async throws {
+    func testPermissionDenialIsVisibleAboveParentAndPreservesItsDraft() async throws {
+        try await assertNestedPresentation(parentPlacement: .outerContainer, outcome: .denied)
+    }
+
+    func testDismissedParentTargetFallsBackToVisibleRootDestination() async throws {
+        try await assertNestedPresentation(parentPlacement: .outerContainer, outcome: .parentClosed)
+    }
+
+    private func assertNestedPresentation(
+        parentPlacement: ParentSheetPlacement,
+        outcome: RouteOutcome = .allowed
+    ) async throws {
         let window = try AppHostWindow.acquire()
         let originalRoot = window.rootViewController
         let state = AppState()
-        let presentation = NestedCreationPresentation()
+        let presentation = NestedCreationPresentation(outcome: outcome)
         let routes = NotificationCenter()
         let created = expectation(description: "Child creation finished dismissal")
         let parentVisible = expectation(description: "Parent form fully presented")
+        let parentClosed = outcome == .parentClosed
+            ? expectation(description: "Parent form finished dismissal") : nil
         let creationVisible = expectation(description: "Creation child fully presented")
-        let destinationVisible = expectation(description: "Root project destination visible above parent")
-        let destinationClosed = expectation(description: "Project destination closed")
+        let destinationVisible = expectation(description: "Validated route destination visibly presented")
+        let destinationClosed = expectation(description: "Route destination finished dismissal")
         let completion = ProjectCreationCompletion { notification in
             ToastCenter.shared.present(ProjectCreationCompletion.toast(for: notification, notificationCenter: routes))
             created.fulfill()
@@ -40,12 +52,15 @@ final class ProjectCreatedNestedPresentationTests: XCTestCase {
             ToastCenter.shared.reset()
             presentation.editDraft = nil
             presentation.readDraft = nil
+            presentation.saveCreation = nil
+            presentation.closeDestination = nil
             host.dismiss(animated: false)
             window.rootViewController = originalRoot
             window.makeKeyAndVisible()
         }
         ToastCenter.shared.reset()
         presentation.onParentVisible = { parentVisible.fulfill() }
+        presentation.onParentClosed = { parentClosed?.fulfill() }
         presentation.onCreationVisible = { creationVisible.fulfill() }
         presentation.onDestinationVisible = { destinationVisible.fulfill() }
         presentation.onDestinationClosed = { destinationClosed.fulfill() }
@@ -63,30 +78,51 @@ final class ProjectCreatedNestedPresentationTests: XCTestCase {
         presentation.showCreation = true
         await fulfillment(of: [creationVisible], timeout: 3)
         XCTAssertNotNil(parent.presentedViewController)
-        completion.projectCreated(id: "project-a", title: "North deck")
+        try XCTUnwrap(presentation.saveCreation)()
         presentation.showCreation = false
         await fulfillment(of: [created], timeout: 3)
         XCTAssertTrue(presentation.showParent)
         XCTAssertTrue(host.presentedViewController === parent)
         XCTAssertNil(parent.presentedViewController)
 
+        if outcome == .parentClosed {
+            presentation.showParent = false
+            await fulfillment(of: [try XCTUnwrap(parentClosed)], timeout: 3)
+            XCTAssertNil(host.presentedViewController)
+        }
+
         let toast = try XCTUnwrap(ToastCenter.shared.current)
         ToastCenter.shared.handleTap(toastID: toast.id, target: .message)
         await fulfillment(of: [destinationVisible], timeout: 3)
         let destination = try XCTUnwrap(presentation.destinationController)
-        XCTAssertTrue(host.presentedViewController === parent)
-        XCTAssertTrue(parent.presentedViewController === destination)
-        XCTAssertEqual(state.activeProjectID, "project-a")
-        XCTAssertTrue(presentation.showParent)
-        XCTAssertEqual(presentation.parentIdentity, parentIdentity)
-        XCTAssertEqual(presentation.readDraft?(), "Unfinished task: return Thursday")
+        XCTAssertEqual(presentation.routedIDs, ["project-a"])
+        XCTAssertTrue(presentation.receivedOriginTarget)
+        XCTAssertEqual(presentation.displayedDestinationID,
+                       outcome == .denied ? "denied:\(NestedCreationPresentation.denialMessage)" : "project:project-a")
+        if outcome == .parentClosed {
+            XCTAssertTrue(host.presentedViewController === destination)
+            XCTAssertEqual(state.activeProjectID, "project-a")
+        } else {
+            XCTAssertTrue(host.presentedViewController === parent)
+            XCTAssertTrue(parent.presentedViewController === destination)
+            XCTAssertNil(state.activeProjectID)
+            XCTAssertFalse(state.showProjectDetails)
+            XCTAssertTrue(presentation.showParent)
+            XCTAssertEqual(presentation.parentIdentity, parentIdentity)
+            XCTAssertEqual(presentation.readDraft?(), "Unfinished task: return Thursday")
+        }
 
-        state.dismissProjectDetails()
+        try XCTUnwrap(presentation.closeDestination)()
         await fulfillment(of: [destinationClosed], timeout: 3)
-        XCTAssertTrue(host.presentedViewController === parent)
-        XCTAssertNil(parent.presentedViewController)
-        XCTAssertEqual(presentation.parentIdentity, parentIdentity)
-        XCTAssertEqual(presentation.readDraft?(), "Unfinished task: return Thursday")
+        if outcome == .parentClosed {
+            XCTAssertNil(host.presentedViewController)
+        } else {
+            XCTAssertTrue(host.presentedViewController === parent)
+            XCTAssertNil(parent.presentedViewController)
+            XCTAssertEqual(presentation.parentIdentity, parentIdentity)
+            XCTAssertEqual(presentation.readDraft?(), "Unfinished task: return Thursday")
+        }
+        presentation.onParentClosed = nil
     }
 }
 
@@ -95,19 +131,35 @@ private enum ParentSheetPlacement: Equatable {
     case outerContainer
 }
 
+private enum RouteOutcome: Equatable {
+    case allowed
+    case denied
+    case parentClosed
+}
+
 @MainActor
 private final class NestedCreationPresentation: ObservableObject {
+    static let denialMessage = "You don't have permission to view this project."
+    let outcome: RouteOutcome
     @Published var showParent = false
     @Published var showCreation = false
     weak var parentController: UIViewController?
     weak var destinationController: UIViewController?
     var parentIdentity: UUID?
+    var routedIDs: [String] = []
+    var receivedOriginTarget = false
+    var displayedDestinationID: String?
     var editDraft: ((String) -> Void)?
     var readDraft: (() -> String)?
+    var saveCreation: (() -> Void)?
+    var closeDestination: (() -> Void)?
     var onParentVisible: (() -> Void)?
+    var onParentClosed: (() -> Void)?
     var onCreationVisible: (() -> Void)?
     var onDestinationVisible: (() -> Void)?
     var onDestinationClosed: (() -> Void)?
+
+    init(outcome: RouteOutcome) { self.outcome = outcome }
 }
 
 private struct NestedCreationRoot: View {
@@ -121,19 +173,25 @@ private struct NestedCreationRoot: View {
         container
             .onReceive(routes.publisher(for: .openProjectDetails)) { notification in
                 guard let id = notification.userInfo?["projectId"] as? String else { return }
-                // Uses the actual presentation-state handoff called after the
-                // production route's local-first resolution and permission checks.
-                appState.viewProjectDetailsById(id)
+                let target = notification.userInfo?[ProjectCreationPresentationTarget.userInfoKey] as? ProjectCreationPresentationTarget
+                presentation.routedIDs.append(id)
+                presentation.receivedOriginTarget = target != nil
+                // The actual production handoff, after MainTabView's existing
+                // local-first resolution and unchanged authorization checks.
+                let destination: ProjectCreationDestination = presentation.outcome == .denied
+                    ? .denied(NestedCreationPresentation.denialMessage)
+                    : .project(Project(id: id, title: "North deck", status: .rfq))
+                ProjectCreationPresentationTarget.deliver(destination, to: target) {
+                    appState.viewProjectDetailsById(id)
+                }
             }
     }
 
     @ViewBuilder
     private var container: some View {
         if parentPlacement == .outerContainer {
-            // UniversalSearch and ContactDetail attach outside MainTabView's
-            // ZStack, while ProjectSheetContainer remains a child inside it.
             rootContents
-                .sheet(isPresented: $presentation.showParent) {
+                .sheet(isPresented: $presentation.showParent, onDismiss: { presentation.onParentClosed?() }) {
                     NestedCreationParent(presentation: presentation, completion: completion)
                 }
         } else {
@@ -144,25 +202,18 @@ private struct NestedCreationRoot: View {
     private var rootContents: some View {
         ZStack {
             if parentPlacement == .siblingBranch {
-                // The FAB owns its sheet on a sibling inside MainTabView.
                 Color.clear
-                    .sheet(isPresented: $presentation.showParent) {
+                    .sheet(isPresented: $presentation.showParent, onDismiss: { presentation.onParentClosed?() }) {
                         NestedCreationParent(presentation: presentation, completion: completion)
                     }
             }
             // Matches the independent root ProjectSheetContainer branch.
             Color.clear
-                .sheet(isPresented: $appState.showProjectDetails, onDismiss: {
-                    appState.dismissProjectDetails()
-                    presentation.onDestinationClosed?()
-                }) {
-                    Text("Project destination")
-                        .background(PresentationDidAppear { controller in
-                            presentation.destinationController = controller
-                            let callback = presentation.onDestinationVisible
-                            presentation.onDestinationVisible = nil
-                            callback?()
-                        })
+                .sheet(isPresented: $appState.showProjectDetails) {
+                    NestedCreationDestination(
+                        presentation: presentation,
+                        destination: .project(Project(id: appState.activeProjectID ?? "missing", title: "North deck", status: .rfq))
+                    )
                 }
         }
     }
@@ -186,15 +237,67 @@ private struct NestedCreationParent: View {
                 callback?()
             })
             .sheet(isPresented: $presentation.showCreation) {
-                Text("Creation form")
-                    .background(ProjectCreationDismissalObserver(completion: completion))
-                    .background(PresentationDidAppear { _ in
-                        let callback = presentation.onCreationVisible
-                        presentation.onCreationVisible = nil
-                        callback?()
-                    })
+                NestedCreationChild(presentation: presentation, completion: completion)
             }
+            .modifier(ProjectCreationPresentationHost { destination in
+                NestedCreationDestination(presentation: presentation, destination: destination)
+            })
     }
+}
+
+private struct NestedCreationChild: View {
+    @Environment(\.projectCreationPresentationTarget) private var target
+    @ObservedObject var presentation: NestedCreationPresentation
+    let completion: ProjectCreationCompletion
+
+    var body: some View {
+        Text("Creation form")
+            .background(ProjectCreationDismissalObserver(completion: completion))
+            .background(PresentationDidAppear { _ in
+                presentation.saveCreation = {
+                    completion.projectCreated(id: "project-a", title: "North deck", presentationTarget: target)
+                }
+                let callback = presentation.onCreationVisible
+                presentation.onCreationVisible = nil
+                callback?()
+            })
+    }
+}
+
+private struct NestedCreationDestination: View {
+    @Environment(\.dismiss) private var dismiss
+    @ObservedObject var presentation: NestedCreationPresentation
+    let destination: ProjectCreationDestination
+
+    var body: some View {
+        Group {
+            switch destination {
+            case .project(let project): Text(project.title)
+            case .denied(let message): AccessDeniedSheet(message: message)
+            }
+        }
+        .background(PresentationDidAppear { controller in
+            presentation.destinationController = controller
+            presentation.displayedDestinationID = destination.id
+            presentation.closeDestination = { dismiss() }
+            let callback = presentation.onDestinationVisible
+            presentation.onDestinationVisible = nil
+            callback?()
+        })
+        .background(PresentationDidDismiss {
+            let callback = presentation.onDestinationClosed
+            presentation.onDestinationClosed = nil
+            callback?()
+        })
+    }
+}
+
+private struct PresentationDidDismiss: UIViewControllerRepresentable {
+    let callback: () -> Void
+    func makeUIViewController(context: Context) -> ProjectCreationDismissalViewController {
+        ProjectCreationDismissalViewController(onDismissal: callback)
+    }
+    func updateUIViewController(_ controller: ProjectCreationDismissalViewController, context: Context) {}
 }
 
 /// Waits on a real completed appearance, not a SwiftUI onAppear or a sleep.

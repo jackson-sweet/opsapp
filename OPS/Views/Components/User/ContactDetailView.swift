@@ -395,6 +395,7 @@ struct ContactDetailView: View {
         .onDisappear {
             deletionPresentationGate.signalDismissed()
         }
+        .projectCreationToastHost()
     }
     
     // MARK: - Custom Navigation Bar

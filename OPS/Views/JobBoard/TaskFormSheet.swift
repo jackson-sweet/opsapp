@@ -610,6 +610,7 @@ struct TaskFormSheet: View {
                 selectedTeamMemberIds = defaultIds
             }
         }
+        .projectCreationToastHost()
     }
 
     // MARK: - Tutorial Mode Content

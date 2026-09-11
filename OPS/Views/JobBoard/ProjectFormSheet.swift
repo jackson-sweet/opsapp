@@ -112,6 +112,7 @@ struct ProjectFormSheet: View {
     let mode: Mode
     let onSave: (Project) -> Void
     @StateObject private var creationCompletion = ProjectCreationCompletion()
+    @Environment(\.projectCreationPresentationTarget) private var creationPresentationTarget
 
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var dataController: DataController
@@ -2831,7 +2832,10 @@ struct ProjectFormSheet: View {
                                 userInfo: ["projectTitle": project.title]
                             )
                         } else {
-                            creationCompletion.projectCreated(id: project.id, title: project.title)
+                            creationCompletion.projectCreated(
+                                id: project.id, title: project.title,
+                                presentationTarget: creationPresentationTarget
+                            )
                         }
                         // Wizard system: notify project saved
                         NotificationCenter.default.post(

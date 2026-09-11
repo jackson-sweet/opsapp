@@ -734,9 +734,10 @@ struct MainTabView: View {
             let deepLinkId = notification.userInfo?[DeepLinkCoordinator.deepLinkIdUserInfoKey] as? String
             print("[PUSH_NAVIGATION] Opening project details for: \(projectId) (deepLinkId=\(deepLinkId ?? "nil"))")
 
+            let presentationTarget = notification.userInfo?[ProjectCreationPresentationTarget.userInfoKey] as? ProjectCreationPresentationTarget
             inFlightDeepLinkTask?.cancel()
-            inFlightDeepLinkTask = Task { [projectId, deepLinkId] in
-                await openProjectWithSync(projectId: projectId, deepLinkId: deepLinkId)
+            inFlightDeepLinkTask = Task { [projectId, deepLinkId, presentationTarget] in
+                await openProjectWithSync(projectId: projectId, deepLinkId: deepLinkId, presentationTarget: presentationTarget)
             }
         }
 
@@ -1672,7 +1673,7 @@ struct MainTabView: View {
     /// local cache would only occur with a stale tombstone — in which case
     /// "not found" is the more honest message.
     @MainActor
-    private func openProjectWithSync(projectId: String, deepLinkId: String?) async {
+    private func openProjectWithSync(projectId: String, deepLinkId: String?, presentationTarget: ProjectCreationPresentationTarget? = nil) async {
         // Layer 0 — PIN gate. Return without clearing so the link is
         // re-drained after PIN unlock (see PINGatedView.onChange).
         if dataController.simplePINManager.requiresPIN &&
@@ -1683,7 +1684,7 @@ struct MainTabView: View {
 
         // Layer 1 — feature flag (overrides RBAC)
         if permissionStore.isBlockedByFlag("projects.view") {
-            denyProject(projectId: projectId, deepLinkId: deepLinkId,
+            denyProject(projectId: projectId, deepLinkId: deepLinkId, presentationTarget: presentationTarget,
                         reason: "feature_flag",
                         message: "Project access is not available on your account.")
             return
@@ -1691,7 +1692,7 @@ struct MainTabView: View {
 
         // Layer 2 — permission granted at any scope
         guard permissionStore.scope(for: "projects.view") != nil else {
-            denyProject(projectId: projectId, deepLinkId: deepLinkId,
+            denyProject(projectId: projectId, deepLinkId: deepLinkId, presentationTarget: presentationTarget,
                         reason: "no_permission",
                         message: "You don't have permission to view projects.")
             return
@@ -1706,7 +1707,7 @@ struct MainTabView: View {
         if let local = dataController.getProject(id: projectId) {
             project = local
         } else if !dataController.isConnected {
-            denyProject(projectId: projectId, deepLinkId: deepLinkId,
+            denyProject(projectId: projectId, deepLinkId: deepLinkId, presentationTarget: presentationTarget,
                         reason: "offline",
                         message: "You're offline. Connect to internet to open this project.")
             return
@@ -1733,7 +1734,7 @@ struct MainTabView: View {
         }
 
         guard let project = project else {
-            denyProject(projectId: projectId, deepLinkId: deepLinkId,
+            denyProject(projectId: projectId, deepLinkId: deepLinkId, presentationTarget: presentationTarget,
                         reason: "not_found",
                         message: "This project is no longer available or you don't have access.")
             return
@@ -1741,7 +1742,7 @@ struct MainTabView: View {
 
         // Layer 5 — deleted check
         if project.deletedAt != nil {
-            denyProject(projectId: projectId, deepLinkId: deepLinkId,
+            denyProject(projectId: projectId, deepLinkId: deepLinkId, presentationTarget: presentationTarget,
                         reason: "deleted",
                         message: "This project has been deleted.")
             return
@@ -1751,7 +1752,7 @@ struct MainTabView: View {
         // canViewProject already handles the feature-flag short-circuit
         // (redundant with Layer 1) plus own-scope denial.
         guard let userId = dataController.currentUser?.id else {
-            denyProject(projectId: projectId, deepLinkId: deepLinkId,
+            denyProject(projectId: projectId, deepLinkId: deepLinkId, presentationTarget: presentationTarget,
                         reason: "no_user",
                         message: "You don't have permission to view this project.")
             return
@@ -1763,7 +1764,7 @@ struct MainTabView: View {
         // Locally-cached projects still get the scope re-check.
         if !resolvedFromServer {
             guard permissionStore.canViewProject(project, userId: userId) else {
-                denyProject(projectId: projectId, deepLinkId: deepLinkId,
+                denyProject(projectId: projectId, deepLinkId: deepLinkId, presentationTarget: presentationTarget,
                             reason: "scope",
                             message: "You don't have permission to view this project.")
                 return
@@ -1781,7 +1782,9 @@ struct MainTabView: View {
             ]
         )
         DeepLinkCoordinator.shared.clear()
-        appState.viewProjectDetailsById(projectId)
+        ProjectCreationPresentationTarget.deliver(.project(project), to: presentationTarget) {
+            appState.viewProjectDetailsById(projectId)
+        }
     }
 
     /// Centralized access-denied path for the project deep-link flow.
@@ -1790,9 +1793,11 @@ struct MainTabView: View {
     /// emits `deep_link_denied` with a machine-readable `reason` code so
     /// drop patterns are queryable.
     @MainActor
-    private func denyProject(projectId: String, deepLinkId: String?, reason: String, message: String) {
+    private func denyProject(projectId: String, deepLinkId: String?, presentationTarget: ProjectCreationPresentationTarget? = nil, reason: String, message: String) {
         print("[DEEP_LINK] Project \(projectId) denied — \(reason)")
-        appState.presentAccessDenied(message: message)
+        ProjectCreationPresentationTarget.deliver(.denied(message), to: presentationTarget) {
+            appState.presentAccessDenied(message: message)
+        }
         AnalyticsService.shared.track(
             eventType: .action,
             eventName: "deep_link_denied",

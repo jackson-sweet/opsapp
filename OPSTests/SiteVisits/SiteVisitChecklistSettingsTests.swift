@@ -249,7 +249,7 @@ final class SiteVisitChecklistSettingsTests: XCTestCase {
     func test_companyDefaultFromServerReplacesTheLocalDefault() throws {
         let configuration = ModelConfiguration(isStoredInMemoryOnly: true)
         let container = try ModelContainer(
-            for: SiteVisitType.self,
+            for: SiteVisitType.self, SyncOperation.self,
             configurations: configuration
         )
         let context = container.mainContext
@@ -259,6 +259,13 @@ final class SiteVisitChecklistSettingsTests: XCTestCase {
         )
         let estimate = try XCTUnwrap(templates.first { $0.slug == "estimate" })
         let serviceCall = try XCTUnwrap(templates.first { $0.slug == "service_call" })
+        // This case represents previously synced defaults. Brand-new dirty
+        // templates must retain their local values until acknowledged/reviewed.
+        for template in [estimate, serviceCall] {
+            template.needsSync = false
+            template.lastSyncedAt = Date(timeIntervalSince1970: 1_700_000_000)
+            template.writeState = .init(revision: 0)
+        }
         context.insert(estimate)
         context.insert(serviceCall)
         try context.save()

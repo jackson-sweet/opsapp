@@ -1,0 +1,42 @@
+[
+  {
+    "test": "SiteVisitTypeSettingsKeyboardTests/testChecklistFieldLabelReceivesVisibleDoneInTheRealEditorSheet()",
+    "file": "site-visit-checklist-field-label-after-done-screen-geometry.txt"
+  },
+  {
+    "test": "SiteVisitTypeSettingsKeyboardTests/testChecklistFieldLabelReceivesVisibleDoneInTheRealEditorSheet()",
+    "file": "site-visit-checklist-field-label-after-done.png"
+  },
+  {
+    "test": "SiteVisitTypeSettingsKeyboardTests/testChecklistFieldLabelReceivesVisibleDoneInTheRealEditorSheet()",
+    "file": "site-visit-checklist-field-label-keyboard-keyboard-only.png"
+  },
+  {
+    "test": "SiteVisitTypeSettingsKeyboardTests/testChecklistFieldLabelReceivesVisibleDoneInTheRealEditorSheet()",
+    "file": "site-visit-checklist-field-label-keyboard-screen-geometry.txt"
+  },
+  {
+    "test": "SiteVisitTypeSettingsKeyboardTests/testChecklistFieldLabelReceivesVisibleDoneInTheRealEditorSheet()",
+    "file": "site-visit-checklist-field-label-keyboard.png"
+  },
+  {
+    "test": "SiteVisitTypeSettingsKeyboardTests/testVisitNameReceivesVisibleDoneInTheRealEditorSheet()",
+    "file": "site-visit-type-name-after-done-screen-geometry.txt"
+  },
+  {
+    "test": "SiteVisitTypeSettingsKeyboardTests/testVisitNameReceivesVisibleDoneInTheRealEditorSheet()",
+    "file": "site-visit-type-name-after-done.png"
+  },
+  {
+    "test": "SiteVisitTypeSettingsKeyboardTests/testVisitNameReceivesVisibleDoneInTheRealEditorSheet()",
+    "file": "site-visit-type-name-keyboard-keyboard-only.png"
+  },
+  {
+    "test": "SiteVisitTypeSettingsKeyboardTests/testVisitNameReceivesVisibleDoneInTheRealEditorSheet()",
+    "file": "site-visit-type-name-keyboard-screen-geometry.txt"
+  },
+  {
+    "test": "SiteVisitTypeSettingsKeyboardTests/testVisitNameReceivesVisibleDoneInTheRealEditorSheet()",
+    "file": "site-visit-type-name-keyboard.png"
+  }
+]

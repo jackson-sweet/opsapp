@@ -101,3 +101,6 @@ The complete vertical must include:
 6. An explicit mixed-version rollout strategy before any new kind is emitted. Adding `single_choice` now breaks older strict iOS decoders. Encoding choices as extra metadata on `short_text` avoids an unknown enum but older template/value round trips discard that metadata; it does not preserve the required option contract. A minimum-supported-client gate or versioned compatibility protocol must be proven before enabling writes.
 
 Required tests cover blank/duplicate/oversized options, unknown selected IDs, two identical labels with distinct IDs policy, option rename/delete/reorder after capture, switching field kind, required/cleared state, template edits with an existing answer, offline replay, mixed-version payload handling, page decode containing one new kind, note/agent/web projection and unchanged authority. No feature work should land inside the current model reservation.
+
+
+Final verification is recorded in `verification.md`: 3/3 real-editor tests and 17 related input/accessory checks passed; four raw before/after screens were visually inspected. The screenshot helper now re-resolves the exact app container during Xcode installation and retries files retired during that replacement.

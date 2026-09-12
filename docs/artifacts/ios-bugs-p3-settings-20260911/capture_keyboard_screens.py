@@ -70,9 +70,14 @@ def main():
         for request_file in cache.glob("*.request.json"):
             if request_file.name in seen:
                 continue
-            if request_file.is_symlink() or request_file.stat().st_size > 4096:
-                raise RuntimeError("Invalid screenshot request file")
-            request = json.loads(request_file.read_text())
+            try:
+                if request_file.is_symlink() or request_file.stat().st_size > 4096:
+                    raise RuntimeError("Invalid screenshot request file")
+                request = json.loads(request_file.read_text())
+            except FileNotFoundError:
+                # Installation may retire a listed file before its read.
+                cache, next_resolution = None, 0
+                break
             request_id = str(uuid.UUID(request["requestID"]))
             requested_at = request["requestedAt"]
             if request_file.name != f"{request_id}.request.json":

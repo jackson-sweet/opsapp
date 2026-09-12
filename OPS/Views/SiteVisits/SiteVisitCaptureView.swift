@@ -1881,6 +1881,7 @@ private struct SiteVisitIdentitySuggestion: Identifiable {
 struct SiteVisitChecklistAnswerRow: View {
     let answer: SiteVisitChecklistAnswer
     let value: SiteVisitChecklistValue
+    @Environment(\.sizeCategory) private var sizeCategory
     @FocusState private var isFocused: Bool
     let onUpdate: (SiteVisitChecklistValue) -> Void
     let onFlush: () -> Void
@@ -1888,25 +1889,29 @@ struct SiteVisitChecklistAnswerRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
-            HStack(alignment: .firstTextBaseline, spacing: OPSStyle.Layout.spacing2) {
-                VStack(alignment: .leading, spacing: 2) {
+            headerLayout {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                     Text(answer.label.uppercased())
                         .font(OPSStyle.Typography.captionBold)
                         .foregroundColor(OPSStyle.Colors.text)
-                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
                     if let helpText = answer.helpText, !helpText.isEmpty {
                         Text(helpText.uppercased())
                             .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(OPSStyle.Colors.text3)
-                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
+                .frame(maxWidth: sizeCategory.isAccessibilityCategory ? .infinity : nil, alignment: .leading)
 
-                Spacer(minLength: OPSStyle.Layout.spacing1)
+                if !sizeCategory.isAccessibilityCategory {
+                    Spacer(minLength: OPSStyle.Layout.spacing1)
+                }
 
                 Text(statusLabel)
                     .font(OPSStyle.Typography.miniLabel)
                     .foregroundColor(statusColor)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             control
@@ -1920,6 +1925,12 @@ struct SiteVisitChecklistAnswerRow: View {
             RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
                 .strokeBorder(answer.required && !value.isAnswered ? OPSStyle.Colors.tanTextM : OPSStyle.Colors.line, lineWidth: 1)
         )
+    }
+
+    private var headerLayout: AnyLayout {
+        sizeCategory.isAccessibilityCategory
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: OPSStyle.Layout.spacing1))
+            : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: OPSStyle.Layout.spacing2))
     }
 
     @ViewBuilder

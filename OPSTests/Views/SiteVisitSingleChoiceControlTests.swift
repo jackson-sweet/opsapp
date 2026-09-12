@@ -37,6 +37,7 @@ final class SiteVisitSingleChoiceControlTests: XCTestCase {
         try withHost(CaptureHarness(state: state).environment(\.sizeCategory, .accessibilityExtraLarge), width: 320) { host in
             XCTAssertTrue(waitUntil(host) { self.button("Cedar", in: host.view) != nil })
             XCTAssertTrue(nodes(host.view).contains { $0.accessibilityLabel == "Original handwritten material" })
+            try requireAccessibleHeader(host, status: "REQUIRED")
             try capture(host, name: "single-choice-capture-legacy-text")
             let cedar = try XCTUnwrap(button("Cedar", in: host.view))
             try requireVisibleTarget(cedar, in: host.view)
@@ -45,6 +46,7 @@ final class SiteVisitSingleChoiceControlTests: XCTestCase {
             let selected = try XCTUnwrap(button("Cedar", in: host.view))
             XCTAssertTrue(selected.accessibilityTraits.contains(.selected))
             XCTAssertTrue(answer.isAnswered)
+            try requireAccessibleHeader(host, status: "DONE")
             try capture(host, name: "single-choice-capture-selected")
             let clear = try XCTUnwrap(button("CLEAR ANSWER", in: host.view))
             try requireVisibleTarget(clear, in: host.view)
@@ -53,6 +55,7 @@ final class SiteVisitSingleChoiceControlTests: XCTestCase {
             XCTAssertEqual(state.value.choiceSnapshot, snapshot)
             XCTAssertFalse(answer.isAnswered)
             XCTAssertFalse(try XCTUnwrap(button("Cedar", in: host.view)).accessibilityTraits.contains(.selected))
+            try requireAccessibleHeader(host, status: "REQUIRED")
             try capture(host, name: "single-choice-capture-cleared")
         }
     }
@@ -174,6 +177,24 @@ final class SiteVisitSingleChoiceControlTests: XCTestCase {
         XCTAssertTrue(viewport.insetBy(dx: -0.5, dy: -0.5).contains(node.accessibilityFrame), "Target must be visible in the real viewport")
         XCTAssertEqual(node.accessibilityTraits.contains(.notEnabled), !expectsEnabled)
         XCTAssertNotNil(view.window)
+    }
+
+    private func requireAccessibleHeader(_ host: UIHostingController<AnyView>, status: String) throws {
+        let title = try XCTUnwrap(nodes(host.view).first { $0.accessibilityLabel == "DECK MATERIAL" })
+        let badge = try XCTUnwrap(nodes(host.view).first { $0.accessibilityLabel == status })
+        let option = try XCTUnwrap(button("Cedar", in: host.view))
+        // AX labels remain complete even when rendered text is truncated.
+        // Measure the full text at the actual available row width instead.
+        let text = UIHostingController(rootView: Text("DECK MATERIAL")
+            .font(OPSStyle.Typography.captionBold)
+            .fixedSize(horizontal: false, vertical: true)
+            .environment(\.sizeCategory, .accessibilityExtraLarge))
+        let fullSize = text.sizeThatFits(in: CGSize(width: option.accessibilityFrame.width, height: host.view.bounds.height))
+        XCTAssertGreaterThanOrEqual(title.accessibilityFrame.width + 0.5, fullSize.width)
+        XCTAssertGreaterThanOrEqual(title.accessibilityFrame.height + 0.5, fullSize.height)
+        XCTAssertEqual(title.accessibilityFrame.minX, option.accessibilityFrame.minX, accuracy: 0.5)
+        XCTAssertGreaterThanOrEqual(badge.accessibilityFrame.minY, title.accessibilityFrame.maxY)
+        XCTAssertLessThanOrEqual(badge.accessibilityFrame.maxY, option.accessibilityFrame.minY)
     }
 
     private func capture(_ host: UIHostingController<AnyView>, name: String) throws {

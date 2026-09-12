@@ -7,6 +7,45 @@
 
 import Foundation
 
+/// UI choices are separate from the persisted eight-kind wire enum.
+enum SiteVisitFieldInputType: Hashable {
+    case standard(SiteVisitFieldKind)
+    case singleChoice
+
+    var settingsName: String {
+        switch self {
+        case .singleChoice: return "Multiple choice"
+        case .standard(let kind):
+            switch kind {
+            case .checkbox: return "Checkbox"
+            case .yesNoNA: return "Yes / No / N/A"
+            case .shortText: return "Short answer"
+            case .longText: return "Long answer"
+            case .measurement: return "Measurement"
+            case .photo: return "Photo"
+            case .photoMarkup: return "Photo + markup"
+            case .deckDesign: return "Deck design"
+            }
+        }
+    }
+}
+
+extension SiteVisitTypeFieldDefinition {
+    var inputType: SiteVisitFieldInputType {
+        get { singleChoice == nil ? .standard(kind) : .singleChoice }
+        set {
+            switch newValue {
+            case .standard(let kind): self.kind = kind; singleChoice = nil
+            case .singleChoice:
+                kind = .shortText
+                if singleChoice == nil {
+                    singleChoice = .init(options: [.init(label: ""), .init(label: "")])
+                }
+            }
+        }
+    }
+}
+
 struct SiteVisitTypeDraft: Identifiable {
     var id: String?
     var slug: String?
@@ -102,6 +141,12 @@ enum SiteVisitTypeSettingsLogic {
     static let maximumFieldLabelLength = 500
     static let maximumHelpTextLength = 2_000
 
+    static func availableInputTypes(deckBuilderEnabled: Bool, preserving kind: SiteVisitFieldKind) -> [SiteVisitFieldInputType] {
+        var types = availableFieldKinds(deckBuilderEnabled: deckBuilderEnabled, preserving: kind).map(SiteVisitFieldInputType.standard)
+        types.insert(.singleChoice, at: 2)
+        return types
+    }
+
     static func availableFieldKinds(
         deckBuilderEnabled: Bool,
         preserving currentKind: SiteVisitFieldKind? = nil
@@ -155,6 +200,10 @@ enum SiteVisitTypeSettingsLogic {
         var normalized: [SiteVisitTypeFieldDefinition] = []
         for (index, field) in fields.enumerated() {
             var copy = field
+            if let singleChoice = field.singleChoice {
+                guard field.kind == .shortText else { throw SiteVisitSingleChoice.ValidationError.invalidDefinition }
+                copy.singleChoice = try singleChoice.normalized()
+            }
             copy.label = field.label.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !copy.label.isEmpty else {
                 throw SiteVisitTypeSettingsError.fieldLabelRequired

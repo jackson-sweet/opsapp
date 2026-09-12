@@ -682,6 +682,7 @@ final class SiteVisitHandoffDurabilityTests: XCTestCase {
     private func makeContainer() throws -> ModelContainer {
         let schema = Schema([
             SiteVisit.self,
+            SiteVisitType.self,
             SiteVisitCaptureArtifact.self,
             SiteVisitChecklistAnswer.self,
             ProjectPhoto.self,

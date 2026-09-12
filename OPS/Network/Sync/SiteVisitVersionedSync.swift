@@ -41,12 +41,12 @@ enum SiteVisitVersionedSync {
     @MainActor
     static func deliver(id: UUID, command: SiteVisitWriteCommand, expectedActorId: String) async throws -> SiteVisitWriteReceipt {
         struct Parameters: Encodable { let p_command_id: UUID; let p_command: SiteVisitWriteCommand; let p_expected_actor: String }
-        return try await SupabaseService.shared.client.rpc("apply_site_visit_write",
+        return try await SupabaseService.shared.client.rpc(command.applyRPC,
             params: Parameters(p_command_id: id, p_command: command, p_expected_actor: expectedActorId)).execute().value
     }
     static func execute(operation: SyncOperation, context: ModelContext, companyId: String, actorId: String?,
                         isCurrent: () -> Bool, deliverWrite: Deliver = { try await deliver(id: $0, command: $1, expectedActorId: $2) }, isolation: isolated (any Actor)? = #isolation) async throws {
-        guard let command = command(operation), command.protocol == SiteVisitWriteCommand.revision,
+        guard let command = command(operation), command.isSupported,
               command.companyId == companyId.lowercased(), !command.rows.isEmpty,
               command.rows.contains(where: { $0.id == operation.entityId.lowercased() }),
               let actorId = actorId?.lowercased(), !actorId.isEmpty,
@@ -59,7 +59,11 @@ enum SiteVisitVersionedSync {
         let resolution = try resolutionData.map { try JSONDecoder().decode(SiteVisitWriteResolution.self, from: $0) }
         let receipt: SiteVisitWriteReceipt
         if let resolution {
-            receipt = try await deliverResolution(originalId: operation.id, command: command, resolution: resolution, expectedActorId: actorId)
+            let currentRequiresChoiceProtocol = try SiteVisitWriteModels.needsChoiceReview(command, context: context)
+            let useChoiceProtocol = resolution.current.contains(where: \.containsChoiceMetadata)
+                || currentRequiresChoiceProtocol
+            receipt = try await deliverResolution(originalId: operation.id, command: command, resolution: resolution,
+                expectedActorId: actorId, useChoiceProtocol: useChoiceProtocol)
         } else {
             receipt = try await deliverWrite(operation.id, command, actorId)
         }
@@ -121,6 +125,10 @@ enum SiteVisitVersionedSync {
                 var expected = command.entity == "answer" ? SiteVisitWriteJSON.object([
                     "answer_value": row.values["answer_value"] ?? .null, "deleted_at": row.values["deleted_at"] ?? .null
                 ]) : row.values
+                if command.entity == "answer", let snapshot = row.values["choice_snapshot"],
+                   case .object(var values) = expected {
+                    values["choice_snapshot"] = snapshot; expected = .object(values)
+                }
                 if command.entity == "template", case .object(var values) = expected, let actual {
                     values["id"] = actual["id"]; expected = .object(values)
                 }
@@ -227,7 +235,7 @@ enum SiteVisitVersionedSync {
         if target !== proposal && (target.needsSync || target.writeState.baseRevision != nil) {
             var state = target.writeState; state.remoteRow = row; target.writeState = state
         } else {
-            target.id = dto.id; target.answerValue = dto.answerValue; target.deletedAt = dto.deletedAt
+            target.id = dto.id; try target.acceptServerValue(dto.hydratedAnswerValue); target.deletedAt = dto.deletedAt
             target.siteVisitTypeId = dto.siteVisitTypeId; target.fieldId = dto.fieldId; target.label = dto.label
             target.kind = dto.kind; target.required = dto.required; target.helpText = dto.helpText; target.sortOrder = dto.sortOrder
             var state = target.writeState; state.accept(row); target.writeState = state
@@ -252,21 +260,21 @@ enum SiteVisitVersionedSync {
         if target !== proposal { proposal.deletedAt = Date(); proposal.isDefault = false }
     }
     @MainActor
-    static func review(_ command: SiteVisitWriteCommand, expectedActorId: String) async throws -> [SiteVisitWriteJSON] {
+    static func review(_ command: SiteVisitWriteCommand, expectedActorId: String, useChoiceProtocol: Bool = false) async throws -> [SiteVisitWriteJSON] {
         struct Parameters: Encodable { let p_command: SiteVisitWriteCommand; let p_expected_actor: String }
         struct Response: Decodable { let rows: [SiteVisitWriteJSON] }
-        let response: Response = try await SupabaseService.shared.client.rpc("review_site_visit_write",
+        let response: Response = try await SupabaseService.shared.client.rpc(useChoiceProtocol ? "review_site_visit_write_v2" : command.reviewRPC,
             params: Parameters(p_command: command, p_expected_actor: expectedActorId)).execute().value
         guard response.rows.allSatisfy({ $0["company_id"]?.string == command.companyId }) else { throw SiteVisitWriteError.invalidReceipt }
         return response.rows
     }
     @MainActor
-    static func deliverResolution(originalId: UUID, command: SiteVisitWriteCommand, resolution: SiteVisitWriteResolution, expectedActorId: String) async throws -> SiteVisitWriteReceipt {
+    static func deliverResolution(originalId: UUID, command: SiteVisitWriteCommand, resolution: SiteVisitWriteResolution, expectedActorId: String, useChoiceProtocol: Bool = false) async throws -> SiteVisitWriteReceipt {
         struct Parameters: Encodable {
             let p_resolution_id: UUID; let p_original_id: UUID; let p_command: SiteVisitWriteCommand
             let p_choice: String; let p_current: [SiteVisitWriteJSON]; let p_expected_actor: String
         }
-        return try await SupabaseService.shared.client.rpc("resolve_site_visit_write", params: Parameters(
+        return try await SupabaseService.shared.client.rpc(useChoiceProtocol ? "resolve_site_visit_write_v2" : command.resolveRPC, params: Parameters(
             p_resolution_id: resolution.id, p_original_id: originalId, p_command: command,
             p_choice: resolution.choice, p_current: resolution.current, p_expected_actor: expectedActorId)).execute().value
     }

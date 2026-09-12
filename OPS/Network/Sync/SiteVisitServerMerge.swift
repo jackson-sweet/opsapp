@@ -739,9 +739,11 @@ enum SiteVisitServerMerge {
         in context: ModelContext,
         now: Date
     ) throws -> MergeOutcome {
+        let hydratedValue = dto.hydratedAnswerValue
+        let hydratedData = try JSONEncoder().encode(hydratedValue)
         let fields: Set<String> = [
             "opportunity_id", "site_visit_type_id", "field_id", "label", "kind",
-            "required", "help_text", "sort_order", "answer_value", "deleted_at",
+            "required", "help_text", "sort_order", "answer_value", "choice_snapshot", "deleted_at",
         ]
 
         let resolution = try resolveChecklistAnswer(dto, in: context)
@@ -759,7 +761,7 @@ enum SiteVisitServerMerge {
                     required: dto.required,
                     helpText: dto.helpText,
                     sortOrder: dto.sortOrder,
-                    answerValue: dto.answerValue,
+                    answerValue: hydratedValue,
                     createdBy: dto.createdBy,
                     createdAt: dto.createdAt
                 )
@@ -810,7 +812,7 @@ enum SiteVisitServerMerge {
             || (accept("required") && existing.required != dto.required)
             || (accept("help_text") && existing.helpText != dto.helpText)
             || (accept("sort_order") && existing.sortOrder != dto.sortOrder)
-            || (accept("answer_value") && existing.answerValue != dto.answerValue)
+            || (accept("answer_value") && existing.answerValue != hydratedValue)
             || (acceptsTombstone && existing.deletedAt != dto.deletedAt)
             || (!isStale && (
                 existing.createdBy != dto.createdBy
@@ -832,9 +834,9 @@ enum SiteVisitServerMerge {
             if accept("required") { existing.required = dto.required }
             if accept("help_text") { existing.helpText = dto.helpText }
             if accept("sort_order") { existing.sortOrder = dto.sortOrder }
-            // NOTE: this setter also stamps updatedAt/needsSync; the
-            // server-owned reconciliation below deliberately overwrites both.
-            if accept("answer_value") { existing.answerValue = dto.answerValue }
+            // Server reads own the complete snapshot. Ordinary answer edits
+            // use the setter, which cannot replace a visit's option definition.
+            if accept("answer_value") { existing.answerValueData = hydratedData }
             if acceptsTombstone { existing.deletedAt = dto.deletedAt }
             if !isStale {
                 existing.createdBy = dto.createdBy

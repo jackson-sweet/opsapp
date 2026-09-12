@@ -316,12 +316,19 @@ struct SiteVisitChecklistAnswerDTO: Codable, Equatable, Identifiable {
     let helpText: String?
     let sortOrder: Int
     let answerValue: SiteVisitChecklistValue
+    var choiceSnapshot: SiteVisitSingleChoice? = nil
     var writeRevision: Int64? = nil
     var answerState: String? = nil
     let createdBy: String
     let createdAt: Date
     let updatedAt: Date
     let deletedAt: Date?
+
+    var hydratedAnswerValue: SiteVisitChecklistValue {
+        var value = SiteVisitWire.canonicalChecklistValue(answerValue)
+        value.choiceSnapshot = choiceSnapshot
+        return value
+    }
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -334,6 +341,7 @@ struct SiteVisitChecklistAnswerDTO: Codable, Equatable, Identifiable {
         case helpText = "help_text"
         case sortOrder = "sort_order"
         case answerValue = "answer_value"
+        case choiceSnapshot = "choice_snapshot"
         case writeRevision = "write_revision"
         case answerState = "answer_state"
         case createdBy = "created_by"
@@ -358,6 +366,7 @@ struct SiteVisitChecklistAnswerDTO: Codable, Equatable, Identifiable {
         answerValue = SiteVisitWire.canonicalChecklistValue(
             try c.decodeIfPresent(SiteVisitChecklistValue.self, forKey: .answerValue) ?? .empty
         )
+        choiceSnapshot = try c.decodeIfPresent(SiteVisitSingleChoice.self, forKey: .choiceSnapshot)
         writeRevision = try c.decodeIfPresent(Int64.self, forKey: .writeRevision)
         answerState = try c.decodeIfPresent(String.self, forKey: .answerState)
         createdBy = try SiteVisitWire.requiredText(try c.decode(String.self, forKey: .createdBy), key: CodingKeys.createdBy).lowercased()
@@ -622,6 +631,7 @@ struct UpsertSiteVisitChecklistAnswerDTO: Codable, Equatable {
     let helpText: String?
     let sortOrder: Int
     let answerValue: SiteVisitChecklistValue
+    let choiceSnapshot: SiteVisitSingleChoice?
     let createdBy: String
     let createdAt: String
     let updatedAt: String
@@ -638,6 +648,7 @@ struct UpsertSiteVisitChecklistAnswerDTO: Codable, Equatable {
         case helpText = "help_text"
         case sortOrder = "sort_order"
         case answerValue = "answer_value"
+        case choiceSnapshot = "choice_snapshot"
         case createdBy = "created_by"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
@@ -660,6 +671,7 @@ struct UpsertSiteVisitChecklistAnswerDTO: Codable, Equatable {
         helpText = model.helpText
         sortOrder = model.sortOrder
         answerValue = SiteVisitWire.canonicalChecklistValue(model.answerValue)
+        choiceSnapshot = model.answerValue.choiceSnapshot
         self.createdBy = createdBy.lowercased()
         createdAt = SupabaseDate.format(model.createdAt)
         updatedAt = SupabaseDate.format(model.updatedAt ?? model.createdAt)

@@ -191,7 +191,7 @@ final class SiteVisitCaptureViewModel: ObservableObject {
             answers: checklistAnswers, drafts: identityDraft.map { [$0] } ?? [])
             || !noteDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             || !measurementDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            || pendingChecklistValues.values.contains { $0 != .empty }
+            || pendingChecklistValues.values.contains { $0.hasContent }
     }
 
     var hasProjectEvidence: Bool {
@@ -434,6 +434,7 @@ final class SiteVisitCaptureViewModel: ObservableObject {
         _ answer: SiteVisitChecklistAnswer,
         value: SiteVisitChecklistValue
     ) {
+        let value = value.retainingChoiceSnapshot(answer.answerValue.choiceSnapshot)
         guard answer.answerValue != value else { return }
         guard persistSiteVisitChanges({
             var state = answer.writeState; state.explicitlyEdited = true; answer.writeState = state
@@ -449,6 +450,7 @@ final class SiteVisitCaptureViewModel: ObservableObject {
     }
 
     func bufferChecklistAnswer(_ answer: SiteVisitChecklistAnswer, value: SiteVisitChecklistValue) {
+        let value = value.retainingChoiceSnapshot(answer.answerValue.choiceSnapshot)
         // Persist the first keystroke and its original revision together. The
         // queue coalesces unattempted commands; a crash cannot lose a buffer or
         // let an in-flight receipt acknowledge text it never transmitted.

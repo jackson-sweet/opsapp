@@ -42,6 +42,7 @@ struct SiteVisitTypeFieldDefinition: Codable, Equatable, Identifiable, Sendable 
     /// Optional for wire compatibility with checklist definitions written by
     /// older builds. A missing value means shown.
     var isVisible: Bool?
+    var singleChoice: SiteVisitSingleChoice?
 
     init(
         id: String = UUID().uuidString,
@@ -50,7 +51,8 @@ struct SiteVisitTypeFieldDefinition: Codable, Equatable, Identifiable, Sendable 
         required: Bool = false,
         helpText: String? = nil,
         isVisible: Bool = true,
-        sortOrder: Int
+        sortOrder: Int,
+        singleChoice: SiteVisitSingleChoice? = nil
     ) {
         self.id = id
         self.label = label
@@ -59,6 +61,7 @@ struct SiteVisitTypeFieldDefinition: Codable, Equatable, Identifiable, Sendable 
         self.helpText = helpText
         self.isVisible = isVisible
         self.sortOrder = sortOrder
+        self.singleChoice = singleChoice
     }
 
     var isShown: Bool {
@@ -93,6 +96,7 @@ enum SiteVisitTypeTemplateReconciler {
             merged.label = productField.label
             merged.kind = productField.kind
             merged.helpText = productField.helpText
+            merged.singleChoice = productField.singleChoice
             return merged
         }
 
@@ -110,8 +114,10 @@ struct SiteVisitChecklistValue: Codable, Equatable {
     var choice: String?
     var artifactIds: [String]
     var deckDesignId: String?
+    /// Local storage only. The server stores this separately from answer_value.
+    var choiceSnapshot: SiteVisitSingleChoice?
 
-    enum CodingKeys: String, CodingKey { case text, boolValue, choice, artifactIds, deckDesignId }
+    enum CodingKeys: String, CodingKey { case text, boolValue, choice, artifactIds, deckDesignId, choiceSnapshot }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         text = try c.decodeIfPresent(String.self, forKey: .text)
@@ -119,6 +125,7 @@ struct SiteVisitChecklistValue: Codable, Equatable {
         choice = try c.decodeIfPresent(String.self, forKey: .choice)
         artifactIds = try c.decodeIfPresent([String].self, forKey: .artifactIds) ?? []
         deckDesignId = try c.decodeIfPresent(String.self, forKey: .deckDesignId)
+        choiceSnapshot = try c.decodeIfPresent(SiteVisitSingleChoice.self, forKey: .choiceSnapshot)
     }
 
     static let empty = SiteVisitChecklistValue()
@@ -128,13 +135,15 @@ struct SiteVisitChecklistValue: Codable, Equatable {
         boolValue: Bool? = nil,
         choice: String? = nil,
         artifactIds: [String] = [],
-        deckDesignId: String? = nil
+        deckDesignId: String? = nil,
+        choiceSnapshot: SiteVisitSingleChoice? = nil
     ) {
         self.text = text
         self.boolValue = boolValue
         self.choice = choice
         self.artifactIds = artifactIds
         self.deckDesignId = deckDesignId
+        self.choiceSnapshot = choiceSnapshot
     }
 
     static func text(_ value: String) -> SiteVisitChecklistValue {
@@ -158,6 +167,16 @@ struct SiteVisitChecklistValue: Codable, Equatable {
     }
 
     var isAnswered: Bool {
+        if let choiceSnapshot {
+            return choiceSnapshot.option(matching: text) != nil && boolValue == nil && choice == nil
+                && artifactIds.isEmpty && deckDesignId == nil
+        }
+        return hasContent
+    }
+
+    /// Unrecognized legacy text is still user work, even when it is not a valid
+    /// choice. Metadata alone does not count as an answer or captured content.
+    var hasContent: Bool {
         if let text, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return true }
         if boolValue != nil { return true }
         if let choice, !choice.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return true }
@@ -165,6 +184,14 @@ struct SiteVisitChecklistValue: Codable, Equatable {
         if let deckDesignId, !deckDesignId.isEmpty { return true }
         return false
     }
+
+    func retainingChoiceSnapshot(_ snapshot: SiteVisitSingleChoice?) -> Self {
+        var result = self
+        result.choiceSnapshot = snapshot ?? choiceSnapshot
+        return result
+    }
+
+    var selectedOption: SiteVisitSingleChoice.Option? { choiceSnapshot?.option(matching: text) }
 }
 
 @Model
@@ -379,7 +406,7 @@ final class SiteVisitChecklistAnswer: Identifiable {
         }
         set {
             beginVersionedEdit()
-            answerValueData = try? JSONEncoder().encode(newValue)
+            answerValueData = try? JSONEncoder().encode(newValue.retainingChoiceSnapshot(answerValue.choiceSnapshot))
             updatedAt = Date()
             needsSync = true
         }
@@ -391,6 +418,12 @@ final class SiteVisitChecklistAnswer: Identifiable {
 
     var isAnswered: Bool {
         answerValue.isAnswered
+    }
+
+    /// A server read or explicit conflict resolution owns the complete snapshot.
+    /// Ordinary field edits always retain the visit-time definition instead.
+    func acceptServerValue(_ value: SiteVisitChecklistValue) throws {
+        answerValueData = try JSONEncoder().encode(value)
     }
 
     static func makeAnswers(
@@ -412,6 +445,7 @@ final class SiteVisitChecklistAnswer: Identifiable {
                 required: field.required,
                 helpText: field.helpText,
                 sortOrder: field.sortOrder,
+                answerValue: SiteVisitChecklistValue(choiceSnapshot: field.singleChoice),
                 createdBy: createdBy
             )
         }

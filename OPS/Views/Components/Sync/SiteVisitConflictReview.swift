@@ -5,10 +5,10 @@ import SwiftData
 /// before transmission; Export and the original command retain the audit copy.
 struct SiteVisitConflictReview: View {
     let operation: SyncOperation
-    private let loadCurrent: (SiteVisitWriteCommand, String) async throws -> [SiteVisitWriteJSON]
+    private let loadCurrent: ((SiteVisitWriteCommand, String) async throws -> [SiteVisitWriteJSON])?
 
     init(operation: SyncOperation,
-         loadCurrent: @escaping (SiteVisitWriteCommand, String) async throws -> [SiteVisitWriteJSON] = { try await SiteVisitVersionedSync.review($0, expectedActorId: $1) }) {
+         loadCurrent: ((SiteVisitWriteCommand, String) async throws -> [SiteVisitWriteJSON])? = nil) {
         self.operation = operation
         self.loadCurrent = loadCurrent
     }
@@ -103,6 +103,9 @@ struct SiteVisitConflictReview: View {
     static func summary(_ row: SiteVisitWriteJSON) -> String {
         if let value = row["answer_value"] {
             var lines = [describe(value)]
+            if let snapshot = row["choice_snapshot"], snapshot != .null {
+                lines.append("Answer options: \(describe(snapshot))")
+            }
             for (key, label) in [("label", "Field"), ("kind", "Type"), ("required", "Required"), ("help_text", "Guidance"), ("sort_order", "Order")] {
                 if let value = row[key], value != .null { lines.append("\(label): \(describe(value, field: key))") }
             }
@@ -130,7 +133,8 @@ struct SiteVisitConflictReview: View {
         case .array(let values): return values.isEmpty ? "—" : values.map(describe).joined(separator: "\n")
         case .object(let values):
             let labels = ["text":"Answer", "boolValue":"Checked", "choice":"Answer", "artifactIds":"Evidence",
-                "deckDesignId":"Deck", "label":"Field", "kind":"Type", "required":"Required", "helpText":"Guidance", "isVisible":"Shown", "sortOrder":"Order"]
+                "deckDesignId":"Deck", "label":"Field", "kind":"Type", "required":"Required", "helpText":"Guidance", "isVisible":"Shown", "sortOrder":"Order",
+                "singleChoice":"Answer options", "options":"Options"]
             let lines = values.keys.sorted().compactMap { key -> String? in
                 guard let label = labels[key], let value = values[key], value != .null, value != .array([]) else { return nil }
                 return "\(label): \(describe(value, field: key))"
@@ -147,7 +151,12 @@ struct SiteVisitConflictReview: View {
         busy = true; defer { busy = false }
         do {
             guard let actor = operation.siteVisitWriteActorId else { throw SiteVisitWriteError.legacyPayload }
-            let rows = try await loadCurrent(command, actor)
+            let rows: [SiteVisitWriteJSON]
+            if let loadCurrent { rows = try await loadCurrent(command, actor) }
+            else {
+                let useChoiceProtocol = try SiteVisitWriteModels.needsChoiceReview(command, context: modelContext)
+                rows = try await SiteVisitVersionedSync.review(command, expectedActorId: actor, useChoiceProtocol: useChoiceProtocol)
+            }
             guard isCurrent(command) else { return }
             current = rows; message = nil
         } catch { message = recoveryMessage(error) }

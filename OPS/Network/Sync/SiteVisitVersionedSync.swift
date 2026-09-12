@@ -125,9 +125,37 @@ enum SiteVisitVersionedSync {
                 var expected = command.entity == "answer" ? SiteVisitWriteJSON.object([
                     "answer_value": row.values["answer_value"] ?? .null, "deleted_at": row.values["deleted_at"] ?? .null
                 ]) : row.values
-                if command.entity == "answer", let snapshot = row.values["choice_snapshot"],
-                   case .object(var values) = expected {
-                    values["choice_snapshot"] = snapshot; expected = .object(values)
+                if command.entity == "answer" {
+                    let reviewedByID = resolution.current.first { $0["id"]?.string == row.id }
+                    let collisions = resolution.current.filter {
+                        $0["company_id"]?.string == command.companyId &&
+                        $0["site_visit_id"] == row.values["site_visit_id"] &&
+                        $0["field_id"] == row.values["field_id"] && $0["deleted_at"]?.string == nil
+                    }
+                    guard reviewedByID != nil || collisions.count <= 1 else { throw SiteVisitWriteError.invalidReceipt }
+                    let reviewed = reviewedByID ?? collisions.first
+                    let isCollision = reviewedByID == nil && reviewed != nil
+                    let adoptsReviewedSnapshot = isCollision ||
+                        (command.protocol == SiteVisitWriteCommand.revision && row.values["choice_snapshot"] == nil && reviewed != nil)
+                    let snapshot = adoptsReviewedSnapshot ? reviewed?["choice_snapshot"] : row.values["choice_snapshot"]
+                    // Only an explicitly reviewed canonical answer can replace
+                    // the proposed identity/snapshot. Ordinary v2 writes retain
+                    // their original exact snapshot requirement.
+                    guard let actual, actual["id"]?.string == (reviewed?["id"]?.string ?? row.id),
+                          actual["company_id"]?.string == command.companyId,
+                          actual["site_visit_id"] == row.values["site_visit_id"],
+                          actual["field_id"] == row.values["field_id"],
+                          (actual["choice_snapshot"] ?? .null) == (snapshot ?? .null) else {
+                        throw SiteVisitWriteError.invalidReceipt
+                    }
+                    if let reviewed {
+                        guard reviewed["company_id"]?.string == command.companyId,
+                              reviewed["site_visit_id"] == row.values["site_visit_id"],
+                              reviewed["field_id"] == row.values["field_id"],
+                              (actual["choice_snapshot"] ?? .null) == (reviewed["choice_snapshot"] ?? .null) else {
+                            throw SiteVisitWriteError.invalidReceipt
+                        }
+                    }
                 }
                 if command.entity == "template", case .object(var values) = expected, let actual {
                     values["id"] = actual["id"]; expected = .object(values)

@@ -27,3 +27,7 @@ Run related existing checklist settings/DTO/write/versioned sync/persistence/con
 ## Design token audit
 
 Reviewed every added production UI line against `DESIGN.md`, `mobile/MOBILE.md`, and `OPSStyle`: FormField/FormSelectField reuse; spacing1/2/3; touchTargetMin on the actual button labels; buttonRadius; body/captionBold/metadata typography; primary/secondary/tertiary text and existing surface tokens; semantic tan for correction text; SF Symbols through OPSStyle. No new hardcoded color, font size, spacing, radius, motion or touch-target value was introduced. Existing surrounding row literals predate this change and were not expanded. New controls wrap long labels and expose selected traits and explicit action labels. Runtime geometry/pixel proof remains outstanding until root runs and inspects the attached screens.
+
+## Parent verification
+
+Root completed the final focused simulator run on source `1168058f`:102 passes,0 failures,0 skips; xcodebuild exit0. The declared schema checksums passed. All four screenshots and geometry were exported and visually inspected after the full touch-target and accessibility-header corrections. Final evidence and limits are in `closeout.md` and `verification.json`; the worker-only pending runtime statements above describe the original handoff, not the final parent result.

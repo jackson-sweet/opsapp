@@ -1,0 +1,71 @@
+{
+  "status": "verified_locally_not_released",
+  "source_commit": "1168058f5f2a20c7c7167113a3514bbd97650415",
+  "base_commit": "3f5eaffebd3d81e22d9165140f3c002bc4d22edd",
+  "tests": {
+    "passed": 102,
+    "failed": 0,
+    "skipped": 0,
+    "xcodebuild_exit_code": 0,
+    "result_bundle": "/private/tmp/ops-ios-bugs-p4/checklist-tests-6.xcresult"
+  },
+  "visual_review": {
+    "screenshots_inspected": 4,
+    "capture_width_points": 320,
+    "capture_size_category": "accessibilityExtraLarge",
+    "settings_width_points": 390,
+    "minimum_action_target_points": 44,
+    "checks": [
+      "Full question visible with status below at accessibility size",
+      "Legacy text retained visibly",
+      "Selection and explicit clear through actual accessibility actions",
+      "Settings add option through actual accessibility action",
+      "Move/remove controls expose tokenized hit frames and expected disabled state"
+    ]
+  },
+  "schema": "No stored SwiftData property or schema-version change; all declared schema fingerprints pass",
+  "sha256": {
+    "OPS/DataModels/SiteVisits/SiteVisitSingleChoice.swift": "cae11335470d64087fc2506312f53e0f2dc9772251720bae5910c7f0936866ac",
+    "OPS/DataModels/SiteVisits/SiteVisitType.swift": "55e6289a0b89f2b211eded65649391c64b2b424e1d4c35ddd8df49eaecbfa617",
+    "OPS/Network/Supabase/DTOs/SiteVisitDTOs.swift": "fecb215946c792f3ac170cc35ae4a64be8fd869678fb354221cc72bc05ee004d",
+    "OPS/Network/Sync/SiteVisitServerMerge.swift": "746d082bb4c19d22e01d173bb5d17356cd34dbf90087ca9251a554e11f8ae5e3",
+    "OPS/Network/Sync/SiteVisitSyncOperation.swift": "dc92673c0c661eddc131c68f51a7eec3bcf6f38e95d10de943935a55f81ac3c6",
+    "OPS/Network/Sync/SiteVisitVersionedSync.swift": "0ea166640e0f03c81c9cc5c9d0b4679ab1c2566e5151feb9101c62ca0dac0c3f",
+    "OPS/Network/Sync/SiteVisitWriteCommand.swift": "f8a2089a4ae63942339c20140adf7a095e361cd61c6c36a09abb01d324a43f71",
+    "OPS/Network/Sync/SiteVisitWriteModels.swift": "5915f51031b1e0c1e748304df4534b288d0b391abdd390756994d24c268c2452",
+    "OPS/Services/SiteVisitContentPolicy.swift": "893af85196e05aa13155eea0d07e282b3e437e80c0a9f117877336b395a7eef2",
+    "OPS/Services/SiteVisitPersistenceCoordinator.swift": "b613697bc651894872c48e7f1b4a66ce1ef1cae7fb734d9790bd9bda90267d35",
+    "OPS/Views/Components/Sync/SiteVisitConflictReview.swift": "0aa9ed3f9403d923e833fbe1a2d257bf4b09268394ed4497da31a66885c56a75",
+    "OPS/Views/Settings/SiteVisitChoiceOptionsEditor.swift": "64de49644068901b64f161428ceff862d2135019259d759da5966929e246e0e7",
+    "OPS/Views/Settings/SiteVisitTypeSettingsLogic.swift": "4c634210fcd2632f764a90a05087d33dac50aa6b15967569473aa5de63f5413a",
+    "OPS/Views/Settings/SiteVisitTypeSettingsView.swift": "4649ad1c46480f392555692c03d4180a5fac643a7df93b9ded34fad765ad9b17",
+    "OPS/Views/SiteVisits/SiteVisitCaptureView.swift": "17c8459ea7047306f59f3fc2ceaaab1c3d01c8d8547b59be7fd4585732297b4c",
+    "OPS/Views/SiteVisits/SiteVisitCaptureViewModel.swift": "1402a71f5d75c453f06cd2f321927dbe7e0c870857dc979c606c204a6dae1acd",
+    "OPSTests/SiteVisits/SiteVisitCapturePacketTests.swift": "6c75ea1fedadec378e5ac0e517fe0bbfe3fd8aaa8bc8c95cc3c79f86f4eb17aa",
+    "OPSTests/SiteVisits/SiteVisitChecklistSettingsTests.swift": "0f9db91d3f52bad436e6f9f62f097c8bfc7fd9b87b88c2b71b5b4c3b9fd7b66c",
+    "OPSTests/SiteVisits/SiteVisitChoiceResolutionTests.swift": "97b989f60f111231b321d9df8f686d54cbaf22eeb6c4105d3e81c74da89f2383",
+    "OPSTests/SiteVisits/SiteVisitFieldWorkflowTests.swift": "5b81f70dceb0843b1fc6d00c38334b4b5229a5f6ad07275a6b8211dd550fe6b6",
+    "OPSTests/SiteVisits/SiteVisitHandoffDurabilityTests.swift": "e76267ad8ee3c0941ced1358c7d6b9113506936cb58b451d9a13f1ca09e336c7",
+    "OPSTests/SiteVisits/SiteVisitPersistenceCoordinatorTests.swift": "c80c7c2d0cc9c3b5d01915e22e9fe813c91e027d7cdad9001447bd026887d902",
+    "OPSTests/SiteVisits/SiteVisitSingleChoiceTests.swift": "edda5dbabb137dfebabcf6c0e8189a4044ccbde755cb37c6dd9340c3039faa9d",
+    "OPSTests/Sync/PendingWorkDiscardScopeTests.swift": "e19f015abcd3854c1ff15f06ecf61a08dc59a11e4600b565e300491c4de5519f",
+    "OPSTests/Sync/SiteVisitOrphanRecoveryTests.swift": "2ce38e7cda9c6b89b627b9f4e89176d1f9bf55729a0f1d5c11409ec909c0b86f",
+    "OPSTests/Sync/SiteVisitRecoveryVaultTests.swift": "aff4263d63b2335bf879d62fa8a160272e16e9820370e91a4f3b5fbd039fe478",
+    "OPSTests/Views/SiteVisitSingleChoiceControlTests.swift": "846078651d7b411cc04e923ddcd3ab229dc88c89b34a6e97b96edc0b7aff38d2"
+  },
+  "screenshots": {
+    "screenshots/single-choice-capture-cleared-geometry.txt": "caf19b3eb447c8ea2048d89fad123f3f225da4616208499e0a1fe4971f3a8c20",
+    "screenshots/single-choice-capture-cleared.png": "b0f7e8955e9e11063037cea165eb15a9b9b6ba8fb5e1a9c1a766463c5d343bce",
+    "screenshots/single-choice-capture-legacy-text-geometry.txt": "655941e2e50c0ea5eed29c0103f1a4107f5b6acdcad1331ad5758a74bb11fe1e",
+    "screenshots/single-choice-capture-legacy-text.png": "792c8c5de72fcd0708e55ecd126a7ba47b7d83c26e0c909a10bca67e0aa6e4cf",
+    "screenshots/single-choice-capture-selected-geometry.txt": "0437e3376ef621c3e2abc096abe946dbf2636dd2ec7ed1849fd7733b0c6e39de",
+    "screenshots/single-choice-capture-selected.png": "e2cf8f650fe4b63c44f4d1d1f147984a1dfe864d5b2cb90408c4b7aec4a444a0",
+    "screenshots/single-choice-settings-options-geometry.txt": "eb1ee7f1c17952c74fe71f188839e50e6a95712630e7a35cb7f6d3f0f71bedbd",
+    "screenshots/single-choice-settings-options.png": "19631ef86eac84cf8d4ad81966cc1f818286ce94accf63cb978e10efdc55ca4b"
+  },
+  "limits": [
+    "Hosted production controls with synthetic data, not physical-device interaction or full authenticated routes",
+    "Server migration unapplied; no distributed iOS release",
+    "Existing Lead Details ownership excluded"
+  ]
+}

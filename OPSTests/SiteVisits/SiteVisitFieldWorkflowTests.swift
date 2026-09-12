@@ -13,6 +13,36 @@ final class SiteVisitFieldWorkflowTests: XCTestCase {
         if let originalActor { UserDefaults.standard.set(originalActor, forKey: "currentUserId") } else { UserDefaults.standard.removeObject(forKey: "currentUserId") }
         containers.removeAll()
     }
+    func testCustomChoiceSelectionClearAndRequiredStateSurviveReopenWithOriginalOptions() throws {
+        let choices = SiteVisitSingleChoice(options: [.init(label: "Cedar"), .init(label: "Composite")])
+        let (container, vm) = try packet(fields: [
+            .init(id: "material", label: "Material", kind: .shortText, required: true, sortOrder: 0, singleChoice: choices)
+        ])
+        let answer = try XCTUnwrap(vm.checklistAnswers.first)
+        XCTAssertFalse(vm.canComplete)
+        vm.bufferChecklistAnswer(answer, value: .text("Cedar"))
+        XCTAssertTrue(vm.flushChecklistEdits())
+        XCTAssertEqual(answer.answerValue.selectedOption?.id, choices.options[0].id)
+        XCTAssertTrue(vm.canComplete)
+        vm.updateChecklistAnswer(answer, value: .text("Unknown legacy material"))
+        XCTAssertFalse(vm.canComplete)
+        XCTAssertTrue(vm.hasCapturedAnything)
+        XCTAssertEqual(answer.answerValue.text, "Unknown legacy material")
+        vm.updateChecklistAnswer(answer, value: .empty)
+        XCTAssertEqual(answer.answerValue.choiceSnapshot, choices)
+        XCTAssertFalse(answer.answerValue.hasContent)
+        XCTAssertEqual(SiteVisitWriteModels.command(answer).rows[0].clearAnswer, true)
+        let reopened = SiteVisitCaptureViewModel(opportunity: nil, companyId: company, userId: actor,
+            modelContext: ModelContext(container), entryIntent: .resume(visitId: try XCTUnwrap(vm.siteVisit).id))
+        reopened.loadOrCreateVisit()
+        let restored = try XCTUnwrap(reopened.checklistAnswers.first)
+        XCTAssertEqual(restored.answerValue.choiceSnapshot, choices)
+        XCTAssertFalse(restored.isAnswered)
+        XCTAssertFalse(reopened.canComplete)
+        reopened.updateChecklistAnswer(restored, value: .text("Composite"))
+        XCTAssertTrue(reopened.canComplete)
+        XCTAssertEqual(restored.answerValue.selectedOption?.id, choices.options[1].id)
+    }
     func packet(synced: Bool = false, fields: [SiteVisitTypeFieldDefinition]? = nil) throws -> (ModelContainer, SiteVisitCaptureViewModel) {
         let schema = Schema(versionedSchema: OPSSchemaCurrent.self)
         let container = try ModelContainer(for: schema, configurations: ModelConfiguration(schema: schema, isStoredInMemoryOnly: true))

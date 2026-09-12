@@ -802,6 +802,7 @@ final class SiteVisitCapturePacketTests: XCTestCase {
     private func makeInMemoryContainer() throws -> ModelContainer {
         let schema = Schema([
             SiteVisit.self,
+            SiteVisitType.self,
             SiteVisitCaptureArtifact.self,
             SiteVisitChecklistAnswer.self,
             SiteVisitIdentityDraft.self,

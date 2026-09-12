@@ -444,16 +444,24 @@ struct SiteVisitTypeEditorView: View {
             FormSelectField(
                 title: "FIELD TYPE",
                 selection: Binding(
-                    get: { draft.fields[index].kind },
-                    set: { draft.fields[index].kind = $0 }
+                    get: { draft.fields[index].inputType },
+                    set: { draft.fields[index].inputType = $0 }
                 ),
-                options: SiteVisitTypeSettingsLogic.availableFieldKinds(
+                options: SiteVisitTypeSettingsLogic.availableInputTypes(
                     deckBuilderEnabled: deckBuilderEnabled,
                     preserving: draft.fields[index].kind
                 ),
                 optionName: { $0.settingsName },
                 isEnabled: !locked
             )
+
+            if draft.fields[index].singleChoice != nil {
+                SiteVisitChoiceOptionsEditor(choice: Binding(
+                    get: { draft.fields[index].singleChoice ?? .init(options: []) },
+                    set: { draft.fields[index].singleChoice = $0 }
+                ))
+                .disabled(locked)
+            }
 
             FormToggle(
                 title: "SHOWN ON SITE VISITS",
@@ -566,21 +574,6 @@ struct SiteVisitTypeEditorView: View {
         } catch {
             UINotificationFeedbackGenerator().notificationOccurred(.error)
             errorMessage = error.localizedDescription
-        }
-    }
-}
-
-private extension SiteVisitFieldKind {
-    var settingsName: String {
-        switch self {
-        case .checkbox: return "Checkbox"
-        case .yesNoNA: return "Yes / No / N/A"
-        case .shortText: return "Short answer"
-        case .longText: return "Long answer"
-        case .measurement: return "Measurement"
-        case .photo: return "Photo"
-        case .photoMarkup: return "Photo + markup"
-        case .deckDesign: return "Deck design"
         }
     }
 }

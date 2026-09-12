@@ -573,6 +573,7 @@ final class PendingWorkDiscardScopeTests: XCTestCase {
 
     private func makeContext() throws -> ModelContext {
         let schema = Schema([
+            SiteVisitType.self,
             SiteVisit.self,
             SiteVisitCaptureArtifact.self,
             SiteVisitChecklistAnswer.self,

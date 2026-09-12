@@ -17,6 +17,38 @@ final class SiteVisitRecoveryVaultTests: XCTestCase {
     private let visitID = "d6ec5372-607f-4dc1-8733-c52f14e2d4e2"
 
     @MainActor
+    func test_choiceSnapshotAndExactV2CommandSurviveAccountBoundVaultRestore() throws {
+        let root = try makeTemporaryDirectory()
+        let vault = makeVault(root: root) { _ in nil }
+        let container = try makeContainer()
+        let context = ModelContext(container)
+        let choices = SiteVisitSingleChoice(options: [.init(label: "Cedar"), .init(label: "Composite")])
+        let visit = SiteVisit(id: visitID, companyId: companyID, status: .inProgress, createdBy: userID)
+        let answer = SiteVisitChecklistAnswer(siteVisitId: visitID, companyId: companyID, opportunityId: nil,
+            siteVisitTypeId: nil, fieldId: "material", label: "Material", kind: .shortText, required: true,
+            sortOrder: 0, answerValue: .init(text: "Cedar", choiceSnapshot: choices), createdBy: userID)
+        context.insert(visit); context.insert(answer)
+        let specification = SiteVisitSyncOperation.checklistAnswer(answer)
+        let commandBytes = try JSONEncoder().encode(specification.payload)
+        let operation = SyncOperation(entityType: specification.entityType.rawValue, entityId: answer.id,
+            operationType: specification.operationType, payload: commandBytes, changedFields: specification.changedFields)
+        operation.siteVisitWriteActorId = userID
+        context.insert(operation); try context.save()
+        let valueBytes = answer.answerValueData
+        XCTAssertEqual(try vault.captureUnsentWork(from: context, userId: userID, companyId: companyID, removeOriginalMedia: false), 1)
+        try deleteAllSiteVisitRows(in: context)
+        XCTAssertEqual(try vault.restore(into: context, userId: userID, companyId: companyID), 1)
+        let verify = ModelContext(container)
+        let restored = try XCTUnwrap(verify.fetch(FetchDescriptor<SiteVisitChecklistAnswer>()).first)
+        XCTAssertEqual(restored.answerValueData, valueBytes)
+        XCTAssertEqual(restored.answerValue.choiceSnapshot, choices)
+        XCTAssertEqual(restored.answerValue.selectedOption?.label, "Cedar")
+        let restoredOperation = try XCTUnwrap(verify.fetch(FetchDescriptor<SyncOperation>()).first)
+        XCTAssertEqual(restoredOperation.payload, commandBytes)
+        XCTAssertEqual(SiteVisitVersionedSync.command(restoredOperation)?.protocol, SiteVisitWriteCommand.choiceRevision)
+    }
+
+    @MainActor
     func test_forcedLogoutArchiveRestoresOnlyToExactIdentityAndRestoresMedia() throws {
         let root = try makeTemporaryDirectory()
         let mediaRoot = root.appendingPathComponent("media", isDirectory: true)

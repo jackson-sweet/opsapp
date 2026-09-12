@@ -1878,9 +1878,10 @@ private struct SiteVisitIdentitySuggestion: Identifiable {
     }
 }
 
-private struct SiteVisitChecklistAnswerRow: View {
+struct SiteVisitChecklistAnswerRow: View {
     let answer: SiteVisitChecklistAnswer
     let value: SiteVisitChecklistValue
+    @Environment(\.sizeCategory) private var sizeCategory
     @FocusState private var isFocused: Bool
     let onUpdate: (SiteVisitChecklistValue) -> Void
     let onFlush: () -> Void
@@ -1888,25 +1889,29 @@ private struct SiteVisitChecklistAnswerRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
-            HStack(alignment: .firstTextBaseline, spacing: OPSStyle.Layout.spacing2) {
-                VStack(alignment: .leading, spacing: 2) {
+            headerLayout {
+                VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
                     Text(answer.label.uppercased())
                         .font(OPSStyle.Typography.captionBold)
                         .foregroundColor(OPSStyle.Colors.text)
-                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
                     if let helpText = answer.helpText, !helpText.isEmpty {
                         Text(helpText.uppercased())
                             .font(OPSStyle.Typography.smallCaption)
                             .foregroundColor(OPSStyle.Colors.text3)
-                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
+                .frame(maxWidth: sizeCategory.isAccessibilityCategory ? .infinity : nil, alignment: .leading)
 
-                Spacer(minLength: OPSStyle.Layout.spacing1)
+                if !sizeCategory.isAccessibilityCategory {
+                    Spacer(minLength: OPSStyle.Layout.spacing1)
+                }
 
                 Text(statusLabel)
                     .font(OPSStyle.Typography.miniLabel)
                     .foregroundColor(statusColor)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             control
@@ -1922,8 +1927,17 @@ private struct SiteVisitChecklistAnswerRow: View {
         )
     }
 
+    private var headerLayout: AnyLayout {
+        sizeCategory.isAccessibilityCategory
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: OPSStyle.Layout.spacing1))
+            : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: OPSStyle.Layout.spacing2))
+    }
+
     @ViewBuilder
     private var control: some View {
+        if let snapshot = value.choiceSnapshot {
+            singleChoiceControl(snapshot)
+        } else {
         switch answer.kind {
         case .checkbox:
             Toggle(isOn: Binding(
@@ -1991,6 +2005,58 @@ private struct SiteVisitChecklistAnswerRow: View {
                 .buttonStyle(.plain)
             }
         }
+        }
+    }
+
+    private func singleChoiceControl(_ snapshot: SiteVisitSingleChoice) -> some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+            if value.hasContent && value.selectedOption == nil {
+                Text(value.text ?? "")
+                    .font(OPSStyle.Typography.body)
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("Choose an option to replace this saved answer.")
+                    .font(OPSStyle.Typography.caption)
+                    .foregroundColor(OPSStyle.Colors.tanTextM)
+            }
+            ForEach(snapshot.options) { option in
+                let selected = value.selectedOption?.id == option.id
+                Button {
+                    onUpdate(SiteVisitChecklistValue.text(option.label).retainingChoiceSnapshot(snapshot))
+                    UISelectionFeedbackGenerator().selectionChanged()
+                } label: {
+                    HStack(spacing: OPSStyle.Layout.spacing2) {
+                        Image(systemName: selected ? OPSStyle.Icons.checkmarkCircleFill : OPSStyle.Icons.circle)
+                        Text(option.label)
+                            .font(OPSStyle.Typography.body)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer(minLength: OPSStyle.Layout.spacing1)
+                    }
+                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .padding(.horizontal, OPSStyle.Layout.spacing2)
+                    .padding(.vertical, OPSStyle.Layout.spacing1)
+                    .frame(maxWidth: .infinity, minHeight: OPSStyle.Layout.touchTargetMin, alignment: .leading)
+                    .background(selected ? OPSStyle.Colors.surfaceActive : OPSStyle.Colors.surfaceInput)
+                    .cornerRadius(OPSStyle.Layout.buttonRadius)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(option.label)
+                .accessibilityAddTraits(selected ? .isSelected : [])
+            }
+            if value.hasContent {
+                Button {
+                    onUpdate(SiteVisitChecklistValue.empty.retainingChoiceSnapshot(snapshot))
+                } label: {
+                    Text("CLEAR ANSWER")
+                        .font(OPSStyle.Typography.captionBold)
+                        .foregroundColor(OPSStyle.Colors.secondaryText)
+                        .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
     }
 
     private func capturedStatus(_ text: String, linked: Bool) -> some View {
@@ -2002,7 +2068,7 @@ private struct SiteVisitChecklistAnswerRow: View {
 
     private var statusLabel: String {
         if value.isAnswered { return "DONE" }
-        return answer.required ? "REQUIRED" : answer.kind.displayName
+        return answer.required ? "REQUIRED" : (value.choiceSnapshot == nil ? answer.kind.displayName : "CHOOSE ONE")
     }
 
     private var statusColor: Color {

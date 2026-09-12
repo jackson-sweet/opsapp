@@ -33,6 +33,14 @@ enum SiteVisitWriteJSON: Codable, Equatable, Sendable {
         guard case .number(let v) = self, v >= 0, v <= 9_007_199_254_740_991, v.rounded() == v else { return nil }
         return Int64(v)
     }
+    var containsChoiceMetadata: Bool {
+        if let snapshot = self["choice_snapshot"], snapshot != .null { return true }
+        guard case .array(let fields) = self["fields"] else { return false }
+        return fields.contains { field in
+            guard let options = field["singleChoice"] else { return false }
+            return options != .null
+        }
+    }
     /// PostgreSQL may spell the same instant with +00:00 or a different
     /// fractional precision. All other requested values remain exact.
     func matchesRequested(_ requested: Self) -> Bool {
@@ -63,10 +71,16 @@ enum SiteVisitWriteJSON: Codable, Equatable, Sendable {
 
 struct SiteVisitWriteCommand: Codable, Equatable, Sendable {
     static let revision = "site-visit-writes:2026-09-10.v1"
+    static let choiceRevision = "site-visit-writes:2026-09-11.v2"
     var `protocol`: String = Self.revision
     let companyId: String
     let entity: String
     var rows: [Row]
+
+    var isSupported: Bool { `protocol` == Self.revision || `protocol` == Self.choiceRevision }
+    var applyRPC: String { `protocol` == Self.choiceRevision ? "apply_site_visit_write_v2" : "apply_site_visit_write" }
+    var reviewRPC: String { `protocol` == Self.choiceRevision ? "review_site_visit_write_v2" : "review_site_visit_write" }
+    var resolveRPC: String { `protocol` == Self.choiceRevision ? "resolve_site_visit_write_v2" : "resolve_site_visit_write" }
 
     struct Row: Codable, Equatable, Sendable {
         let id: String

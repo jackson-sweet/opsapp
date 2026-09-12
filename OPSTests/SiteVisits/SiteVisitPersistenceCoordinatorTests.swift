@@ -294,16 +294,25 @@ final class SiteVisitPersistenceCoordinatorTests: XCTestCase {
     }
 
     func test_uppercaseLegacyOperationCoalescesWithoutForkingQueue() throws {
+        let previousActor = UserDefaults.standard.string(forKey: "currentUserId")
+        defer {
+            if let previousActor { UserDefaults.standard.set(previousActor, forKey: "currentUserId") }
+            else { UserDefaults.standard.removeObject(forKey: "currentUserId") }
+        }
+        UserDefaults.standard.set(userId, forKey: "currentUserId")
+        let legacyVisitId = "abcdefab-cdef-abcd-efab-cdefabcdefab"
         let context = try makeContainer().mainContext
         let visit = makeVisit()
-        visit.id = visitId.uppercased()
+        visit.id = legacyVisitId.uppercased()
         let existing = SyncOperation(
             entityType: SyncEntityType.siteVisit.rawValue,
-            entityId: visitId.uppercased(),
+            entityId: legacyVisitId.uppercased(),
             operationType: "create",
             payload: Data("{}".utf8),
             changedFields: ["notes"]
         )
+        // UUID casing may differ; original actor custody may not.
+        existing.siteVisitWriteActorId = userId
         context.insert(visit)
         context.insert(existing)
         try context.save()
@@ -321,7 +330,7 @@ final class SiteVisitPersistenceCoordinatorTests: XCTestCase {
         let operations = try context.fetch(FetchDescriptor<SyncOperation>())
         XCTAssertEqual(operations.count, 1)
         XCTAssertEqual(operations[0].id, existing.id)
-        XCTAssertEqual(operations[0].entityId.lowercased(), visitId)
+        XCTAssertEqual(operations[0].entityId.lowercased(), legacyVisitId)
     }
 
     func test_historyHeavyEditDoesNotEncodeOrReviveOtherVisits() throws {

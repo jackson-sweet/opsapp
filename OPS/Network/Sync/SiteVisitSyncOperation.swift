@@ -111,6 +111,10 @@ enum SiteVisitSyncOperation {
     }
 
     static func checklistAnswer(_ answer: SiteVisitChecklistAnswer) -> Specification {
+        checklistAnswer(answer, forceChoiceProtocol: false)
+    }
+
+    static func checklistAnswer(_ answer: SiteVisitChecklistAnswer, forceChoiceProtocol: Bool) -> Specification {
         Specification(
             entityType: .siteVisitChecklistAnswer,
             entityId: answer.id.lowercased(),
@@ -119,7 +123,7 @@ enum SiteVisitSyncOperation {
                 companyId: answer.companyId,
                 siteVisitId: answer.siteVisitId,
                 entityId: answer.id,
-                writeCommand: SiteVisitWriteModels.command(answer)
+                writeCommand: SiteVisitWriteModels.command(answer, forceChoiceProtocol: forceChoiceProtocol)
             ),
             changedFields: [
                 "opportunity_id", "site_visit_type_id", "field_id", "label", "kind",

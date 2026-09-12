@@ -433,7 +433,7 @@ final class SiteVisitPersistenceCoordinator {
         for answer in answers {
             let visitId = answer.siteVisitId.lowercased()
             guard visitIds.contains(visitId) else { continue }
-            let specification = SiteVisitSyncOperation.checklistAnswer(answer)
+            let specification = try checklistSpecification(answer)
             if onlyOrphans,
                hasUnresolvedOperation(specification, operations: operations) {
                 continue
@@ -490,8 +490,8 @@ final class SiteVisitPersistenceCoordinator {
             .filter { belongsToCompany($0.companyId) }
         let drafts = changed.compactMap { $0 as? SiteVisitIdentityDraft }
             .filter { belongsToCompany($0.companyId) }
-        let specifications = artifacts.map(SiteVisitSyncOperation.artifact)
-            + answers.map(SiteVisitSyncOperation.checklistAnswer)
+        let specifications = try artifacts.map(SiteVisitSyncOperation.artifact)
+            + answers.map(checklistSpecification)
             + drafts.map(SiteVisitSyncOperation.identityDraft)
         let visitIds = Set(changedVisits.map { $0.id.lowercased() }
             + specifications.map { $0.payload.siteVisitId })
@@ -554,7 +554,7 @@ final class SiteVisitPersistenceCoordinator {
             queued.append(operation.id)
             tips[artifact.siteVisitId.lowercased()] = operation.id.uuidString.lowercased()
         }
-        for specification in answers.map(SiteVisitSyncOperation.checklistAnswer) + drafts.map(SiteVisitSyncOperation.identityDraft) where validVisitIds.contains(specification.payload.siteVisitId) {
+        for specification in try answers.map(checklistSpecification) + drafts.map(SiteVisitSyncOperation.identityDraft) where validVisitIds.contains(specification.payload.siteVisitId) {
             let operation = try enqueueScoped(specification,
                 dependency: tips[specification.payload.siteVisitId], index: &index)
             queued.append(operation.id)
@@ -625,11 +625,16 @@ final class SiteVisitPersistenceCoordinator {
         }
     }
 
+    private func checklistSpecification(_ answer: SiteVisitChecklistAnswer) throws -> SiteVisitSyncOperation.Specification {
+        try SiteVisitSyncOperation.checklistAnswer(answer,
+            forceChoiceProtocol: SiteVisitWriteModels.currentTemplateHasChoice(for: answer, context: modelContext))
+    }
+
     private func enqueueScoped(_ specification: SiteVisitSyncOperation.Specification,
                                dependency: String?, index: inout OperationIndex) throws -> SyncOperation {
         let candidates = index.candidates(specification)
         let payload = try encodeOperation(specification.payload)
-        if let existing = candidates.last(where: { $0.siteVisitWriteActorId == SiteVisitAuthorHeal.sessionUserId()?.lowercased() && $0.status != "inProgress" &&
+        if let existing = candidates.last(where: { SiteVisitVersionedSync.command($0)?.protocol == specification.payload.writeCommand?.protocol && $0.siteVisitWriteActorId == SiteVisitAuthorHeal.sessionUserId()?.lowercased() && $0.status != "inProgress" &&
             (!SiteVisitVersionedSync.handles($0) || ($0.status == "pending" && $0.siteVisitWriteAttemptedAt == nil && $0.lastAttemptedAt == nil)) }) {
             transactionOperationIds.insert(existing.id)
             if existing.operationType != "create" || specification.operationType == "delete" {
@@ -706,7 +711,7 @@ final class SiteVisitPersistenceCoordinator {
             .sorted(by: operationOrder)
 
         let payload = try encodeOperation(specification.payload)
-        if let existing = candidates.last(where: { $0.siteVisitWriteActorId == SiteVisitAuthorHeal.sessionUserId()?.lowercased() && $0.status != "inProgress" &&
+        if let existing = candidates.last(where: { SiteVisitVersionedSync.command($0)?.protocol == specification.payload.writeCommand?.protocol && $0.siteVisitWriteActorId == SiteVisitAuthorHeal.sessionUserId()?.lowercased() && $0.status != "inProgress" &&
             (!SiteVisitVersionedSync.handles($0) || ($0.status == "pending" && $0.siteVisitWriteAttemptedAt == nil && $0.lastAttemptedAt == nil)) }) {
             if existing.operationType != "create" || specification.operationType == "delete" {
                 existing.operationType = specification.operationType

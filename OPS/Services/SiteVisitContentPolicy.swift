@@ -6,7 +6,7 @@ import Foundation
 enum SiteVisitContentPolicy {
     static func hasContent(visit: SiteVisit?, artifacts: [SiteVisitCaptureArtifact],
                            answers: [SiteVisitChecklistAnswer], drafts: [SiteVisitIdentityDraft]) -> Bool {
-        if artifacts.contains(where: \.isActive) || answers.contains(where: { $0.isActive && $0.isAnswered }) { return true }
+        if artifacts.contains(where: \.isActive) || answers.contains(where: { $0.isActive && $0.answerValue.hasContent }) { return true }
         if let visit, hasText([visit.notes, visit.internalNotes, visit.measurements, visit.address]) || !visit.photos.isEmpty { return true }
         return drafts.contains { draft in
             draft.deletedAt == nil && (hasText([draft.searchText, draft.clientName, draft.contactName,

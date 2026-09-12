@@ -481,7 +481,7 @@ final class SiteVisitCapturePacketTests: XCTestCase {
     }
 
     @MainActor
-    func test_selectSiteVisitTypeCreatesChecklistAnswersForActiveVisit() throws {
+    func test_selectSiteVisitTypeAddsFieldsAndPreservesExistingAnswers() throws {
         let container = try makeSiteVisitCaptureContainer()
         let context = container.mainContext
         let opportunity = Opportunity(
@@ -501,8 +501,17 @@ final class SiteVisitCapturePacketTests: XCTestCase {
         // Deck templates only seed the required "Deck design" field when the
         // deck_builder feature is enabled; the test host's PermissionStore fails
         // closed, so enable it explicitly before the VM seeds its visit types.
+        let originallyDisabled = PermissionStore.shared.disabledFlags.contains("deck_builder")
+        defer {
+            if originallyDisabled { PermissionStore.shared.disabledFlags.insert("deck_builder") }
+        }
         PermissionStore.shared.disabledFlags.remove("deck_builder")
         viewModel.loadOrCreateVisit()
+        let originalAnswers = viewModel.checklistAnswers
+        let scope = try XCTUnwrap(originalAnswers.first { $0.label == "Scope of work" })
+        viewModel.updateChecklistAnswer(scope, value: .text("Repair the existing stairs"))
+        let originalIDs = Set(originalAnswers.map(\.id))
+        let originalFields = Set(originalAnswers.map(\.fieldId))
 
         let deckType = try XCTUnwrap(
             viewModel.siteVisitTypes.first { $0.slug == "deck_estimate" }
@@ -511,7 +520,11 @@ final class SiteVisitCapturePacketTests: XCTestCase {
         viewModel.selectSiteVisitType(deckType)
 
         XCTAssertEqual(viewModel.selectedSiteVisitType?.id, deckType.id)
-        XCTAssertEqual(viewModel.checklistAnswers.count, deckType.fields.count)
+        let expectedFields = originalFields.union(deckType.fields.filter(\.isShown).map(\.id))
+        XCTAssertEqual(Set(viewModel.checklistAnswers.map(\.fieldId)), expectedFields)
+        XCTAssertEqual(viewModel.checklistAnswers.count, expectedFields.count)
+        XCTAssertTrue(originalIDs.isSubset(of: Set(viewModel.checklistAnswers.map(\.id))))
+        XCTAssertEqual(scope.answerValue, .text("Repair the existing stairs"))
         XCTAssertTrue(viewModel.checklistAnswers.allSatisfy { $0.siteVisitId == viewModel.siteVisit?.id })
         // The deck template's one required row is the design. "Field
         // measurements" was retired from the built-in — measuring is what the

@@ -31,3 +31,5 @@ Reviewed every added production UI line against `DESIGN.md`, `mobile/MOBILE.md`,
 ## Parent verification
 
 Root completed the final focused simulator run on source `1168058f`:102 passes,0 failures,0 skips; xcodebuild exit0. The declared schema checksums passed. All four screenshots and geometry were exported and visually inspected after the full touch-target and accessibility-header corrections. Final evidence and limits are in `closeout.md` and `verification.json`; the worker-only pending runtime statements above describe the original handoff, not the final parent result.
+
+Additional parent verification: 48 packet/recovery tests passed on `8b290d48`, with zero failures or skips. Together with the 102-test selection, this is 150 distinct passing iOS tests. Only fixture corrections followed the final production source; independent review confirmed their correspondence to existing custody rules. See the final closeout and verification manifest.

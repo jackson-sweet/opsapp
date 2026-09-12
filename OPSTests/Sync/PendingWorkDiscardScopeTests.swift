@@ -225,6 +225,12 @@ final class PendingWorkDiscardScopeTests: XCTestCase {
     /// A genuine later edit is a revival, not a resurrection: the operator
     /// declined a SEND, not the record, so editing the record must send again.
     func test_aLaterEditRevivesADeclinedOperation() throws {
+        let previousActor = UserDefaults.standard.object(forKey: "currentUserId")
+        defer {
+            if let previousActor { UserDefaults.standard.set(previousActor, forKey: "currentUserId") }
+            else { UserDefaults.standard.removeObject(forKey: "currentUserId") }
+        }
+        UserDefaults.standard.set(userId, forKey: "currentUserId")
         let context = try makeContext()
         let fixture = try seedCompletedSyncedVisit(in: context)
         let declined = try makeOperation(
@@ -233,6 +239,8 @@ final class PendingWorkDiscardScopeTests: XCTestCase {
             operationType: "create",
             status: "declined"
         )
+        // A later edit may reuse only a send owned by the same actor.
+        declined.siteVisitWriteActorId = userId
         context.insert(declined)
         try context.save()
 
@@ -241,12 +249,14 @@ final class PendingWorkDiscardScopeTests: XCTestCase {
             companyId: companyId
         )
         try coordinator.commit {
-            fixture.draft.contactName = "Charles Krusekopf"
+            fixture.draft.contactName = "Charles K. Krusekopf"
             fixture.draft.touch()
         }
 
         XCTAssertEqual(declined.status, "pending")
         XCTAssertEqual(try operationIds(in: context).count, 2, "revived, not duplicated")
+        XCTAssertEqual(declined.siteVisitWriteActorId, userId)
+        XCTAssertEqual(fixture.draft.contactName, "Charles K. Krusekopf")
     }
 
     // MARK: - Work already in flight
@@ -292,7 +302,7 @@ final class PendingWorkDiscardScopeTests: XCTestCase {
         let context = try makeContext()
         context.insert(makeVisit())
         let localId = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
-        let local = makeAnswer(id: localId, fieldId: "width", label: "Local width")
+        let local = makeSyncedAnswer(id: localId, fieldId: "width", label: "Local width")
         context.insert(local)
         let declined = try makeOperation(
             entityType: .siteVisitChecklistAnswer,
@@ -330,7 +340,7 @@ final class PendingWorkDiscardScopeTests: XCTestCase {
         context.insert(makeVisit())
         let localId = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
         let canonicalId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa02"
-        let local = makeAnswer(id: localId, fieldId: "width", label: "Local width")
+        let local = makeSyncedAnswer(id: localId, fieldId: "width", label: "Local width")
         context.insert(local)
         let declined = try makeOperation(
             entityType: .siteVisitChecklistAnswer,
@@ -352,6 +362,36 @@ final class PendingWorkDiscardScopeTests: XCTestCase {
         )
         XCTAssertEqual(local.id, canonicalId)
         XCTAssertEqual(declined.status, "declined")
+    }
+
+    func test_declinedChecklistSendPreservesUnacknowledgedLocalAnswerAndRemoteCandidate() throws {
+        let context = try makeContext()
+        context.insert(makeVisit())
+        let localId = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
+        let local = makeAnswer(id: localId, fieldId: "width", label: "Local width")
+        local.answerValue = .text("13 ft pending")
+        context.insert(local)
+        let declined = try makeOperation(entityType: .siteVisitChecklistAnswer, entityId: localId,
+            operationType: "create", status: "declined")
+        let originalPayload = declined.payload
+        context.insert(declined)
+        try context.save()
+        let baseRevision = try XCTUnwrap(local.writeState.baseRevision)
+        let serverAnswer = try serverChecklistAnswer(id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa02", fieldId: "width")
+
+        try SiteVisitServerMerge.merge(checklistAnswer: serverAnswer, companyId: companyId,
+            into: context, now: Date(timeIntervalSince1970: 5_000))
+
+        XCTAssertEqual(local.id, localId, "stopping the send does not authorize replacing its unsaved answer")
+        XCTAssertEqual(local.answerValue.text, "13 ft pending")
+        XCTAssertTrue(local.needsSync)
+        XCTAssertEqual(local.writeState.baseRevision, baseRevision)
+        XCTAssertEqual(local.writeState.remoteRow?["id"], .string(serverAnswer.id))
+        XCTAssertEqual(local.writeState.remoteRow?["answer_value"]?["text"], .string("12 ft"))
+        XCTAssertEqual(declined.entityId, localId)
+        XCTAssertEqual(declined.payload, originalPayload)
+        XCTAssertEqual(declined.status, "declined")
+        XCTAssertEqual(try context.fetch(FetchDescriptor<SiteVisitChecklistAnswer>()).count, 1)
     }
 
     // MARK: - Fixtures
@@ -472,6 +512,18 @@ final class PendingWorkDiscardScopeTests: XCTestCase {
             createdBy: userId,
             createdAt: Date(timeIntervalSince1970: 700)
         )
+    }
+
+    /// Canonicalization may replace an acknowledged identity, while a pending
+    /// answer keeps its original identity for explicit review. Match the clean
+    /// write state and timestamps established by inbound DTO hydration.
+    private func makeSyncedAnswer(id: String, fieldId: String, label: String) -> SiteVisitChecklistAnswer {
+        let answer = makeAnswer(id: id, fieldId: fieldId, label: label)
+        answer.updatedAt = answer.createdAt
+        answer.lastSyncedAt = Date(timeIntervalSince1970: 810)
+        answer.needsSync = false
+        answer.writeState = .init()
+        return answer
     }
 
     private func makeOperation(

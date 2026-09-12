@@ -1,0 +1,115 @@
+Test Suite 'Selected tests' started at 2026-09-11 20:20:22.345.
+Test Suite 'OPSTests.xctest' started at 2026-09-11 20:20:22.346.
+Test Suite 'PendingWorkDiscardScopeTests' started at 2026-09-11 20:20:22.346.
+Test Case '-[OPSTests.PendingWorkDiscardScopeTests test_aLaterEditRevivesADeclinedOperation]' started.
+Test Case '-[OPSTests.PendingWorkDiscardScopeTests test_aLaterEditRevivesADeclinedOperation]' passed (0.153 seconds).
+Test Case '-[OPSTests.PendingWorkDiscardScopeTests test_checklistCanonicalizationAcceptsADeclinedCanonicalOperation]' started.
+Test Case '-[OPSTests.PendingWorkDiscardScopeTests test_checklistCanonicalizationAcceptsADeclinedCanonicalOperation]' passed (0.113 seconds).
+Test Case '-[OPSTests.PendingWorkDiscardScopeTests test_checklistCanonicalizationAcceptsADeclinedSourceOperation]' started.
+Test Case '-[OPSTests.PendingWorkDiscardScopeTests test_checklistCanonicalizationAcceptsADeclinedSourceOperation]' passed (0.047 seconds).
+Test Case '-[OPSTests.PendingWorkDiscardScopeTests test_declinedChecklistSendPreservesUnacknowledgedLocalAnswerAndRemoteCandidate]' started.
+Test Case '-[OPSTests.PendingWorkDiscardScopeTests test_declinedChecklistSendPreservesUnacknowledgedLocalAnswerAndRemoteCandidate]' passed (0.046 seconds).
+Test Case '-[OPSTests.PendingWorkDiscardScopeTests test_declinedMediaOperationIsNotRecreatedWhileTheAssetIsStillLocal]' started.
+Test Case '-[OPSTests.PendingWorkDiscardScopeTests test_declinedMediaOperationIsNotRecreatedWhileTheAssetIsStillLocal]' passed (0.065 seconds).
+Test Case '-[OPSTests.PendingWorkDiscardScopeTests test_declinedOperationIsNotRecreatedByOrphanRecovery]' started.
+Test Case '-[OPSTests.PendingWorkDiscardScopeTests test_declinedOperationIsNotRecreatedByOrphanRecovery]' passed (0.066 seconds).
+Test Case '-[OPSTests.PendingWorkDiscardScopeTests test_declinedWorkUnitLeavesTheAttentionAndSendingSections]' started.
+Test Case '-[OPSTests.PendingWorkDiscardScopeTests test_declinedWorkUnitLeavesTheAttentionAndSendingSections]' passed (0.068 seconds).
+Test Case '-[OPSTests.PendingWorkDiscardScopeTests test_declinedWorkUnitMayReappearAsADraftWithoutCountingAsStillPresent]' started.
+Test Case '-[OPSTests.PendingWorkDiscardScopeTests test_declinedWorkUnitMayReappearAsADraftWithoutCountingAsStillPresent]' passed (0.056 seconds).
+Test Case '-[OPSTests.PendingWorkDiscardScopeTests test_decliningQueuedSends_leavesTheCompletedVisitAndEveryCaptureIntact]' started.
+Test Case '-[OPSTests.PendingWorkDiscardScopeTests test_decliningQueuedSends_leavesTheCompletedVisitAndEveryCaptureIntact]' passed (0.047 seconds).
+Test Case '-[OPSTests.PendingWorkDiscardScopeTests test_workUnitWithAnInFlightSendRefusesTheDeclineAndMutatesNothing]' started.
+Test Case '-[OPSTests.PendingWorkDiscardScopeTests test_workUnitWithAnInFlightSendRefusesTheDeclineAndMutatesNothing]' passed (0.046 seconds).
+Test Suite 'PendingWorkDiscardScopeTests' passed at 2026-09-11 20:20:23.055.
+	 Executed 10 tests, with 0 failures (0 unexpected) in 0.707 (0.710) seconds
+Test Suite 'SiteVisitCapturePacketTests' started at 2026-09-11 20:20:23.056.
+Test Case '-[OPSTests.SiteVisitCapturePacketTests test_answeredChecklistCanCompleteVisitAndBuildProjectPayloadWithoutArtifacts]' started.
+Test Case '-[OPSTests.SiteVisitCapturePacketTests test_answeredChecklistCanCompleteVisitAndBuildProjectPayloadWithoutArtifacts]' passed (0.166 seconds).
+Test Case '-[OPSTests.SiteVisitCapturePacketTests test_builtinSiteVisitTypesCreateChecklistAnswerSnapshots]' started.
+Test Case '-[OPSTests.SiteVisitCapturePacketTests test_builtinSiteVisitTypesCreateChecklistAnswerSnapshots]' passed (0.001 seconds).
+Test Case '-[OPSTests.SiteVisitCapturePacketTests test_completionFailureKeepsVisitOpenAndReturnsNotCommitted]' started.
+Test Case '-[OPSTests.SiteVisitCapturePacketTests test_completionFailureKeepsVisitOpenAndReturnsNotCommitted]' passed (0.026 seconds).
+Test Case '-[OPSTests.SiteVisitCapturePacketTests test_completionRequiresAtLeastOneCapturedArtifact]' started.
+Test Case '-[OPSTests.SiteVisitCapturePacketTests test_completionRequiresAtLeastOneCapturedArtifact]' passed (0.000 seconds).
+Test Case '-[OPSTests.SiteVisitCapturePacketTests test_dimensionedCaptureDoesNotCreateArtifactWhenPrimaryPhotoCannotBeSaved]' started.
+Test Case '-[OPSTests.SiteVisitCapturePacketTests test_dimensionedCaptureDoesNotCreateArtifactWhenPrimaryPhotoCannotBeSaved]' passed (0.017 seconds).
+Test Case '-[OPSTests.SiteVisitCapturePacketTests test_dimensionedCapturePersistsPreProjectArtifactWithLocalEvidenceAndDimensions]' started.
+Test Case '-[OPSTests.SiteVisitCapturePacketTests test_dimensionedCapturePersistsPreProjectArtifactWithLocalEvidenceAndDimensions]' passed (0.045 seconds).
+Test Case '-[OPSTests.SiteVisitCapturePacketTests test_handoffAppliesReviewedPacketToCreatedProject]' started.
+Test Case '-[OPSTests.SiteVisitCapturePacketTests test_handoffAppliesReviewedPacketToCreatedProject]' passed (0.029 seconds).
+Test Case '-[OPSTests.SiteVisitCapturePacketTests test_handoffCreatesDimensionedPhotoAnnotationForProject]' started.
+Test Case '-[OPSTests.SiteVisitCapturePacketTests test_handoffCreatesDimensionedPhotoAnnotationForProject]' passed (0.009 seconds).
+Test Case '-[OPSTests.SiteVisitCapturePacketTests test_noteAutosaveKeepsOneLiveDraftAndDeletesItWhenCleared]' started.
+Test Case '-[OPSTests.SiteVisitCapturePacketTests test_noteAutosaveKeepsOneLiveDraftAndDeletesItWhenCleared]' passed (0.022 seconds).
+Test Case '-[OPSTests.SiteVisitCapturePacketTests test_openingSiteVisitPreservesTheCompanyDefaultVisitType]' started.
+Test Case '-[OPSTests.SiteVisitCapturePacketTests test_openingSiteVisitPreservesTheCompanyDefaultVisitType]' passed (0.014 seconds).
+Test Case '-[OPSTests.SiteVisitCapturePacketTests test_projectPayloadUsesIncludedArtifactsInCaptureOrder]' started.
+Test Case '-[OPSTests.SiteVisitCapturePacketTests test_projectPayloadUsesIncludedArtifactsInCaptureOrder]' passed (0.001 seconds).
+Test Case '-[OPSTests.SiteVisitCapturePacketTests test_reassignVisitMovesVisitAndArtifactsToNewLead]' started.
+Test Case '-[OPSTests.SiteVisitCapturePacketTests test_reassignVisitMovesVisitAndArtifactsToNewLead]' passed (0.024 seconds).
+Test Case '-[OPSTests.SiteVisitCapturePacketTests test_reviewSummaryCountsIncludedEvidenceByProjectBucket]' started.
+Test Case '-[OPSTests.SiteVisitCapturePacketTests test_reviewSummaryCountsIncludedEvidenceByProjectBucket]' passed (0.000 seconds).
+Test Case '-[OPSTests.SiteVisitCapturePacketTests test_selectSiteVisitTypeAddsFieldsAndPreservesExistingAnswers]' started.
+Test Case '-[OPSTests.SiteVisitCapturePacketTests test_selectSiteVisitTypeAddsFieldsAndPreservesExistingAnswers]' passed (0.027 seconds).
+Test Case '-[OPSTests.SiteVisitCapturePacketTests test_stageFailureRemainsDistinctFromCommittedVisit]' started.
+Test Case '-[OPSTests.SiteVisitCapturePacketTests test_stageFailureRemainsDistinctFromCommittedVisit]' passed (0.065 seconds).
+Test Case '-[OPSTests.SiteVisitCapturePacketTests test_updateVisitAddressCanStayVisitOnly]' started.
+Test Case '-[OPSTests.SiteVisitCapturePacketTests test_updateVisitAddressCanStayVisitOnly]' passed (0.040 seconds).
+Test Case '-[OPSTests.SiteVisitCapturePacketTests testSubmittedNoteEditsInPlaceAndReturnsToSyncQueue]' started.
+Test Case '-[OPSTests.SiteVisitCapturePacketTests testSubmittedNoteEditsInPlaceAndReturnsToSyncQueue]' passed (0.018 seconds).
+Test Case '-[OPSTests.SiteVisitCapturePacketTests testSubmittedNoteRejectsBlankEditWithoutChangingArtifact]' started.
+Test Case '-[OPSTests.SiteVisitCapturePacketTests testSubmittedNoteRejectsBlankEditWithoutChangingArtifact]' passed (0.014 seconds).
+Test Suite 'SiteVisitCapturePacketTests' passed at 2026-09-11 20:20:23.576.
+	 Executed 18 tests, with 0 failures (0 unexpected) in 0.517 (0.521) seconds
+Test Suite 'SiteVisitHandoffDurabilityTests' started at 2026-09-11 20:20:23.577.
+Test Case '-[OPSTests.SiteVisitHandoffDurabilityTests test_derivePayloadFindsVisitViaArtifactBindingWhenVisitRowUnlinked]' started.
+Test Case '-[OPSTests.SiteVisitHandoffDurabilityTests test_derivePayloadFindsVisitViaArtifactBindingWhenVisitRowUnlinked]' passed (0.008 seconds).
+Test Case '-[OPSTests.SiteVisitHandoffDurabilityTests test_derivePayloadRebuildsPacketFromArtifactRowsWhenStoreLost]' started.
+Test Case '-[OPSTests.SiteVisitHandoffDurabilityTests test_derivePayloadRebuildsPacketFromArtifactRowsWhenStoreLost]' passed (0.007 seconds).
+Test Case '-[OPSTests.SiteVisitHandoffDurabilityTests test_derivePayloadReturnsNilWithoutSiteVisitEvidence]' started.
+Test Case '-[OPSTests.SiteVisitHandoffDurabilityTests test_derivePayloadReturnsNilWithoutSiteVisitEvidence]' passed (0.006 seconds).
+Test Case '-[OPSTests.SiteVisitHandoffDurabilityTests test_handoffAttributesGeneratedRecordsToTheVisitRecorderNotTheConversionActor]' started.
+Test Case '-[OPSTests.SiteVisitHandoffDurabilityTests test_handoffAttributesGeneratedRecordsToTheVisitRecorderNotTheConversionActor]' passed (0.007 seconds).
+Test Case '-[OPSTests.SiteVisitHandoffDurabilityTests test_handoffDoesNotEnqueueDimensionedPhotosIntoImageUploadQueue]' started.
+Test Case '-[OPSTests.SiteVisitHandoffDurabilityTests test_handoffDoesNotEnqueueDimensionedPhotosIntoImageUploadQueue]' passed (0.010 seconds).
+Test Case '-[OPSTests.SiteVisitHandoffDurabilityTests test_handoffEnqueuesPhotoArtifactsIntoDurableUploadQueue]' started.
+Test Case '-[OPSTests.SiteVisitHandoffDurabilityTests test_handoffEnqueuesPhotoArtifactsIntoDurableUploadQueue]' passed (0.009 seconds).
+Test Case '-[OPSTests.SiteVisitHandoffDurabilityTests test_handoffRecordsDurableDeckDesignLinkOperation]' started.
+Test Case '-[OPSTests.SiteVisitHandoffDurabilityTests test_handoffRecordsDurableDeckDesignLinkOperation]' passed (0.022 seconds).
+Test Case '-[OPSTests.SiteVisitHandoffDurabilityTests test_handoffWithoutImageSyncStillCreatesRowsForSweepRecovery]' started.
+Test Case '-[OPSTests.SiteVisitHandoffDurabilityTests test_handoffWithoutImageSyncStillCreatesRowsForSweepRecovery]' passed (0.005 seconds).
+Test Case '-[OPSTests.SiteVisitHandoffDurabilityTests test_localHandoffInsertCarriesCanonicalSiteVisitProvenance]' started.
+Test Case '-[OPSTests.SiteVisitHandoffDurabilityTests test_localHandoffInsertCarriesCanonicalSiteVisitProvenance]' passed (0.002 seconds).
+Test Case '-[OPSTests.SiteVisitHandoffDurabilityTests test_remoteArtifactReusesCloudObjectAndQueuesOnlyProjectPhotoRow]' started.
+Test Case '-[OPSTests.SiteVisitHandoffDurabilityTests test_remoteArtifactReusesCloudObjectAndQueuesOnlyProjectPhotoRow]' passed (0.006 seconds).
+Test Case '-[OPSTests.SiteVisitHandoffDurabilityTests test_remoteDimensionedArtifactReusesVariantsAndQueuesAnnotation]' started.
+Test Case '-[OPSTests.SiteVisitHandoffDurabilityTests test_remoteDimensionedArtifactReusesVariantsAndQueuesAnnotation]' passed (0.009 seconds).
+Test Case '-[OPSTests.SiteVisitHandoffDurabilityTests test_repeatedHandoffDoesNotDuplicatePhotoPacketOrDeckLink]' started.
+Test Case '-[OPSTests.SiteVisitHandoffDurabilityTests test_repeatedHandoffDoesNotDuplicatePhotoPacketOrDeckLink]' passed (0.008 seconds).
+Test Case '-[OPSTests.SiteVisitHandoffDurabilityTests test_softDeletingProjectPhotoLeavesVisitArtifactEvidenceIntact]' started.
+Test Case '-[OPSTests.SiteVisitHandoffDurabilityTests test_softDeletingProjectPhotoLeavesVisitArtifactEvidenceIntact]' passed (0.007 seconds).
+Test Suite 'SiteVisitHandoffDurabilityTests' passed at 2026-09-11 20:20:23.685.
+	 Executed 13 tests, with 0 failures (0 unexpected) in 0.106 (0.108) seconds
+Test Suite 'SiteVisitOrphanRecoveryTests' started at 2026-09-11 20:20:23.685.
+Test Case '-[OPSTests.SiteVisitOrphanRecoveryTests test_completionOperationIsTheOnlyEvidenceThatReconstructsCompleted]' started.
+Test Case '-[OPSTests.SiteVisitOrphanRecoveryTests test_completionOperationIsTheOnlyEvidenceThatReconstructsCompleted]' passed (0.010 seconds).
+Test Case '-[OPSTests.SiteVisitOrphanRecoveryTests test_conflictingOpportunityBindingsQuarantineAsAmbiguous]' started.
+Test Case '-[OPSTests.SiteVisitOrphanRecoveryTests test_conflictingOpportunityBindingsQuarantineAsAmbiguous]' passed (0.005 seconds).
+Test Case '-[OPSTests.SiteVisitOrphanRecoveryTests test_foreignAndMalformedGroupsQuarantineWithoutUploadOrDeletion]' started.
+Test Case '-[OPSTests.SiteVisitOrphanRecoveryTests test_foreignAndMalformedGroupsQuarantineWithoutUploadOrDeletion]' passed (0.006 seconds).
+Test Case '-[OPSTests.SiteVisitOrphanRecoveryTests test_quarantinedGroupParksEveryExistingPacketOperationOutsideGenericRetry]' started.
+Test Case '-[OPSTests.SiteVisitOrphanRecoveryTests test_quarantinedGroupParksEveryExistingPacketOperationOutsideGenericRetry]' passed (0.005 seconds).
+Test Case '-[OPSTests.SiteVisitOrphanRecoveryTests test_recoveryIsIdempotentAcrossLaunches]' started.
+Test Case '-[OPSTests.SiteVisitOrphanRecoveryTests test_recoveryIsIdempotentAcrossLaunches]' passed (0.009 seconds).
+Test Case '-[OPSTests.SiteVisitOrphanRecoveryTests test_sameCompanyChildrenReconstructOneCanonicalParentAndParentFirstQueue]' started.
+Test Case '-[OPSTests.SiteVisitOrphanRecoveryTests test_sameCompanyChildrenReconstructOneCanonicalParentAndParentFirstQueue]' passed (0.009 seconds).
+Test Case '-[OPSTests.SiteVisitOrphanRecoveryTests testScopedRecoveryDoesNotReconstructOrRequeueAnotherVisit]' started.
+Test Case '-[OPSTests.SiteVisitOrphanRecoveryTests testScopedRecoveryDoesNotReconstructOrRequeueAnotherVisit]' passed (0.008 seconds).
+Test Suite 'SiteVisitOrphanRecoveryTests' passed at 2026-09-11 20:20:23.738.
+	 Executed 7 tests, with 0 failures (0 unexpected) in 0.052 (0.053) seconds
+Test Suite 'OPSTests.xctest' passed at 2026-09-11 20:20:23.738.
+	 Executed 48 tests, with 0 failures (0 unexpected) in 1.382 (1.393) seconds
+Test Suite 'Selected tests' passed at 2026-09-11 20:20:23.738.
+	 Executed 48 tests, with 0 failures (0 unexpected) in 1.382 (1.393) seconds
+** TEST SUCCEEDED **

@@ -45,6 +45,7 @@ final class ExpenseConsoleSnapshotTests: XCTestCase {
         status: String,
         total: Double,
         approved: Double? = nil,
+        reimbursement: Double? = nil,
         paidAt: String? = nil,
         submittedBy: String,
         periodStart: String,
@@ -69,7 +70,8 @@ final class ExpenseConsoleSnapshotTests: XCTestCase {
             createdAt: "2026-07-01T10:00:00+00:00",
             scopeProjectId: scopeProjectId,
             paidAt: paidAt,
-            paidBy: paidAt == nil ? nil : marcus
+            paidBy: paidAt == nil ? nil : marcus,
+            reimbursementAmount: reimbursement
         )
     }
 
@@ -78,6 +80,8 @@ final class ExpenseConsoleSnapshotTests: XCTestCase {
         batchId: String,
         merchant: String,
         amount: Double,
+        taxAmount: Double? = nil,
+        paymentMethod: String = "personal_card",
         status: String = "submitted",
         flaggedBy: String? = nil,
         category: String = "Materials",
@@ -95,7 +99,7 @@ final class ExpenseConsoleSnapshotTests: XCTestCase {
             taxAmount: 4.5,
             currency: "USD",
             expenseDate: expenseDate,
-            paymentMethod: "personal_card",
+            paymentMethod: paymentMethod,
             receiptImageUrl: nil,
             receiptThumbnailUrl: nil,
             receiptMissingReason: nil,
@@ -330,6 +334,32 @@ final class ExpenseConsoleSnapshotTests: XCTestCase {
                 lines: lines.filter { $0.batchId == "crew1" },
                 container: container
             )
+        }
+    }
+
+    func testRenderCompanyFundedHistoryAndMixedReimbursement() throws {
+        let container = try makeTeamContainer()
+        let company = batch(id: "company", number: 50, status: "approved", total: 145,
+                            reimbursement: 0, submittedBy: marcus,
+                            periodStart: "2026-07-01", periodEnd: "2026-07-07")
+        let companyLines = [line(id: "company-card", batchId: company.id, merchant: "HARDWARE",
+                                 amount: 145, taxAmount: 5, paymentMethod: "company_card", status: "approved")]
+        let mixed = batch(id: "mixed", number: 51, status: "approved", total: 145,
+                          reimbursement: 105, submittedBy: diego,
+                          periodStart: "2026-07-01", periodEnd: "2026-07-07")
+        let mixedLines = [
+            line(id: "crew-paid", batchId: mixed.id, merchant: "HARDWARE", amount: 105, taxAmount: 5, status: "approved"),
+            line(id: "company-paid", batchId: mixed.id, merchant: "FUEL", amount: 40, taxAmount: 2,
+                 paymentMethod: "company_card", status: "approved")
+        ]
+        renderToPNG("console-company-funded-history") {
+            console(bucket: .paid, batches: [company, mixed], lines: companyLines + mixedLines)
+        }
+        renderToPNG("detail-company-funded-approved") {
+            detailView(batch: company, lines: companyLines, container: container)
+        }
+        renderToPNG("detail-mixed-reimbursement") {
+            detailView(batch: mixed, lines: mixedLines, container: container)
         }
     }
 

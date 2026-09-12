@@ -181,11 +181,13 @@ struct ExpenseBucketQueue: View {
     private func paidRow(_ batch: ExpenseBatchDTO) -> some View {
         batchRow(
             primary: nameFor(batch.submittedBy).uppercased(),
-            amount: ExpenseBuckets.owedAmount(batch),
-            amountColor: OPSStyle.Colors.olive
+            amount: ExpenseBuckets.historyAmount(batch),
+            amountColor: ExpenseBuckets.isApprovedWithoutPayout(batch) ? OPSStyle.Colors.secondaryText : OPSStyle.Colors.olive
         ) {
             metaText(batch.batchNumber)
-            if let paidAt = ExpenseBuckets.parseDate(batch.paidAt) {
+            if ExpenseBuckets.isApprovedWithoutPayout(batch) {
+                metaText("APPROVED")
+            } else if let paidAt = ExpenseBuckets.parseDate(batch.paidAt) {
                 metaText("PAID \(Self.shortDate.string(from: paidAt).uppercased())")
             }
         } onTap: {

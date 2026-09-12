@@ -21,6 +21,7 @@ final class ExpenseBucketsTests: XCTestCase {
         status: String,
         total: Double? = 100,
         approved: Double? = nil,
+        reimbursement: Double? = nil,
         paidAt: String? = nil,
         submittedBy: String? = "user-a",
         periodStart: String? = "2026-06-01",
@@ -46,7 +47,8 @@ final class ExpenseBucketsTests: XCTestCase {
             createdAt: createdAt,
             scopeProjectId: scopeProjectId,
             paidAt: paidAt,
-            paidBy: paidAt == nil ? nil : "payer"
+            paidBy: paidAt == nil ? nil : "payer",
+            reimbursementAmount: reimbursement
         )
     }
 
@@ -55,6 +57,7 @@ final class ExpenseBucketsTests: XCTestCase {
         batchId: String? = "b1",
         status: String = "submitted",
         amount: Double = 50,
+        taxAmount: Double? = nil,
         flaggedBy: String? = nil,
         expenseDate: String? = "2026-07-05",
         allocated: Bool = false,
@@ -70,7 +73,7 @@ final class ExpenseBucketsTests: XCTestCase {
             merchantName: "MERCHANT",
             description: nil,
             amount: amount,
-            taxAmount: nil,
+            taxAmount: taxAmount,
             currency: "USD",
             expenseDate: expenseDate,
             paymentMethod: nil,
@@ -284,6 +287,65 @@ final class ExpenseBucketsTests: XCTestCase {
         // approvals — a positive figure is trusted (web parity).
         let b = batch(status: "approved", total: 500, approved: 500)
         XCTAssertEqual(ExpenseBuckets.owedAmount(b), 500)
+    }
+
+    func testServerReimbursementUsesOnlyGrossCrewMoneyBeforeAndAfterPayout() {
+        for status in ["approved", "auto_approved", "partially_approved"] {
+            let unpaid = batch(status: status, total: 145, approved: 145, reimbursement: 105)
+            let paid = batch(status: status, total: 145, approved: 145, reimbursement: 105,
+                             paidAt: "2026-07-09T12:00:00Z")
+            XCTAssertEqual(ExpenseBuckets.owedAmount(unpaid), 105)
+            XCTAssertTrue(ExpenseBuckets.isAwaitingPayout(unpaid))
+            XCTAssertEqual(ExpenseBuckets.owedAmount(paid), 105)
+            XCTAssertTrue(ExpenseBuckets.isPaid(paid))
+        }
+    }
+
+    func testZeroReimbursementStaysInHistoryWithoutPayoutActionsOrMetrics() {
+        for paidAt in [nil, "2026-07-09T12:00:00Z"] as [String?] {
+            let row = batch(status: "approved", total: 145, approved: 145,
+                            reimbursement: 0, paidAt: paidAt)
+            XCTAssertEqual(ExpenseBuckets.owedAmount(row), 0)
+            XCTAssertFalse(ExpenseBuckets.isAwaitingPayout(row))
+            XCTAssertFalse(ExpenseBuckets.isPaid(row))
+            XCTAssertEqual(ExpenseBuckets.bucket(for: row, lineCount: 2), .paid)
+            XCTAssertEqual(ExpenseBuckets.paidSections([row]).flatMap(\.batches).map(\.id), [row.id])
+            XCTAssertEqual(ExpenseBuckets.historyAmount(row), 145)
+            let metrics = ExpenseBuckets.computeMetrics(batches: [row], expenses: [], now: now)
+            XCTAssertEqual(metrics.payTotal, 0)
+            XCTAssertEqual(metrics.payCount, 0)
+            XCTAssertEqual(metrics.paidMTDTotal, 0)
+            XCTAssertEqual(metrics.paidMTDCount, 0)
+        }
+    }
+
+    func testServerZeroDoesNotMoveFillingOrPendingBatchesIntoHistory() {
+        XCTAssertEqual(ExpenseBuckets.bucket(for: batch(status: "open", reimbursement: 0), lineCount: 1), .crew)
+        XCTAssertEqual(ExpenseBuckets.bucket(for: batch(status: "pending_review", reimbursement: 0), lineCount: 1), .review)
+    }
+
+    func testGrossAmountAlreadyIncludesReceiptTax() {
+        let row = batch(status: "approved", total: 145, approved: 145, reimbursement: 105)
+        let expenses = [line(status: "approved", amount: 105, taxAmount: 5),
+                        line(id: "company-card", status: "approved", amount: 40, taxAmount: 2)]
+        let metrics = ExpenseBuckets.computeMetrics(batches: [row], expenses: expenses, now: now)
+        XCTAssertEqual(metrics.spendMTD, 145)
+        XCTAssertEqual(metrics.payTotal, 105)
+    }
+
+    func testNullableReimbursementDecodesWithoutBreakingLegacyRows() throws {
+        let original = batch(status: "approved", total: 145, approved: 0)
+        let data = try JSONEncoder().encode(original)
+        let legacy = try JSONDecoder().decode(ExpenseBatchDTO.self, from: data)
+        XCTAssertNil(legacy.reimbursementAmount)
+        XCTAssertEqual(ExpenseBuckets.owedAmount(legacy), 145)
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        for amount in [0.0, 105.0] {
+            object["reimbursement_amount"] = amount
+            let decoded = try JSONDecoder().decode(ExpenseBatchDTO.self, from: JSONSerialization.data(withJSONObject: object))
+            XCTAssertEqual(decoded.reimbursementAmount, amount)
+            XCTAssertEqual(ExpenseBuckets.owedAmount(decoded), amount)
+        }
     }
 
     // MARK: - Line stats

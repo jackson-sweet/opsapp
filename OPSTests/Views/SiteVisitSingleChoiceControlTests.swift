@@ -43,7 +43,7 @@ final class SiteVisitSingleChoiceControlTests: XCTestCase {
             XCTAssertTrue(cedar.accessibilityActivate(), "The real control must expose an accessible action")
             XCTAssertTrue(waitUntil(host) { state.value.selectedOption?.id == snapshot.options[0].id })
             let selected = try XCTUnwrap(button("Cedar", in: host.view))
-            XCTAssertTrue(selected.accessibilityTraits.contains(.isSelected))
+            XCTAssertTrue(selected.accessibilityTraits.contains(.selected))
             XCTAssertTrue(answer.isAnswered)
             try capture(host, name: "single-choice-capture-selected")
             let clear = try XCTUnwrap(button("CLEAR ANSWER", in: host.view))
@@ -52,7 +52,7 @@ final class SiteVisitSingleChoiceControlTests: XCTestCase {
             XCTAssertTrue(waitUntil(host) { !state.value.hasContent && self.button("CLEAR ANSWER", in: host.view) == nil })
             XCTAssertEqual(state.value.choiceSnapshot, snapshot)
             XCTAssertFalse(answer.isAnswered)
-            XCTAssertFalse(try XCTUnwrap(button("Cedar", in: host.view)).accessibilityTraits.contains(.isSelected))
+            XCTAssertFalse(try XCTUnwrap(button("Cedar", in: host.view)).accessibilityTraits.contains(.selected))
             try capture(host, name: "single-choice-capture-cleared")
         }
     }
@@ -73,6 +73,13 @@ final class SiteVisitSingleChoiceControlTests: XCTestCase {
             XCTAssertTrue(waitUntil(host) { self.button("ADD OPTION", in: host.view) != nil })
             let add = try XCTUnwrap(button("ADD OPTION", in: host.view))
             try requireVisibleTarget(add, in: host.view)
+            for (label, enabled) in [
+                ("Move option 1 up", false), ("Move option 1 down", true), ("Remove option 1", false),
+                ("Move option 2 up", true), ("Move option 2 down", false), ("Remove option 2", false)
+            ] {
+                let target = try XCTUnwrap(button(label, in: host.view), label)
+                try requireVisibleTarget(target, in: host.view, expectsEnabled: enabled)
+            }
             try capture(host, name: "single-choice-settings-options")
             XCTAssertTrue(add.accessibilityActivate())
             XCTAssertTrue(waitUntil(host) { self.textFields(host.view).filter { $0.placeholder == "Option label" }.count == 3 })
@@ -160,12 +167,12 @@ final class SiteVisitSingleChoiceControlTests: XCTestCase {
         return false
     }
 
-    private func requireVisibleTarget(_ node: NSObject, in view: UIView) throws {
+    private func requireVisibleTarget(_ node: NSObject, in view: UIView, expectsEnabled: Bool = true) throws {
         let viewport = UIAccessibility.convertToScreenCoordinates(view.bounds, in: view)
         XCTAssertGreaterThanOrEqual(node.accessibilityFrame.width, OPSStyle.Layout.touchTargetMin)
         XCTAssertGreaterThanOrEqual(node.accessibilityFrame.height, OPSStyle.Layout.touchTargetMin)
         XCTAssertTrue(viewport.insetBy(dx: -0.5, dy: -0.5).contains(node.accessibilityFrame), "Target must be visible in the real viewport")
-        XCTAssertFalse(node.accessibilityTraits.contains(.notEnabled))
+        XCTAssertEqual(node.accessibilityTraits.contains(.notEnabled), !expectsEnabled)
         XCTAssertNotNil(view.window)
     }
 

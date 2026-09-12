@@ -25,6 +25,7 @@ struct SiteVisitChoiceOptionsEditor: View {
                             Image(systemName: OPSStyle.Icons.trash)
                                 .foregroundColor(OPSStyle.Colors.roseTextM)
                                 .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
+                                .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                         .disabled(choice.options.count <= SiteVisitSingleChoice.minimumOptions)
@@ -48,6 +49,7 @@ struct SiteVisitChoiceOptionsEditor: View {
                     .font(OPSStyle.Typography.captionBold)
                     .foregroundColor(OPSStyle.Colors.primaryText)
                     .frame(maxWidth: .infinity, minHeight: OPSStyle.Layout.touchTargetMin)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .disabled(choice.options.count >= SiteVisitSingleChoice.maximumOptions)
@@ -65,6 +67,7 @@ struct SiteVisitChoiceOptionsEditor: View {
             Image(systemName: icon)
                 .foregroundColor(enabled ? OPSStyle.Colors.secondaryText : OPSStyle.Colors.tertiaryText)
                 .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .disabled(!enabled)

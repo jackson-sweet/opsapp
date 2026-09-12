@@ -2041,6 +2041,7 @@ struct SiteVisitChecklistAnswerRow: View {
                         .font(OPSStyle.Typography.captionBold)
                         .foregroundColor(OPSStyle.Colors.secondaryText)
                         .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             }

@@ -1,0 +1,22 @@
+{
+  "sourceHead": "3f5eaffebd3d81e22d9165140f3c002bc4d22edd",
+  "configuration": "Release",
+  "destination": "generic/platform=iOS",
+  "xcodebuildExitCode": 0,
+  "signatureVerifiedDeepStrict": true,
+  "signingIdentity": "Apple Development: JACKSON SAMUEL MERRITT SWEET (MLZ2DTR8DR)",
+  "teamIdentifier": "X47H96M34K",
+  "bundleIdentifier": "co.opsapp.ops.OPS",
+  "marketingVersion": "3.0.5",
+  "bundleVersion": "3.0.5",
+  "architecture": "arm64",
+  "signedAtLocal": "2026-09-11T18:38:30-06:00",
+  "appPath": "/private/tmp/ops-site-visits-p19/DerivedData/Build/Products/Release-iphoneos/OPS.app",
+  "logPath": "/private/tmp/ops-site-visits-p19/signed-release-build-20260911.log",
+  "installed": false,
+  "archived": false,
+  "uploaded": false,
+  "appStoreReleased": false,
+  "physicalDeviceCanary": "not_performed",
+  "note": "Compatible V28 development-signed test application. Build and signature checks do not establish signed-device offline, recovery, conflict or media behavior. Existing app/device data was not touched."
+}

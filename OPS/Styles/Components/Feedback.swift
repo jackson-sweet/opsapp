@@ -119,6 +119,8 @@ enum Feedback {
     enum Expense {
         static let saved           = Toast(label: "// EXPENSE SAVED", tone: .success)
         static let changesSaved    = Toast(label: "// CHANGES SAVED", tone: .success)
+        static let correctedAndReturned = Toast(label: "// CORRECTED & RETURNED", tone: .success)
+        static let correctionRefreshRequired = Toast(label: "// CORRECTION SAVED · REFRESH NEEDED", tone: .warning)
         static let submitted       = Toast(label: "// EXPENSE SUBMITTED", tone: .success)
         static let receiptUploadFailed = Toast(label: "// RECEIPT UPLOAD FAILED · TRY AGAIN", tone: .warning)
         static let saveNotConfirmed = Toast(label: "// SAVE NOT CONFIRMED · TRY AGAIN", tone: .warning)
@@ -514,7 +516,7 @@ enum Feedback {
         Invoice.sent, Invoice.voided, Invoice.writtenOff, Invoice.paymentRecorded, Invoice.approved, Invoice.reminderSent,
         Estimate.created, Estimate.updated, Estimate.saved, Estimate.sent, Estimate.converted, Estimate.progressInvoice,
         Estimate.lineItemAdded, Estimate.lineItemUpdated, Estimate.lineItemDeleted, Estimate.revisionsSent,
-        Expense.saved, Expense.changesSaved, Expense.submitted, Expense.deleted, Expense.approved, Expense.rejected,
+        Expense.saved, Expense.changesSaved, Expense.correctedAndReturned, Expense.correctionRefreshRequired, Expense.submitted, Expense.deleted, Expense.approved, Expense.rejected,
         Expense.flagged, Expense.flagCleared, Expense.categoryCreated, Expense.categoryUpdated, Expense.settingsSaved,
         Expense.allocationsSaved, Expense.ruleCreated, Expense.ruleUpdated, Expense.ruleDeleted,
         Expense.receiptUploadFailed,

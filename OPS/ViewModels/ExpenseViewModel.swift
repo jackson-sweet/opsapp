@@ -212,6 +212,10 @@ class ExpenseViewModel: ObservableObject {
         storedCompanyId == nil || storedCompanyId?.lowercased() == batch.companyId.lowercased()
     }
 
+    var correctionRepository: ExpenseCorrectionRepository?
+    /// The open form supplies its live account source so an account switch is
+    /// caught even before this view model receives its next setup call.
+    var correctionCurrentIdentity: (() -> (companyId: String?, userId: String?))?
     private var repository: ExpenseRepository?
     private var storedCompanyId: String?
     private var storedUserId: String?
@@ -333,6 +337,7 @@ class ExpenseViewModel: ObservableObject {
         repository = ExpenseRepository(companyId: companyId)
         batchApprovalRepository = repository
         consoleRepository = repository
+        correctionRepository = repository
         if companyChanged {
             approvalRefreshRequired = false
             consoleLoadGeneration += 1
@@ -469,6 +474,117 @@ class ExpenseViewModel: ObservableObject {
             self.error = error.localizedDescription
             return nil
         }
+    }
+
+    // MARK: - Corrections
+
+    /// The receipt confirms the command, while an independent read supplies
+    /// current data. A replay receipt must never roll back a later crew edit.
+    func correctExpenseForReview(_ command: ExpenseCorrectionCommand) async throws -> ExpenseCorrectionSaveResult {
+        guard let repo = correctionRepository else { throw ExpenseCorrectionError.serviceUnavailable }
+        guard correctionIdentityMatches(companyId: command.content.companyId, actorId: command.actorId) else {
+            throw ExpenseCorrectionError.accountChanged
+        }
+        let receipt = try await repo.correctForReview(command)
+        guard receipt.matches(command) else { throw ExpenseCorrectionError.invalidReceipt }
+        guard correctionIdentityMatches(companyId: command.content.companyId, actorId: command.actorId) else {
+            throw ExpenseCorrectionError.accountChanged
+        }
+        // Invalidate older reads, then capture this refresh's generation.
+        // Newer console/detail reads supersede it while network awaits yield.
+        batchLineLoadGeneration += 1
+        consoleLoadGeneration += 1
+        let lineGeneration = batchLineLoadGeneration
+        let consoleGeneration = consoleLoadGeneration
+        do {
+            let row = try await repo.fetchOne(command.content.expenseId)
+            guard correctionIdentityMatches(companyId: command.content.companyId, actorId: command.actorId) else {
+                throw ExpenseCorrectionError.accountChanged
+            }
+            guard row.id.lowercased() == command.content.expenseId.lowercased(),
+                  row.companyId.lowercased() == command.content.companyId.lowercased(),
+                  row.submittedBy.lowercased() == command.content.submittedBy.lowercased() else {
+                throw ExpenseCorrectionError.invalidReceipt
+            }
+            var batch: ExpenseBatchDTO?
+            if let batchId = row.batchId {
+                batch = try await repo.fetchBatch(batchId)
+                guard batch?.id.lowercased() == batchId.lowercased(),
+                      batch?.companyId.lowercased() == row.companyId.lowercased() else {
+                    throw ExpenseCorrectionError.invalidReceipt
+                }
+            }
+            guard correctionIdentityMatches(companyId: command.content.companyId, actorId: command.actorId) else {
+                throw ExpenseCorrectionError.accountChanged
+            }
+            guard lineGeneration == batchLineLoadGeneration, consoleGeneration == consoleLoadGeneration else {
+                return ExpenseCorrectionSaveResult(receipt: receipt, refreshed: false)
+            }
+            // Publish row and envelope together, only after every read matches.
+            if let index = expenses.firstIndex(where: { $0.id.lowercased() == row.id.lowercased() }) {
+                if row.deletedAt != nil { expenses.remove(at: index) } else { expenses[index] = row }
+            }
+            if let index = selectedBatchExpenses.firstIndex(where: { $0.id.lowercased() == row.id.lowercased() }) {
+                var lines = selectedBatchExpenses
+                if row.batchId?.lowercased() == selectedBatchId?.lowercased(), row.deletedAt == nil {
+                    lines[index] = row
+                } else {
+                    lines.remove(at: index)
+                }
+                applySelectedBatchExpenses(lines)
+            }
+            if let batch {
+                if let index = batches.firstIndex(where: { $0.id.lowercased() == batch.id.lowercased() }) { batches[index] = batch }
+                if let index = reviewBatches.firstIndex(where: { $0.id.lowercased() == batch.id.lowercased() }) { reviewBatches[index] = batch }
+                if let index = myBatches.firstIndex(where: { $0.id.lowercased() == batch.id.lowercased() }) { myBatches[index] = batch }
+            }
+            return ExpenseCorrectionSaveResult(receipt: receipt, refreshed: true)
+        } catch {
+            guard correctionIdentityMatches(companyId: command.content.companyId, actorId: command.actorId) else {
+                throw ExpenseCorrectionError.accountChanged
+            }
+            // The immutable receipt is already proof. Failure to refresh is
+            // reported separately; never resend a new correction to refresh.
+            return ExpenseCorrectionSaveResult(receipt: receipt, refreshed: false)
+        }
+    }
+
+    func loadExpenseCorrections(expenseId: String, companyId: String, actorId: String) async throws -> [ExpenseCorrectionDTO] {
+        guard let repo = correctionRepository else { throw ExpenseCorrectionError.serviceUnavailable }
+        guard correctionIdentityMatches(companyId: companyId, actorId: actorId) else { throw ExpenseCorrectionError.accountChanged }
+        let rows = try await repo.fetchCorrections(expenseId: expenseId)
+        guard correctionIdentityMatches(companyId: companyId, actorId: actorId) else { throw ExpenseCorrectionError.accountChanged }
+        guard rows.allSatisfy({ $0.companyId.lowercased() == companyId.lowercased() && $0.expenseId.lowercased() == expenseId.lowercased() }) else {
+            throw ExpenseCorrectionError.invalidReceipt
+        }
+        return rows
+    }
+
+    func reloadExpenseCorrectionBaseline(expenseId: String, companyId: String, actorId: String) async throws -> (ExpenseDTO, ExpenseBatchDTO?) {
+        guard let repo = correctionRepository else { throw ExpenseCorrectionError.serviceUnavailable }
+        guard correctionIdentityMatches(companyId: companyId, actorId: actorId) else { throw ExpenseCorrectionError.accountChanged }
+        let row = try await repo.fetchOne(expenseId)
+        guard correctionIdentityMatches(companyId: companyId, actorId: actorId) else { throw ExpenseCorrectionError.accountChanged }
+        guard row.id.lowercased() == expenseId.lowercased(), row.companyId.lowercased() == companyId.lowercased() else {
+            throw ExpenseCorrectionError.invalidReceipt
+        }
+        var batch: ExpenseBatchDTO?
+        if let batchId = row.batchId {
+            batch = try await repo.fetchBatch(batchId)
+            guard correctionIdentityMatches(companyId: companyId, actorId: actorId) else { throw ExpenseCorrectionError.accountChanged }
+            guard batch?.id.lowercased() == batchId.lowercased(), batch?.companyId.lowercased() == companyId.lowercased() else {
+                throw ExpenseCorrectionError.invalidReceipt
+            }
+        }
+        return (row, batch)
+    }
+
+    private func correctionIdentityMatches(companyId: String, actorId: String) -> Bool {
+        if let current = correctionCurrentIdentity?() {
+            guard current.companyId?.lowercased() == companyId.lowercased(),
+                  current.userId?.lowercased() == actorId.lowercased() else { return false }
+        }
+        return storedCompanyId?.lowercased() == companyId.lowercased() && storedUserId?.lowercased() == actorId.lowercased()
     }
 
     // MARK: - CRUD

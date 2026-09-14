@@ -26,6 +26,7 @@ private struct ExpenseSaveInterruption {
         case commitConfirmation
         case saveRejected
         case closeRequired
+        case reloadRequired
     }
 
     let kind: Kind
@@ -73,6 +74,11 @@ struct ExpenseFormSheet: View {
     @ObservedObject var viewModel: ExpenseViewModel
     var prefilledProjectId: String? = nil
     var editing: ExpenseDTO? = nil
+    /// Explicit reviewer command; an ordinary edit stays uploader-only.
+    var correctionBatch: ExpenseBatchDTO? = nil
+    var correctionMode = false
+    @State private var reviewerCorrection = false
+    @ObservedObject private var permissionStore = PermissionStore.shared
 
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var dataController: DataController
@@ -110,6 +116,11 @@ struct ExpenseFormSheet: View {
     @State private var saveInterruption: ExpenseSaveInterruption? = nil
     @State private var resumeSubmissionAfterReceiptReason = false
     @State private var showDiscardReceiptDialog = false
+    @State private var correctionBaseline: ExpenseDTO? = nil
+    @State private var currentCorrectionBatch: ExpenseBatchDTO? = nil
+    @State private var correctionNote = ""
+    @State private var pendingCorrectionCommand: ExpenseCorrectionCommand? = nil
+    @State private var hasHydrated = false
 
     // Project picker sheet state
     @State private var showProjectPicker = false
@@ -179,8 +190,22 @@ struct ExpenseFormSheet: View {
         case allocationPercent(Int)
     }
 
+    private var isCorrectionMode: Bool { correctionMode || reviewerCorrection }
+
+    private var correctionSource: ExpenseDTO? { correctionBaseline ?? editing }
+
+    private var canCorrectExpense: Bool {
+        guard let expense = correctionSource else { return false }
+        return ExpenseCorrectionPolicy.canCorrect(
+            expense: expense, batch: currentCorrectionBatch ?? correctionBatch,
+            actorId: dataController.currentUser?.id, companyId: dataController.currentUser?.companyId,
+            canApproveAll: permissionStore.can("expenses.approve", requiredScope: "all"),
+            canViewAll: permissionStore.can("expenses.view", requiredScope: "all")
+        )
+    }
+
     private var expenseStatus: ExpenseStatus {
-        guard let exp = editing else { return .draft }
+        guard let exp = isCorrectionMode ? correctionSource : editing else { return .draft }
         return ExpenseStatus(rawValue: exp.status) ?? .draft
     }
 
@@ -188,15 +213,12 @@ struct ExpenseFormSheet: View {
         expenseStatus == .approved || expenseStatus == .reimbursed
     }
 
-    /// Uploader-only edit rule: an existing expense may be edited only by the
-    /// person who submitted it — regardless of role. Owners / office review via
-    /// approve / reject; they don't edit a teammate's line. A brand-new expense
-    /// is always editable by its author. (Server RLS still grants edit to
-    /// full-access roles — align it + web for true enforcement.)
+    /// Ordinary edits stay uploader-only. Reviewer corrections use a separate
+    /// explicit command and never widen this save path's authority.
     private var canEditExpense: Bool {
         guard let exp = editing else { return true }
         guard let uid = dataController.currentUser?.id, !uid.isEmpty else { return false }
-        return exp.submittedBy == uid
+        return exp.submittedBy.lowercased() == uid.lowercased()
     }
 
     /// Resolves a user id (submitter / approver / rejecter) to a display name
@@ -227,6 +249,14 @@ struct ExpenseFormSheet: View {
                             submitterLine
                         }
 
+                        if isCorrectionMode {
+                            correctionNoteSection
+                        }
+                        if let expense = editing, !isCorrectionMode {
+                            ExpenseCorrectionHistoryView(expense: expense, viewModel: viewModel)
+                                .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+                        }
+
                         // RECEIPT PHOTO
                         receiptSection
                             .padding(.top, editing != nil ? 0 : OPSStyle.Layout.spacing2)
@@ -240,6 +270,7 @@ struct ExpenseFormSheet: View {
                         ) {
                             detailsContent
                         }
+                        .disabled(isViewMode)
                         .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
                         // PROJECT ALLOCATION
@@ -251,10 +282,11 @@ struct ExpenseFormSheet: View {
                         ) {
                             allocationContent
                         }
+                        .disabled(isViewMode)
                         .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
                     }
-                    .disabled(isViewMode || isSaving || saveInterruption?.locksEditing == true)
+                    .disabled(isSaving || saveInterruption?.locksEditing == true)
                     .padding(.top, OPSStyle.Layout.spacing2)
                     .padding(.bottom, 120)
                 }
@@ -273,7 +305,7 @@ struct ExpenseFormSheet: View {
                         .disabled(isSaving)
                 }
                 ToolbarItem(placement: .principal) {
-                    Text(editing == nil ? "NEW EXPENSE" : (isViewMode ? "EXPENSE" : "EDIT EXPENSE"))
+                    Text(isCorrectionMode ? "CORRECT EXPENSE" : (editing == nil ? "NEW EXPENSE" : (isViewMode ? "EXPENSE" : "EDIT EXPENSE")))
                         .font(OPSStyle.Typography.bodyBold)
                         .foregroundColor(OPSStyle.Colors.primaryText)
                 }
@@ -344,7 +376,9 @@ struct ExpenseFormSheet: View {
                 Button("Keep Working", role: .cancel) { }
                 Button("Close Form", role: .destructive) { dismiss() }
             } message: {
-                Text("Your receipt and changes are still here. Close only if you don't want to retry.")
+                Text(isCorrectionMode
+                     ? "Your changes are still here. Close only if you don't want to keep working."
+                     : "Your receipt and changes are still here. Close only if you don't want to retry.")
             }
             .confirmationDialog("RECEIPT REQUIRED", isPresented: $showReceiptRequiredDialog, titleVisibility: .visible) {
                 Button("Add Receipt Photo") {
@@ -395,6 +429,13 @@ struct ExpenseFormSheet: View {
                 )
             }
             .onAppear {
+                guard !hasHydrated else { return }
+                hasHydrated = true
+                let controller = dataController
+                viewModel.setCurrentUser(id: controller.currentUser?.id, name: controller.currentUser?.fullName)
+                viewModel.correctionCurrentIdentity = { [weak controller] in
+                    (controller?.currentUser?.companyId, controller?.currentUser?.id)
+                }
                 // Load categories if not already loaded
                 if viewModel.categories.isEmpty {
                     Task { await viewModel.loadCategories() }
@@ -404,7 +445,9 @@ struct ExpenseFormSheet: View {
                 }
 
                 if let exp = editing {
-                    isViewMode = true
+                    correctionBaseline = exp
+                    currentCorrectionBatch = correctionBatch
+                    isViewMode = !isCorrectionMode || !canCorrectExpense
                     merchantName = exp.merchantName ?? ""
                     amount = exp.amount > 0 ? String(format: "%.2f", exp.amount) : ""
                     taxAmount = exp.taxAmount.map { String(format: "%.2f", $0) } ?? ""
@@ -425,7 +468,7 @@ struct ExpenseFormSheet: View {
                     }
                     if let allocations = exp.allocations {
                         projectAllocations = allocations.map {
-                            (projectId: $0.projectId, percentage: String(format: "%.0f", $0.percentage))
+                            (projectId: $0.projectId, percentage: $0.percentage.formatted(.number.precision(.fractionLength(0...2)).locale(Locale(identifier: "en_US_POSIX"))))
                         }
                     }
                     noReceiptReason = NoReceiptReason(code: exp.receiptMissingReason)
@@ -437,7 +480,7 @@ struct ExpenseFormSheet: View {
                     projectAllocations = [(projectId: pid, percentage: "100")]
                 }
             }
-            .interactiveDismissDisabled(isSaving || saveInterruption != nil)
+            .interactiveDismissDisabled(isSaving || saveInterruption != nil || (isCorrectionMode && !isViewMode))
         }
     }
 
@@ -495,7 +538,7 @@ struct ExpenseFormSheet: View {
                 }
                 .padding(.horizontal, OPSStyle.Layout.spacing3_5)
 
-                if !isViewMode {
+                if !isViewMode && !isCorrectionMode {
                     HStack(spacing: OPSStyle.Layout.spacing3) {
                         Button {
                             isReplacingReceipt = true
@@ -544,7 +587,7 @@ struct ExpenseFormSheet: View {
                 .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                 .accessibilityLabel("Receipt photo")
 
-                if !isViewMode {
+                if !isViewMode && !isCorrectionMode {
                     Button {
                         isReplacingReceipt = true
                         showReceiptSourceSheet = true
@@ -557,7 +600,7 @@ struct ExpenseFormSheet: View {
                     .padding(.horizontal, OPSStyle.Layout.spacing3_5)
                     .accessibilityHint("Choose a new receipt photo")
                 }
-            } else if isViewMode {
+            } else if isViewMode || isCorrectionMode {
                 // No receipt — show placeholder in view mode
                 VStack(spacing: OPSStyle.Layout.spacing2) {
                     Image(systemName: OPSStyle.Icons.photo)
@@ -611,7 +654,7 @@ struct ExpenseFormSheet: View {
                             .foregroundColor(OPSStyle.Colors.secondaryText)
                     }
 
-                    if !isViewMode {
+                    if !isViewMode && !isCorrectionMode {
                         Button {
                             resumeSubmissionAfterReceiptReason = false
                             showNoReceiptSheet = true
@@ -1021,6 +1064,14 @@ struct ExpenseFormSheet: View {
                     ProgressView()
                         .tint(OPSStyle.Colors.primaryAccent)
                         .frame(maxWidth: .infinity)
+                } else if isCorrectionMode && !isViewMode {
+                    Button {
+                        Task { await save(submit: false) }
+                    } label: {
+                        Text(saveButtonLabel("CORRECT & RETURN"))
+                            .font(OPSStyle.Typography.button)
+                    }
+                    .opsPrimaryButtonStyle()
                 } else if editing == nil {
                     // NEW expense — one Add. Snap-a-stack still saves drafts via
                     // SAVE & NEXT; the last/single receipt is added (submitted).
@@ -1079,6 +1130,16 @@ struct ExpenseFormSheet: View {
                             }
                             .opsPrimaryButtonStyle()
                         }
+                    } else if canCorrectExpense {
+                        Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            reviewerCorrection = true
+                            isViewMode = false
+                        } label: {
+                            Text("CORRECT & RETURN")
+                                .font(OPSStyle.Typography.button)
+                        }
+                        .opsPrimaryButtonStyle()
                     } else {
                         // A teammate's expense — view only. Owners/office act via
                         // approve/reject, not by editing the submitter's line.
@@ -1225,7 +1286,7 @@ struct ExpenseFormSheet: View {
     // MARK: - OCR
 
     private func requestDismiss() {
-        if saveInterruption != nil {
+        if saveInterruption != nil || (isCorrectionMode && !isViewMode) {
             showDiscardReceiptDialog = true
         } else {
             dismiss()
@@ -1354,6 +1415,14 @@ struct ExpenseFormSheet: View {
     // MARK: - Validation
 
     private func validate() -> Bool {
+        let numericErrors = ExpenseFormNumericValidation.errors(
+            amount: amount, tax: taxAmount,
+            percentages: projectAllocations.filter { !$0.projectId.isEmpty }.map { $0.percentage }
+        )
+        guard numericErrors.isEmpty else {
+            validationErrors = numericErrors
+            return false
+        }
         var errors: [String] = []
 
         let amountValue = Double(amount) ?? 0
@@ -1425,6 +1494,193 @@ struct ExpenseFormSheet: View {
         return errors.isEmpty
     }
 
+    // MARK: - Reviewer correction
+
+    private var correctionDraft: ExpenseCorrectionDraft? {
+        guard let source = correctionSource else { return nil }
+        var draft = ExpenseCorrectionDraft(expense: source)
+        draft.merchant = merchantName.trimmingCharacters(in: .whitespacesAndNewlines)
+        draft.description = expenseDescription
+        draft.amount = Double(amount).map { String(format: "%.2f", $0) } ?? amount
+        draft.tax = taxAmount.isEmpty ? "" : (Double(taxAmount).map { String(format: "%.2f", $0) } ?? taxAmount)
+        draft.currency = selectedCurrency.uppercased()
+        draft.date = SupabaseDate.formatDate(expenseDate)
+        draft.categoryId = selectedCategoryId?.lowercased()
+        draft.paymentMethod = paymentMethod.rawValue
+        draft.allocations = projectAllocations.compactMap {
+            guard !$0.projectId.isEmpty, let percentage = Double($0.percentage) else { return nil }
+            return ExpenseAtomicAllocationCommand(projectId: $0.projectId.lowercased(), percentage: percentage, amount: nil)
+        }.sorted { $0.projectId < $1.projectId }
+        draft.projectReason = draft.allocations.isEmpty ? noProjectReason?.code : nil
+        draft.projectNote = draft.allocations.isEmpty ? noProjectNote : ""
+        return draft
+    }
+
+    private func applyCorrectionDraft(_ draft: ExpenseCorrectionDraft) {
+        merchantName = draft.merchant
+        expenseDescription = draft.description
+        amount = draft.amount
+        taxAmount = draft.tax
+        selectedCurrency = draft.currency
+        if let date = SupabaseDate.parseDateOnly(draft.date) { expenseDate = date }
+        selectedCategoryId = draft.categoryId
+        paymentMethod = ExpensePaymentMethod(rawValue: draft.paymentMethod) ?? .personalCard
+        noProjectReason = NoProjectReason(code: draft.projectReason)
+        noProjectNote = draft.projectNote
+        projectAllocations = draft.allocations.map {
+            ($0.projectId, $0.percentage.formatted(.number.precision(.fractionLength(0...2)).locale(Locale(identifier: "en_US_POSIX"))))
+        }
+    }
+
+    private var correctionNoteSection: some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+            Text("NOTE TO CREW · OPTIONAL")
+                .font(OPSStyle.Typography.sectionLabel)
+                .foregroundColor(OPSStyle.Colors.primaryText)
+            Text("The crew will see what changed and review it before resubmitting.")
+                .font(OPSStyle.Typography.body)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+            TextField("What changed and why", text: $correctionNote, axis: .vertical)
+                .font(OPSStyle.Typography.body)
+                .foregroundColor(OPSStyle.Colors.primaryText)
+                .lineLimit(3...6)
+                .padding(OPSStyle.Layout.spacing2)
+                .background(OPSStyle.Colors.background)
+                .cornerRadius(OPSStyle.Layout.cornerRadius)
+                .accessibilityIdentifier("expense.correction.note")
+        }
+        .padding(OPSStyle.Layout.spacing3)
+        .glassSurface()
+        .padding(.horizontal, OPSStyle.Layout.spacing3_5)
+        .disabled(isViewMode)
+    }
+
+    private func performCorrection() async -> ExpenseSaveOutcome {
+        guard !isSaving else { return .failed }
+        isSaving = true
+        defer { isSaving = false }
+        if saveInterruption?.kind == .reloadRequired {
+            await reloadCorrectionBaseline()
+            return .failed
+        }
+        if saveInterruption?.kind == .closeRequired {
+            requestDismiss()
+            return .failed
+        }
+        let retry = pendingCorrectionCommand
+        saveInterruption = nil
+        validationErrors = []
+        guard canCorrectExpense, let source = correctionSource,
+              let actor = dataController.currentUser,
+              actor.companyId?.lowercased() == source.companyId.lowercased() else {
+            return saveFailure("This expense can't be corrected from this account. Your changes are still here.")
+        }
+        let command: ExpenseCorrectionCommand
+        if let retry {
+            // A lost response freezes the exact command. Never recompute it
+            // from a refreshed model or mint a second request on retry.
+            guard retry.actorId.lowercased() == actor.id.lowercased(),
+                  retry.content.companyId.lowercased() == source.companyId.lowercased() else {
+                return saveFailure("Your account changed. Reopen expenses in the correct company.")
+            }
+            command = retry
+        } else {
+            guard await viewModel.ensureSettingsLoaded() else {
+                return saveFailure("Couldn't verify company expense rules. Your changes are still here. Try again.")
+            }
+            guard validate() else { return .failed }
+            guard correctionDraft != ExpenseCorrectionDraft(expense: source) else {
+                return saveFailure("Change an expense field before returning it. Use flagging to request a change from the crew.")
+            }
+            let note = correctionNote.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard note.count <= 2_000 else {
+                return saveFailure("Keep the crew note to 2,000 characters or fewer.")
+            }
+            let content = ExpenseAtomicSaveCommand(
+                requestId: UUID().uuidString.lowercased(), expenseId: source.id,
+                companyId: source.companyId, submittedBy: source.submittedBy,
+                expectedStatus: source.status, expectedUpdatedAt: source.updatedAt,
+                categoryId: selectedCategoryId,
+                merchantName: merchantName.trimmingCharacters(in: .whitespacesAndNewlines),
+                description: expenseDescription.isEmpty ? nil : expenseDescription,
+                amount: Double(amount) ?? 0, taxAmount: taxAmount.isEmpty ? nil : Double(taxAmount),
+                currency: selectedCurrency.uppercased(), expenseDate: SupabaseDate.formatDate(expenseDate),
+                paymentMethod: paymentMethod.rawValue,
+                receiptImageUrl: source.receiptImageUrl, receiptThumbnailUrl: source.receiptThumbnailUrl,
+                receiptMissingReason: source.receiptMissingReason, receiptMissingNote: source.receiptMissingNote,
+                projectMissingReason: noProjectReason?.code,
+                projectMissingNote: noProjectNote.isEmpty ? nil : noProjectNote,
+                ocrRawData: source.ocrRawData, ocrConfidence: source.ocrConfidence,
+                allocations: projectAllocations.compactMap { allocation in
+                    guard !allocation.projectId.isEmpty, let percentage = Double(allocation.percentage) else { return nil }
+                    return ExpenseAtomicAllocationCommand(projectId: allocation.projectId, percentage: percentage, amount: nil)
+                }, submit: false
+            )
+            command = ExpenseCorrectionCommand(content: content, actorId: actor.id, correctionNote: note)
+        }
+        pendingCorrectionCommand = command
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        do {
+            let result = try await viewModel.correctExpenseForReview(command)
+            pendingCorrectionCommand = nil
+            saveInterruption = nil
+            ToastCenter.shared.present(result.refreshed ? Feedback.Expense.correctedAndReturned : Feedback.Expense.correctionRefreshRequired)
+            NotificationCenter.default.post(name: .opsExpensesDidChange, object: nil)
+            return .complete
+        } catch {
+            let kind = UploadErrorClassifier.classify(error)
+            if case .permanent(let code, _) = kind {
+                pendingCorrectionCommand = nil
+                let stale = code == "PG_P0001"
+                saveInterruption = ExpenseSaveInterruption(
+                    kind: stale ? .reloadRequired : .saveRejected,
+                    title: stale ? "// EXPENSE CHANGED" : "// CORRECTION REJECTED",
+                    message: stale
+                        ? "Reload the expense before trying again. Your entered fields and note will stay here."
+                        : "Review the fields and crew note, then try again. Approved, paid, or exported expenses can't be corrected.",
+                    retryLabel: stale ? "RELOAD EXPENSE" : "TRY AGAIN"
+                )
+                UINotificationFeedbackGenerator().notificationOccurred(.error)
+            } else {
+                saveInterruption = ExpenseSaveInterruption(
+                    kind: .commitConfirmation, title: "// CORRECTION NOT CONFIRMED",
+                    message: "Your changes are locked here for a safe retry. Retry to confirm the correction.",
+                    retryLabel: "RETRY CORRECTION"
+                )
+                UINotificationFeedbackGenerator().notificationOccurred(.warning)
+            }
+            return .failed
+        }
+    }
+
+    /// Refreshes only the comparison baseline, never the entered fields/note.
+    /// The next explicit commit is checked against this newly reviewed version.
+    private func reloadCorrectionBaseline() async {
+        guard let source = correctionSource, let entered = correctionDraft, let actor = dataController.currentUser,
+              actor.companyId?.lowercased() == source.companyId.lowercased(),
+              let (fresh, freshBatch) = try? await viewModel.reloadExpenseCorrectionBaseline(
+                expenseId: source.id, companyId: source.companyId, actorId: actor.id
+              ),
+              dataController.currentUser?.id.lowercased() == actor.id.lowercased(),
+              dataController.currentUser?.companyId?.lowercased() == source.companyId.lowercased(),
+              fresh.companyId.lowercased() == source.companyId.lowercased(),
+              fresh.submittedBy.lowercased() == source.submittedBy.lowercased() else {
+            validationErrors = ["Couldn't reload this expense. Your changes are still here. Try again."]
+            return
+        }
+        let rebased = entered.rebased(from: ExpenseCorrectionDraft(expense: source), onto: ExpenseCorrectionDraft(expense: fresh))
+        applyCorrectionDraft(rebased.draft)
+        correctionBaseline = fresh
+        currentCorrectionBatch = freshBatch
+        pendingCorrectionCommand = nil
+        saveInterruption = nil
+        validationErrors = [canCorrectExpense
+            ? (rebased.conflicts.isEmpty
+                ? "Expense reloaded. Your edits are kept; other fields now match the latest expense."
+                : "Expense reloaded. Review your values for " + rebased.conflicts.joined(separator: ", ") + " before returning it.")
+            : "This expense is no longer eligible for correction. Your entered fields are still here."]
+    }
+
     // MARK: - Save
 
     /// Uploads the receipt, then commits the complete desired expense state in
@@ -1432,6 +1688,7 @@ struct ExpenseFormSheet: View {
     /// for `.complete`; an ambiguous response retains the exact command, staged
     /// URLs, and local image for a safe replay.
     private func performSave(submit: Bool) async -> ExpenseSaveOutcome {
+        if isCorrectionMode { return await performCorrection() }
         if saveInterruption?.kind == .closeRequired {
             dismiss()
             return .failed

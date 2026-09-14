@@ -64,6 +64,21 @@ class ExpenseRepository {
             .value
     }
 
+    func correctForReview(_ command: ExpenseCorrectionCommand) async throws -> ExpenseCorrectionReceipt {
+        struct Params: Encodable { let p_command: ExpenseCorrectionCommand }
+        return try await client
+            .rpc("correct_expense_for_review", params: Params(p_command: command))
+            .execute()
+            .value
+    }
+
+    func fetchCorrections(expenseId: String) async throws -> [ExpenseCorrectionDTO] {
+        try await client
+            .rpc("list_expense_corrections", params: ["p_expense_id": expenseId, "p_company_id": companyId])
+            .execute()
+            .value
+    }
+
     func approve(_ expenseId: String, approvedBy: String) async throws -> ExpenseDTO {
         try await client
             .from("expenses")

@@ -41,6 +41,7 @@ struct ExpenseBatchDetailView: View {
     @State private var receiptImageUrl: String? = nil
     @State private var showRejectConfirmation = false
     @State private var hasLeftDetail = false
+    @State private var correctingExpense: ExpenseDTO? = nil
 
     // MARK: - Computed
 
@@ -52,7 +53,7 @@ struct ExpenseBatchDetailView: View {
         viewModel.flaggedExpenseIds.count
     }
 
-    private var canApprove: Bool { permissionStore.can("expenses.approve") }
+    private var canApprove: Bool { permissionStore.can("expenses.approve", requiredScope: "all") }
 
     /// Where this batch sits in its lifecycle — drives the header stats and
     /// which footer (if any) renders. Same derivation as the console so the
@@ -160,6 +161,15 @@ struct ExpenseBatchDetailView: View {
                 viewModel: viewModel,
                 onDismiss: { dismiss() }
             )
+        }
+        .sheet(item: $correctingExpense, onDismiss: {
+            Task {
+                await viewModel.loadBatchExpenses(batch.id)
+                await viewModel.loadConsole()
+            }
+        }) { expense in
+            ExpenseFormSheet(viewModel: viewModel, editing: expense, correctionBatch: currentBatch, correctionMode: true)
+                .environmentObject(dataController)
         }
         .errorToast($viewModel.error, label: Feedback.Err.batchUpdateFailed)
     }
@@ -587,6 +597,26 @@ struct ExpenseBatchDetailView: View {
                 }
                 if let tax = expense.taxAmount, tax > 0 {
                     detailRow(label: "TAX", value: BooksFormat.exact(tax))
+                }
+
+                ExpenseCorrectionHistoryView(expense: expense, viewModel: viewModel)
+
+                if ExpenseCorrectionPolicy.canCorrect(
+                    expense: expense, batch: currentBatch,
+                    actorId: dataController.currentUser?.id,
+                    companyId: dataController.currentUser?.companyId,
+                    canApproveAll: canApprove,
+                    canViewAll: permissionStore.can("expenses.view", requiredScope: "all")
+                ) {
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        correctingExpense = expense
+                    } label: {
+                        Text("CORRECT & RETURN")
+                            .font(OPSStyle.Typography.button)
+                    }
+                    .opsSecondaryButtonStyle()
+                    .accessibilityHint("Edit this expense and return it to the crew for review")
                 }
 
                 // Flag comment field (when flagged)

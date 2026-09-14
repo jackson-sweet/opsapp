@@ -1,0 +1,41 @@
+[
+  {
+    "attachments": [
+      {
+        "configurationName": "Test Scheme Action",
+        "deviceId": "0510A40A-DBCA-45E2-A1ED-6E29C52C5F46",
+        "deviceName": "ops-ios-bugs-p1-20260910",
+        "exportedFileName": "AB64237D-A41A-4437-A7EE-D9C4423B713D.png",
+        "isAssociatedWithFailure": false,
+        "suggestedHumanReadableName": "detail-mixed-reimbursement_0_76B29073-FE1D-45A6-8572-F9987A57B9C7.png",
+        "timestamp": 1789248831.656,
+        "committedFileName": "detail-mixed-reimbursement.png",
+        "sha256": "57b49f4f2e800be2ff91a0435af2daf78d1db35a0b8a4b4e5dc44be70263b69d"
+      },
+      {
+        "configurationName": "Test Scheme Action",
+        "deviceId": "0510A40A-DBCA-45E2-A1ED-6E29C52C5F46",
+        "deviceName": "ops-ios-bugs-p1-20260910",
+        "exportedFileName": "CB1F2B75-1DE1-4A91-9549-6F1736AD7339.png",
+        "isAssociatedWithFailure": false,
+        "suggestedHumanReadableName": "detail-company-funded-approved_0_D5A55684-8175-4FC3-BE5A-924EEEA732CE.png",
+        "timestamp": 1789248831.127,
+        "committedFileName": "detail-company-funded-approved.png",
+        "sha256": "6d5bc59cc16d319f3183c36194dc00aaa3cae96daffcf0f59ea76cf30284157c"
+      },
+      {
+        "configurationName": "Test Scheme Action",
+        "deviceId": "0510A40A-DBCA-45E2-A1ED-6E29C52C5F46",
+        "deviceName": "ops-ios-bugs-p1-20260910",
+        "exportedFileName": "30289B8F-84AB-4D88-9366-2612CE076764.png",
+        "isAssociatedWithFailure": false,
+        "suggestedHumanReadableName": "console-company-funded-history_0_1E2635BC-7395-4018-AE7D-A637E76424B3.png",
+        "timestamp": 1789248830.28,
+        "committedFileName": "console-company-funded-history.png",
+        "sha256": "b4a9ab4bff212f8194aa48bd0b51945be02030afe4300f608a310aae88044079"
+      }
+    ],
+    "testIdentifier": "ExpenseConsoleSnapshotTests/testRenderCompanyFundedHistoryAndMixedReimbursement()",
+    "testIdentifierURL": "test://com.apple.xcode/OPS/OPSTests/ExpenseConsoleSnapshotTests/testRenderCompanyFundedHistoryAndMixedReimbursement"
+  }
+]

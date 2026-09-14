@@ -1,0 +1,133 @@
+{
+  "checkedAt": "2026-09-14T22:27:50.517488Z",
+  "source": {
+    "ios": "95bfaf20b8540f1efb122994ee0c71e97d877d45",
+    "web": "134be24243903c9606b142dabf32b9100313a8f2"
+  },
+  "ledger": [
+    {
+      "checked_at": "2026-09-14 22:27:32.418732+00",
+      "version": "20260912213224",
+      "name": "site_visit_single_choice_v2"
+    },
+    {
+      "checked_at": "2026-09-14 22:27:32.418732+00",
+      "version": "20260912213347",
+      "name": "site_visit_mcp_choice_coexistence"
+    }
+  ],
+  "functions": [
+    {
+      "checked_at": "2026-09-14 22:27:50.517488+00",
+      "schema_name": "private",
+      "function_name": "enforce_expense_edit_authority",
+      "arguments": "",
+      "definition_md5": "a489f4f6506516e5934ff08f8fba69ad",
+      "security_definer": true,
+      "acl": null
+    },
+    {
+      "checked_at": "2026-09-14 22:27:50.517488+00",
+      "schema_name": "public",
+      "function_name": "approve_expense_batch",
+      "arguments": "p_batch_id uuid",
+      "definition_md5": "87bc087970d0c1fb3f36313836869d66",
+      "security_definer": true,
+      "acl": "{=X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}"
+    },
+    {
+      "checked_at": "2026-09-14 22:27:50.517488+00",
+      "schema_name": "public",
+      "function_name": "early_clear_expense_line",
+      "arguments": "p_expense_id uuid",
+      "definition_md5": "9b271925be5fe9e9ab8c6ca67cf1115c",
+      "security_definer": true,
+      "acl": "{=X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}"
+    },
+    {
+      "checked_at": "2026-09-14 22:27:50.517488+00",
+      "schema_name": "public",
+      "function_name": "mark_expense_batch_paid",
+      "arguments": "p_batch_id uuid",
+      "definition_md5": "0ca6d6ae5d05d8283bcc3bb67b8436b5",
+      "security_definer": true,
+      "acl": "{=X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}"
+    },
+    {
+      "checked_at": "2026-09-14 22:27:50.517488+00",
+      "schema_name": "public",
+      "function_name": "place_expense",
+      "arguments": "p_expense_id uuid",
+      "definition_md5": "69ae7eaa26297db59646c704ea454712",
+      "security_definer": true,
+      "acl": "{postgres=X/postgres,service_role=X/postgres}"
+    },
+    {
+      "checked_at": "2026-09-14 22:27:50.517488+00",
+      "schema_name": "public",
+      "function_name": "read_agent_payroll_readiness_as_system",
+      "arguments": "p_actor_user_id uuid, p_company_id uuid, p_oauth_grant_id uuid, p_oauth_client_id uuid, p_grant_revision text, p_granted_scope_ceiling text[], p_permission_snapshot_revision text, p_capability_manifest_revision text, p_exposure_revision text, p_capability_id text, p_capability_revision text, p_observed_at timestamp with time zone, p_target_date date, p_recurring_obligation_limit integer, p_reimbursement_batch_limit integer, p_receivable_limit integer, p_payer_history_limit integer",
+      "definition_md5": "c3e517bcc781f6866601c5966fa0b58d",
+      "security_definer": true,
+      "acl": "{postgres=X/postgres,service_role=X/postgres}"
+    },
+    {
+      "checked_at": "2026-09-14 22:27:50.517488+00",
+      "schema_name": "public",
+      "function_name": "tg_place_expense",
+      "arguments": "",
+      "definition_md5": "2a9d3575dd23507040a31cb49dc69825",
+      "security_definer": true,
+      "acl": "{postgres=X/postgres,service_role=X/postgres}"
+    },
+    {
+      "checked_at": "2026-09-14 22:27:50.517488+00",
+      "schema_name": "public",
+      "function_name": "unmark_expense_batch_paid",
+      "arguments": "p_batch_id uuid",
+      "definition_md5": "981f644ded66f43707d800d7400ef6ce",
+      "security_definer": true,
+      "acl": "{=X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}"
+    }
+  ],
+  "sourceHashes": {
+    "p6": {
+      "match": 27,
+      "mismatch": 0
+    },
+    "p7": {
+      "match": 13,
+      "mismatch": 0
+    }
+  },
+  "aggregateReadback": {
+    "checkedAt": "2026-09-14T22:30:56.89794Z",
+    "mixedCompanyExpenseBatchLinks": 0,
+    "expensesWithHistoricalExportEvidence": 0,
+    "nonterminalAccountingClaims": 0,
+    "connectedPushConnections": 1
+  },
+  "bugMetadata": {
+    "newLocalProofIds": [
+      "39654ecf-9adb-4a1c-b926-0077aa4eca14",
+      "c381520d-84fa-40ea-ba66-67de14c717ce",
+      "facfecfe-6e28-4a1e-b332-2aa406cc00c6"
+    ],
+    "appendOnlyProofIds": [
+      "1995a554-7fb1-4090-96c4-4e20a901c3a4",
+      "96a4a0ad-af24-47ea-9f40-3107713d8dd7"
+    ],
+    "exactReadback": true,
+    "guardReplayChangedRows": 0,
+    "closedRows": 0
+  },
+  "liveCounts": {
+    "unresolvedIosBugReports": 66,
+    "bug": 55,
+    "ui_issue": 3,
+    "crash": 1,
+    "feature_request": 6,
+    "other": 1,
+    "unresolvedIosQa": 3
+  }
+}

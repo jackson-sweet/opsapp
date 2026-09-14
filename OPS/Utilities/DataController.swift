@@ -4073,6 +4073,8 @@ class DataController: ObservableObject {
         case invalidProjectContact
         case taskUnavailable
         case syncQueueFailed
+        case archivedProjectPermission
+        case archivedProjectRefreshRequired
         case persistenceFailed(String)
 
         var errorDescription: String? {
@@ -4083,6 +4085,10 @@ class DataController: ObservableObject {
                 return "That contact is no longer available for this project."
             case .taskUnavailable:
                 return "This task is unavailable. Check Settings > Trash before editing it."
+            case .archivedProjectPermission:
+                return "Project edit access is required to schedule work on an archived project."
+            case .archivedProjectRefreshRequired:
+                return "Sync this project before scheduling more work."
             case .syncQueueFailed:
                 return "The change could not be secured for sync."
             case .persistenceFailed(let message):
@@ -4223,8 +4229,7 @@ class DataController: ObservableObject {
         }
     }
 
-    /// Commits one local model mutation and its outbound operation together.
-    /// A caller may report success only after this transaction returns.
+    /// Commits model changes and every required outbound command together.
     @MainActor
     private func persistDurableSyncMutation(
         spec: SyncEngine.BulkOperationSpec,
@@ -4233,75 +4238,129 @@ class DataController: ObservableObject {
         apply: () throws -> Void,
         rematerializeAfterRollback: () -> Void
     ) throws {
-        guard let syncEngine else {
-            throw DurableSyncMutationError.contextUnavailable
-        }
+        try persistDurableSyncMutations(specs: [spec], in: context,
+            stagingOperationsWith: stageOperations, apply: apply,
+            rematerializeAfterRollback: rematerializeAfterRollback)
+    }
 
-        do {
-            if context.hasChanges {
-                try context.save()
-            }
-        } catch {
-            throw DurableSyncMutationError.persistenceFailed(
-                error.localizedDescription
-            )
-        }
-
+    @MainActor
+    private func persistDurableSyncMutations(
+        specs: [SyncEngine.BulkOperationSpec],
+        in context: ModelContext,
+        stagingOperationsWith stageOperations: DurableSyncOperationStager,
+        apply: () throws -> Void,
+        rematerializeAfterRollback: () -> Void
+    ) throws {
+        guard let syncEngine, !specs.isEmpty else { throw DurableSyncMutationError.contextUnavailable }
         let operationIDsBefore: Set<UUID>
         do {
-            operationIDsBefore = Set(
-                try context.fetch(FetchDescriptor<SyncOperation>()).map(\.id)
-            )
-        } catch {
-            throw DurableSyncMutationError.persistenceFailed(
-                error.localizedDescription
-            )
-        }
+            if context.hasChanges { try context.save() }
+            operationIDsBefore = Set(try context.fetch(FetchDescriptor<SyncOperation>()).map(\.id))
+        } catch { throw DurableSyncMutationError.persistenceFailed(error.localizedDescription) }
 
         var stagedOperations: [SyncOperation] = []
         do {
             try context.transaction {
                 try apply()
-                do {
-                    stagedOperations = try stageOperations([spec], context)
-                } catch {
-                    throw DurableSyncMutationTransactionFailure.stagingFailed
-                }
-
+                do { stagedOperations = try stageOperations(specs, context) }
+                catch { throw DurableSyncMutationTransactionFailure.stagingFailed }
                 let stagedIDs = Set(stagedOperations.map(\.id))
-                let operationIDsInsideTransaction = Set(
-                    try context.fetch(FetchDescriptor<SyncOperation>()).map(\.id)
-                )
-                let operation = stagedOperations.first
-                let hasCompleteLedger = stagedOperations.count == 1
-                    && stagedIDs.count == 1
-                    && stagedIDs.isDisjoint(with: operationIDsBefore)
-                    && stagedIDs.isSubset(of: operationIDsInsideTransaction)
-                    && operation?.entityType == spec.entityType.rawValue
-                    && operation?.entityId == spec.entityId.lowercased()
-                    && operation?.operationType == spec.operationType
-                    && Set(operation?.getChangedFields() ?? [])
-                        == Set(spec.changedFields.keys)
-
-                guard hasCompleteLedger else {
+                let persistedIDs = Set(try context.fetch(FetchDescriptor<SyncOperation>()).map(\.id))
+                guard stagedOperations.count == specs.count,
+                      stagedIDs.count == specs.count,
+                      stagedIDs.isDisjoint(with: operationIDsBefore),
+                      stagedIDs.isSubset(of: persistedIDs) else {
                     throw DurableSyncMutationTransactionFailure.incompleteLedger
+                }
+                for (operation, spec) in zip(stagedOperations, specs) {
+                    let expectedPayload = try JSONSerialization.data(withJSONObject: spec.changedFields, options: [.sortedKeys])
+                    let actualObject = try JSONSerialization.jsonObject(with: operation.payload)
+                    let actualPayload = try JSONSerialization.data(withJSONObject: actualObject, options: [.sortedKeys])
+                    guard operation.entityType == spec.entityType.rawValue,
+                          operation.entityId == spec.entityId.lowercased(),
+                          operation.operationType == spec.operationType,
+                          Set(operation.getChangedFields()) == Set(spec.changedFields.keys),
+                          operation.dependsOnId == spec.dependsOnId,
+                          spec.operationId == nil || operation.id == spec.operationId,
+                          actualPayload == expectedPayload else {
+                        throw DurableSyncMutationTransactionFailure.incompleteLedger
+                    }
                 }
             }
         } catch {
             context.rollback()
             rematerializeAfterRollback()
-            if error is DurableSyncMutationTransactionFailure {
-                throw DurableSyncMutationError.syncQueueFailed
-            }
-            throw DurableSyncMutationError.persistenceFailed(
-                error.localizedDescription
-            )
+            if error is DurableSyncMutationTransactionFailure { throw DurableSyncMutationError.syncQueueFailed }
+            throw DurableSyncMutationError.persistenceFailed(error.localizedDescription)
         }
-
         syncEngine.didPersistStagedOperations(stagedOperations)
-        if connectivity?.shouldAttemptSync == true {
-            Task { await syncEngine.pushPending() }
+        if connectivity?.shouldAttemptSync == true { Task { await syncEngine.pushPending() } }
+    }
+
+    private struct ScheduledProjectReopen {
+        let project: Project
+        let target: Status
+        let spec: SyncEngine.BulkOperationSpec
+    }
+
+    /// Only an explicit schedule change may reopen an archived project. The
+    /// server authorizes the same project scope and compares this exact token.
+    @MainActor
+    private func prepareProjectReopen(task: ProjectTask, startDate: Date?,
+        status: TaskStatus, scheduleChanged: Bool, in context: ModelContext,
+        now: Date = Date()) throws -> ScheduledProjectReopen? {
+        guard scheduleChanged, let startDate, !status.isTerminal else { return nil }
+        let project = try schedulingProject(for: task, in: context)
+        guard let project, project.status == .archived else { return nil }
+        guard let user = currentUser,
+              user.companyId?.lowercased() == project.companyId.lowercased(),
+              PermissionStore.shared.canEditProject(project, userId: user.id) else {
+            throw DurableSyncMutationError.archivedProjectPermission
         }
+        let operations = try context.fetch(FetchDescriptor<SyncOperation>())
+        guard !operations.contains(where: {
+            $0.entityType == SyncEntityType.project.rawValue
+                && $0.entityId.lowercased() == project.id.lowercased()
+                && TaskLifecycleSync.unresolvedStatuses.contains($0.status)
+        }), let snapshot = ProjectRevisionCache.shared.snapshot(companyId: project.companyId, projectId: project.id),
+              snapshot.status == Status.archived.rawValue else {
+            throw DurableSyncMutationError.archivedProjectRefreshRequired
+        }
+        let target: Status = startDate <= now ? .inProgress : .accepted
+        let commandId = UUID()
+        let spec = SyncEngine.BulkOperationSpec(entityType: .project, entityId: project.id,
+            operationType: ProjectReopenSync.operationType,
+            changedFields: ["status": target.rawValue, "company_id": project.companyId,
+                "_reopen_command_id": commandId.uuidString,
+                "_expected_updated_at": snapshot.updatedAt], operationId: commandId)
+        return ScheduledProjectReopen(project: project, target: target, spec: spec)
+    }
+
+    @MainActor
+    private func schedulingProject(for task: ProjectTask, in context: ModelContext) throws -> Project? {
+        let ids = [task.projectId.lowercased(), task.projectId.uppercased()]
+        var project = task.project
+        if project == nil { project = try context.fetch(FetchDescriptor<Project>(predicate: #Predicate { ids.contains($0.id) })).first }
+        guard let project else { return nil }
+        guard project.deletedAt == nil, project.companyId.lowercased() == task.companyId.lowercased(),
+              project.id.lowercased() == task.projectId.lowercased() else { throw DurableSyncMutationError.taskUnavailable }
+        return project
+    }
+
+    @MainActor
+    private func reopenDependency(task: ProjectTask, reopen: ScheduledProjectReopen?, in context: ModelContext) throws -> String? {
+        if let reopen { return reopen.spec.operationId?.uuidString }
+        return try context.fetch(FetchDescriptor<SyncOperation>()).filter {
+            ProjectReopenSync.isReopen($0) && $0.entityId.lowercased() == task.projectId.lowercased()
+                && TaskLifecycleSync.unresolvedStatuses.contains($0.status)
+        }.sorted(by: TaskLifecycleSync.precedes).last?.id.uuidString
+    }
+
+    @MainActor
+    private func applyProjectReopen(_ reopen: ScheduledProjectReopen?) {
+        guard let reopen else { return }
+        reopen.project.status = reopen.target
+        reopen.project.needsSync = true
     }
 
     /// Updates project status based on task status changes
@@ -4565,11 +4624,15 @@ class DataController: ObservableObject {
             "duration": duration
         ]
         if manualEdit { changedFields["schedule_locked"] = true }
-        try persistDurableSyncMutation(
-            spec: .init(entityType: .projectTask, entityId: task.id,
-                operationType: "update", changedFields: changedFields),
+        let reopen = try prepareProjectReopen(task: task, startDate: startDate, status: task.status,
+            scheduleChanged: previousStartDate != startDate || previousEndDate != endDate, in: context)
+        let taskSpec = SyncEngine.BulkOperationSpec(entityType: .projectTask, entityId: task.id,
+            operationType: "update", changedFields: changedFields,
+            dependsOnId: try reopenDependency(task: task, reopen: reopen, in: context))
+        try persistDurableSyncMutations(specs: (reopen.map { [$0.spec] } ?? []) + [taskSpec],
             in: context, stagingOperationsWith: stageOperations,
             apply: {
+                self.applyProjectReopen(reopen)
                 task.startDate = startDate
                 task.endDate = endDate
                 task.duration = duration
@@ -4579,6 +4642,7 @@ class DataController: ObservableObject {
             }, rematerializeAfterRollback: {
                 let id = task.id
                 _ = try? context.fetch(FetchDescriptor<ProjectTask>(predicate: #Predicate { $0.id == id }))
+                _ = try? context.fetch(FetchDescriptor<Project>())
             })
 
         // Mirror to iPhone Calendar
@@ -5764,30 +5828,44 @@ class DataController: ObservableObject {
     /// Create task - SINGLE SOURCE OF TRUTH
     @MainActor
     func createTask(task: ProjectTask) async throws {
-        // Apply locally
-        if task.createdAt == nil { task.createdAt = Date() }
-        modelContext?.insert(task)
-        task.needsSync = true
-        try? modelContext?.save()
-
-        // Bug eed3f552 — this path used to record only id / project_id /
-        // status / task_type_id. The outbound push decodes a create payload
-        // into `SupabaseProjectTaskDTO`, whose `company_id` is required, so
-        // every task added from the NEEDS TASKS review screen failed to decode
-        // ("The data couldn't be read because it is missing") and retried
-        // forever without ever reaching the server — five of the founder's
-        // tasks, twelve attempts each. Creates now record the same canonical
-        // DTO fields the sheet and quick-add paths record.
-        let changedFields = try Self.projectTaskCreateFields(for: task)
-
-        syncEngine.recordOperation(
-            entityType: .projectTask,
-            entityId: task.id,
-            operationType: "create",
-            changedFields: changedFields
-        )
-
+        guard let context = modelContext else { throw DurableSyncMutationError.contextUnavailable }
+        try persistTaskCreation(task: task, fields: Self.projectTaskCreateFields(for: task), in: context)
         await spawnPairsForPredecessor(task)
+    }
+
+    @MainActor
+    private func persistTaskCreation(task: ProjectTask, fields: [String: Any], in context: ModelContext) throws {
+        guard let syncEngine else { throw DurableSyncMutationError.contextUnavailable }
+        try requireAvailableTask(task)
+        let queuedDTO = try JSONDecoder().decode(SupabaseProjectTaskDTO.self,
+            from: JSONSerialization.data(withJSONObject: fields))
+        guard let queuedStatus = TaskStatus(rawValue: queuedDTO.status) else { throw DurableSyncMutationError.taskUnavailable }
+        let queuedStart = queuedDTO.startDate.flatMap(SupabaseDate.parse)
+        let queuedEnd = queuedDTO.endDate.flatMap(SupabaseDate.parse)
+        let reopen = try prepareProjectReopen(task: task, startDate: queuedStart,
+            status: queuedStatus, scheduleChanged: true, in: context)
+        let taskSpec = SyncEngine.BulkOperationSpec(entityType: .projectTask, entityId: task.id,
+            operationType: "create", changedFields: fields,
+            dependsOnId: try reopenDependency(task: task, reopen: reopen, in: context))
+        let project = try schedulingProject(for: task, in: context)
+        try persistDurableSyncMutations(specs: (reopen.map { [$0.spec] } ?? []) + [taskSpec],
+            in: context, stagingOperationsWith: { specs, context in
+                try syncEngine.stageOperationsForTransaction(specs, in: context)
+            }, apply: {
+                if task.modelContext == nil { context.insert(task) }
+                if task.createdAt == nil { task.createdAt = Date() }
+                task.project = project
+                task.startDate = queuedStart
+                task.endDate = queuedEnd
+                task.status = queuedStatus
+                task.duration = queuedDTO.duration ?? 1
+                task.needsSync = true
+                self.applyProjectReopen(reopen)
+                self.refreshLocalProjectScheduleCache(for: task)
+            }, rematerializeAfterRollback: {
+                _ = try? context.fetch(FetchDescriptor<ProjectTask>())
+                _ = try? context.fetch(FetchDescriptor<Project>())
+            })
     }
 
     /// The canonical create payload for a task that already exists as a
@@ -5885,56 +5963,16 @@ class DataController: ObservableObject {
     /// This replaces syncManager.createTask(dto:) calls. Returns the new task ID.
     @MainActor
     func createTask(dto: SupabaseProjectTaskDTO) async throws -> String {
-        guard let context = modelContext else {
-            throw NSError(domain: "DataController", code: -1, userInfo: [NSLocalizedDescriptionKey: "Model context not available"])
+        guard let context = modelContext else { throw DurableSyncMutationError.contextUnavailable }
+        let ids = [dto.id.lowercased(), dto.id.uppercased()]
+        let descriptor = FetchDescriptor<ProjectTask>(predicate: #Predicate { ids.contains($0.id) })
+        let task = try context.fetch(descriptor).first ?? dto.toModel()
+        guard task.companyId.lowercased() == dto.companyId.lowercased(),
+              task.projectId.lowercased() == dto.projectId.lowercased() else {
+            throw DurableSyncMutationError.taskUnavailable
         }
-
-        // Check if task already exists in context (prevents duplicate inserts)
-        let taskId = dto.id
-        let existingDescriptor = FetchDescriptor<ProjectTask>(
-            predicate: #Predicate<ProjectTask> { $0.id == taskId }
-        )
-        let existing = try? context.fetch(existingDescriptor)
-        print("[DUPE_TRACE] CREATETASK_DTO.fetch id=\(taskId) existing_count=\(existing?.count ?? -1) ctx=\(ObjectIdentifier(context))")
-
-        if existing?.isEmpty != false {
-            // Convert DTO to model and insert locally
-            let task = dto.toModel()
-            task.needsSync = true
-            print("[DUPE_TRACE] CREATETASK_DTO.insert id=\(taskId) ctx=\(ObjectIdentifier(context))")
-            context.insert(task)
-
-            // Link to project
-            let projectDescriptor = FetchDescriptor<Project>(predicate: #Predicate { $0.id == dto.projectId })
-            if let project = try? context.fetch(projectDescriptor).first {
-                task.project = project
-            }
-
-            try context.save()
-            print("[DataController] ✅ Task created locally from DTO: \(dto.id)")
-        } else {
-            print("[DataController] ⚠️ Task already exists locally, skipping insert: \(dto.id)")
-        }
-
-        let changedFields = try Self.projectTaskCreateFields(for: dto)
-
-        syncEngine.recordOperation(
-            entityType: .projectTask,
-            entityId: dto.id,
-            operationType: "create",
-            changedFields: changedFields
-        )
-
-        // Spawn paired tasks per type-level auto-create rules (no-op when
-        // none configured). Looks up the just-inserted ProjectTask by id —
-        // covers both fresh inserts and the "already exists" branch above.
-        let insertedDescriptor = FetchDescriptor<ProjectTask>(
-            predicate: #Predicate<ProjectTask> { $0.id == taskId }
-        )
-        if let insertedTask = (try? context.fetch(insertedDescriptor))?.first {
-            await spawnPairsForPredecessor(insertedTask)
-        }
-
+        try persistTaskCreation(task: task, fields: Self.projectTaskCreateFields(for: dto), in: context)
+        await spawnPairsForPredecessor(task)
         return dto.id
     }
 
@@ -7120,17 +7158,33 @@ class DataController: ObservableObject {
         try requireAvailableTask(task)
         // Restore and delete have their own explicit workflows, never a generic edit.
         guard fields["deleted_at"] == nil else { throw DurableSyncMutationError.taskUnavailable }
-        try persistDurableSyncMutation(
-            spec: .init(entityType: .projectTask, entityId: task.id, operationType: "update",
-                changedFields: anyJSONToDict(fields)),
-            in: context,
-            stagingOperationsWith: stageOperations, apply: {
+        func scheduledDate(_ key: String, prior: Date?) -> Date? {
+            guard let value = fields[key] else { return prior }
+            if case .string(let raw) = value { return SupabaseDate.parse(raw) }
+            if case .null = value { return nil }
+            return prior
+        }
+        let start = scheduledDate("start_date", prior: task.startDate)
+        let end = scheduledDate("end_date", prior: task.endDate)
+        var status = task.status
+        if case .string(let raw) = fields["status"], let next = TaskStatus(rawValue: raw) { status = next }
+        let reopen = try prepareProjectReopen(task: task, startDate: start, status: status,
+            scheduleChanged: start != task.startDate || end != task.endDate, in: context)
+        let taskSpec = SyncEngine.BulkOperationSpec(entityType: .projectTask, entityId: task.id,
+            operationType: "update", changedFields: anyJSONToDict(fields),
+            dependsOnId: try reopenDependency(task: task, reopen: reopen, in: context))
+        try persistDurableSyncMutations(specs: (reopen.map { [$0.spec] } ?? []) + [taskSpec],
+            in: context, stagingOperationsWith: stageOperations, apply: {
+                self.applyProjectReopen(reopen)
                 self.applyTaskFieldsLocally(task: task, fields: fields, context: context)
                 task.needsSync = true
                 if !Set(fields.keys).isDisjoint(with: TaskLifecycleSync.scheduleFields) {
                     self.refreshLocalProjectScheduleCache(for: task)
                 }
-            }, rematerializeAfterRollback: { _ = try? context.fetch(descriptor) })
+            }, rematerializeAfterRollback: {
+                _ = try? context.fetch(descriptor)
+                _ = try? context.fetch(FetchDescriptor<Project>())
+            })
         if !Set(fields.keys).isDisjoint(with: TaskLifecycleSync.scheduleFields) {
             notifyScheduledTasksChanged()
             Task { @MainActor in
@@ -7177,6 +7231,9 @@ class DataController: ObservableObject {
                     task.taskType = nil
                 }
             case "dependency_overrides":
+                if case .array = value, let data = try? JSONEncoder().encode(value) {
+                    task.dependencyOverridesJSON = String(data: data, encoding: .utf8)
+                }
                 if case .string(let v) = value { task.dependencyOverridesJSON = v }
                 if case .null = value { task.dependencyOverridesJSON = nil }
             case "team_member_ids":
@@ -8323,53 +8380,67 @@ extension DataController {
     @MainActor
     @discardableResult
     func applySchedulePlan(_ plan: SchedulePlan) async -> Int {
-        guard let context = modelContext, !plan.placements.isEmpty else { return 0 }
-
+        guard let context = modelContext, let syncEngine, !plan.placements.isEmpty else { return 0 }
         let byId = Dictionary(getAllTasks().map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime]
-
         var specs: [SyncEngine.BulkOperationSpec] = []
         var affectedProjects: [String: Project] = [:]
         var movedTaskIds: [String] = []
-        var committed = 0
-
-        for placement in plan.placements {
-            guard let task = byId[placement.id] else { continue }
-            let prevStart = task.startDate
-            let prevEnd = task.endDate
-
-            task.startDate = placement.startDate
-            task.endDate = placement.endDate
-            let daysDiff = Calendar.current.dateComponents([.day], from: placement.startDate, to: placement.endDate).day ?? 0
-            task.duration = daysDiff + 1
-            // System-driven (auto-schedule) — do NOT lock the cascade, matching the
-            // manualEdit:false contract of updateTaskSchedule.
-            task.needsSync = true
-            committed += 1
-            if let project = task.project { affectedProjects[project.id] = project }
-
-            specs.append(.init(
-                entityType: .projectTask,
-                entityId: task.id,
-                operationType: "update",
-                changedFields: [
-                    "start_date": formatter.string(from: placement.startDate),
-                    "end_date": formatter.string(from: placement.endDate),
-                    "duration": task.duration
-                ]
-            ))
-
-            if prevStart != placement.startDate || prevEnd != placement.endDate {
-                movedTaskIds.append(task.id)
+        var changes: [(task: ProjectTask, start: Date, end: Date)] = []
+        var reopens: [String: ScheduledProjectReopen] = [:]
+        do {
+            for placement in plan.placements {
+                guard let task = byId[placement.id] else { continue }
+                try requireAvailableTask(task)
+                changes.append((task, placement.startDate, placement.endDate))
             }
+            // Earliest active placement chooses the project's resulting status.
+            // Each project receives exactly one immutable reopen command.
+            for change in changes.sorted(by: { $0.start < $1.start }) {
+                let task = change.task
+                let key = task.projectId.lowercased()
+                if reopens[key] == nil,
+                   let reopen = try prepareProjectReopen(task: task, startDate: change.start,
+                    status: task.status, scheduleChanged: task.startDate != change.start || task.endDate != change.end,
+                    in: context) {
+                    reopens[key] = reopen
+                    specs.append(reopen.spec)
+                }
+            }
+            for change in changes {
+                let task = change.task
+                if let project = try schedulingProject(for: task, in: context) { affectedProjects[project.id] = project }
+                specs.append(.init(entityType: .projectTask, entityId: task.id, operationType: "update",
+                    changedFields: ["start_date": formatter.string(from: change.start),
+                        "end_date": formatter.string(from: change.end),
+                        "duration": (Calendar.current.dateComponents([.day], from: change.start, to: change.end).day ?? 0) + 1],
+                    dependsOnId: try reopenDependency(task: task, reopen: reopens[task.projectId.lowercased()], in: context)))
+                if task.startDate != change.start || task.endDate != change.end { movedTaskIds.append(task.id) }
+            }
+            guard !changes.isEmpty else { return 0 }
+            try persistDurableSyncMutations(specs: specs, in: context,
+                stagingOperationsWith: { specs, context in try syncEngine.stageOperationsForTransaction(specs, in: context) },
+                apply: {
+                    for reopen in reopens.values { self.applyProjectReopen(reopen) }
+                    for change in changes {
+                        change.task.startDate = change.start
+                        change.task.endDate = change.end
+                        change.task.duration = (Calendar.current.dateComponents([.day], from: change.start, to: change.end).day ?? 0) + 1
+                        change.task.needsSync = true
+                        self.refreshLocalProjectScheduleCache(for: change.task)
+                    }
+                }, rematerializeAfterRollback: {
+                    _ = try? context.fetch(FetchDescriptor<ProjectTask>())
+                    _ = try? context.fetch(FetchDescriptor<Project>())
+                })
+        } catch {
+            // The caller reports the zero committed result; no local schedule
+            // or reopen can survive without its complete outbound ledger.
+            print("[APPLY_SCHEDULE_PLAN] Unable to commit schedule: \(error.localizedDescription)")
+            return 0
         }
-
-        guard committed > 0 else { return 0 }
-
-        // ONE save for every task's new dates, then ONE batched enqueue (no per-op push).
-        try? context.save()
-        syncEngine.recordOperations(specs)
+        let committed = changes.count
 
         // ONE index recalc per affected project (was once PER TASK in the old loop);
         // its index sync ops are deferred into the single push below.

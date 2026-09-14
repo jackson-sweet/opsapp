@@ -7,6 +7,26 @@ final class TaskCalendarDeletionTests: XCTestCase {
     private final class OfflineConnectivity: ConnectivityManager {
         override var shouldAttemptSync: Bool { false }
     }
+    private final class FixtureDataController: DataController {
+        // Startup callbacks can outlive a single XCTest. The fixture owns its
+        // store through those callbacks, and never replaces its offline sync
+        // configuration with the app's live connectivity during bootstrap.
+        let retainedContainer: ModelContainer
+        init(container: ModelContainer) {
+            retainedContainer = container
+            super.init()
+        }
+        override func initializeSyncManager() {}
+    }
+    private final class OfflineNotifications: TaskLifecycleNotifying {
+        func notifyTaskCompleted(taskId: String) async throws -> [String] { [] }
+        func notifyProjectCompleted(projectId: String) async throws -> [String] { [] }
+        func notifyTaskRescheduled(taskId: String) async throws -> [String] { [] }
+        func notifyDependencyReady(completedTaskId: String) async throws -> [NotificationRepository.DependencyReadyEntry] { [] }
+        func notifyTaskAssigned(taskId: String, userIds: [String]?) async throws -> [String] { [] }
+        func notifyTaskPairSpawned(taskId: String) async throws -> [String] { [] }
+        func notifyScheduleRunSummary(taskIds: [String]) async throws -> [NotificationRepository.ScheduleRunSummaryEntry] { [] }
+    }
     private var offline = OfflineConnectivity()
     private var savedActorFlag: Any?
     override func setUp() {
@@ -29,6 +49,244 @@ final class TaskCalendarDeletionTests: XCTestCase {
     private let companyID = "11111111-1111-4111-8111-111111111111"
     private let taskID = "22aaaaaa-2222-4222-8222-222222222222"
     private let date = Date(timeIntervalSince1970: 1_789_023_600)
+
+    func testSchedulingArchivedProjectReopensBeforeItsTaskCanSync() async throws {
+        let (controller, context, task) = try fixture()
+        let permissions = PermissionStore.shared.permissions
+        defer { PermissionStore.shared.permissions = permissions }
+        PermissionStore.shared.permissions = ["projects.edit": "all", "calendar.edit": "all"]
+        controller.currentUser = User(id: "44444444-4444-4444-8444-444444444444",
+            firstName: "Test", lastName: "Operator", role: .admin, companyId: companyID)
+        let json = """
+        {"id":"33333333-3333-4333-8333-333333333333","company_id":"11111111-1111-4111-8111-111111111111",
+         "title":"Archived scheduling fixture","status":"archived","updated_at":"2026-09-12T10:11:12.123456Z"}
+        """
+        let dto = try JSONDecoder().decode(SupabaseProjectDTO.self, from: Data(json.utf8))
+        let project = dto.toModel()
+        context.insert(project)
+        task.project = project
+        try context.save()
+        let future = Date().addingTimeInterval(7 * 86_400)
+        try await controller.updateTaskSchedule(task: task, startDate: future, endDate: future)
+        XCTAssertEqual(project.status, .accepted)
+        let operations = try context.fetch(FetchDescriptor<SyncOperation>())
+        let reopen = try XCTUnwrap(operations.first { $0.operationType == "reopenForTask" })
+        let scheduled = try XCTUnwrap(operations.first { $0.entityType == "projectTask" && $0.getChangedFields().contains("start_date") })
+        XCTAssertEqual(scheduled.dependsOnId?.lowercased(), reopen.id.uuidString.lowercased())
+        XCTAssertNil(reopen.serverConfirmedAt)
+        XCTAssertEqual(reopen.status, "pending")
+    }
+
+    func testPastScheduleReopensAsInProgressWithExactRevision() async throws {
+        let (controller, context, task, project) = try archivedFixture()
+        let saved = PermissionStore.shared.permissions
+        defer { PermissionStore.shared.permissions = saved }
+        PermissionStore.shared.permissions = ["projects.edit": "all"]
+        let past = Date().addingTimeInterval(-86_400)
+        try await controller.updateTaskFields(taskId: task.id,
+            fields: ["start_date": .string(SupabaseDate.format(past)), "end_date": .string(SupabaseDate.format(past))])
+        XCTAssertEqual(project.status, .inProgress)
+        let operations = try context.fetch(FetchDescriptor<SyncOperation>())
+        let reopen = try XCTUnwrap(operations.first(where: ProjectReopenSync.isReopen))
+        let payload = try XCTUnwrap(JSONSerialization.jsonObject(with: reopen.payload) as? [String: String])
+        XCTAssertEqual(payload["_expected_updated_at"], "2026-09-12T10:11:12.123456Z")
+        XCTAssertEqual(payload["_reopen_command_id"], reopen.id.uuidString)
+        _ = try ProjectTaskReopenCommand(projectId: project.id, companyId: companyID,
+            fields: AnyJSONBridge.payload(payload))
+        let reread = ModelContext(try XCTUnwrap(containers.last))
+        let persisted = try reread.fetch(FetchDescriptor<SyncOperation>())
+        XCTAssertEqual(persisted.first(where: ProjectReopenSync.isReopen)?.payload, reopen.payload)
+        XCTAssertEqual(persisted.first(where: { $0.entityType == "projectTask" })?.dependsOnId, reopen.id.uuidString)
+    }
+
+    func testArchivedScheduleRequiresProjectEditScopeBeforeAnyMutation() async throws {
+        let (controller, context, task, project) = try archivedFixture()
+        let saved = PermissionStore.shared.permissions
+        defer { PermissionStore.shared.permissions = saved }
+        PermissionStore.shared.permissions = ["calendar.edit": "all"]
+        do {
+            try await controller.updateTaskSchedule(task: task, startDate: date, endDate: date)
+            XCTFail("Scheduling an archive must not widen calendar permissions into project-edit access")
+        } catch { XCTAssertEqual(error as? DataController.DurableSyncMutationError, .archivedProjectPermission) }
+        XCTAssertEqual(project.status, .archived)
+        XCTAssertNil(task.startDate)
+        XCTAssertTrue(try context.fetch(FetchDescriptor<SyncOperation>()).isEmpty)
+    }
+
+    func testArchivedScheduleRequiresServerRevisionWithoutGuessingFromDate() async throws {
+        let (controller, context, task, project) = try archivedFixture(cacheRevision: false)
+        let saved = PermissionStore.shared.permissions
+        defer { PermissionStore.shared.permissions = saved }
+        PermissionStore.shared.permissions = ["projects.edit": "all"]
+        project.updatedAt = date
+        try context.save()
+        do {
+            try await controller.updateTaskSchedule(task: task, startDate: date, endDate: date)
+            XCTFail("A rounded model Date cannot authorize a compare-and-swap")
+        } catch { XCTAssertEqual(error as? DataController.DurableSyncMutationError, .archivedProjectRefreshRequired) }
+        XCTAssertEqual(project.status, .archived)
+        XCTAssertNil(task.startDate)
+        XCTAssertTrue(try context.fetch(FetchDescriptor<SyncOperation>()).isEmpty)
+    }
+
+    func testIncompleteReopenLedgerRollsBackBothProjectAndTask() async throws {
+        let (controller, context, task, project) = try archivedFixture()
+        let saved = PermissionStore.shared.permissions
+        defer { PermissionStore.shared.permissions = saved }
+        PermissionStore.shared.permissions = ["projects.edit": "all"]
+        do {
+            try await controller.updateTaskSchedule(task: task, startDate: date, endDate: date,
+                stagingOperationsWith: { specs, context in
+                    try controller.syncEngine.stageOperationsForTransaction(Array(specs.prefix(1)), in: context)
+                })
+            XCTFail("A reopen with no dependent schedule must roll back")
+        } catch { XCTAssertEqual(error as? DataController.DurableSyncMutationError, .syncQueueFailed) }
+        XCTAssertEqual(project.status, .archived)
+        XCTAssertFalse(project.needsSync)
+        XCTAssertNil(task.startDate)
+        XCTAssertTrue(try context.fetch(FetchDescriptor<SyncOperation>()).isEmpty)
+    }
+
+    func testMetadataNoOpAndTerminalDatesDoNotReopenArchive() async throws {
+        let (controller, context, task, project) = try archivedFixture()
+        try await controller.updateTaskFields(taskId: task.id, fields: ["task_notes": .string("Crew note")])
+        task.startDate = date
+        task.endDate = date
+        try context.save()
+        try await controller.updateTaskSchedule(task: task, startDate: date, endDate: date)
+        task.status = .completed
+        try context.save()
+        try await controller.updateTaskSchedule(task: task, startDate: date.addingTimeInterval(86_400), endDate: date.addingTimeInterval(86_400))
+        try await controller.updateTaskFields(taskId: task.id, fields: ["start_date": .null, "end_date": .null])
+        XCTAssertEqual(project.status, .archived)
+        XCTAssertFalse(try context.fetch(FetchDescriptor<SyncOperation>()).contains(where: ProjectReopenSync.isReopen))
+    }
+
+    func testScheduledCreationAndLaterEditWaitForSameReopen() async throws {
+        let (controller, context, task, project) = try archivedFixture()
+        let saved = PermissionStore.shared.permissions
+        defer { PermissionStore.shared.permissions = saved }
+        PermissionStore.shared.permissions = ["projects.edit": "all"]
+        task.startDate = Date().addingTimeInterval(7 * 86_400)
+        task.endDate = task.startDate
+        try context.save()
+        try await controller.createTask(task: task)
+        try await controller.updateTaskFields(taskId: task.id, fields: ["task_notes": .string("Keep this edit")])
+        let operations = try context.fetch(FetchDescriptor<SyncOperation>())
+        let commands = operations.filter(ProjectReopenSync.isReopen)
+        XCTAssertEqual(commands.count, 1)
+        let command = try XCTUnwrap(commands.first)
+        for operation in operations where operation.entityType == "projectTask" {
+            XCTAssertEqual(operation.dependsOnId, command.id.uuidString)
+        }
+        XCTAssertEqual(project.status, .accepted)
+    }
+
+    func testBatchReopensProjectOnceUsingEarliestActivePlacement() async throws {
+        let (controller, context, task, project) = try archivedFixture()
+        let saved = PermissionStore.shared.permissions
+        defer { PermissionStore.shared.permissions = saved }
+        PermissionStore.shared.permissions = ["projects.edit": "all"]
+        let second = ProjectTask(id: UUID().uuidString.lowercased(), projectId: project.id, taskTypeId: "tt", companyId: companyID)
+        context.insert(second)
+        second.project = project
+        project.tasks = [task, second]
+        try context.save()
+        let future = Date().addingTimeInterval(7 * 86_400)
+        let past = Date().addingTimeInterval(-86_400)
+        let plan = SchedulePlan(placements: [
+            TaskPlacement(id: task.id, taskTypeId: "tt", startDate: future, endDate: future, startTime: nil, endTime: nil, alternative: nil),
+            TaskPlacement(id: second.id, taskTypeId: "tt", startDate: past, endDate: past, startTime: nil, endTime: nil, alternative: nil)
+        ], conflicts: [], metadata: .empty)
+        let committed = await controller.applySchedulePlan(plan)
+        XCTAssertEqual(committed, 2)
+        XCTAssertEqual(project.status, .inProgress)
+        let operations = try context.fetch(FetchDescriptor<SyncOperation>())
+        let commands = operations.filter(ProjectReopenSync.isReopen)
+        XCTAssertEqual(commands.count, 1)
+        let command = try XCTUnwrap(commands.first)
+        let schedules = operations.filter { $0.entityType == "projectTask" && $0.getChangedFields().contains("start_date") }
+        XCTAssertEqual(schedules.count, 2)
+        XCTAssertTrue(schedules.allSatisfy { $0.dependsOnId == command.id.uuidString })
+    }
+
+    func testDTOCreationUsesQueuedScheduleAndStatusOverStaleLocalFields() async throws {
+        let saved = PermissionStore.shared.permissions
+        defer { PermissionStore.shared.permissions = saved }
+        PermissionStore.shared.permissions = ["projects.edit": "all"]
+        for serverShouldSchedule in [false, true] {
+            let (controller, context, task, project) = try archivedFixture()
+            task.startDate = serverShouldSchedule ? nil : Date().addingTimeInterval(7 * 86_400)
+            task.endDate = task.startDate
+            task.status = serverShouldSchedule ? .completed : .active
+            try context.save()
+            var object: [String: Any] = ["id": task.id, "company_id": companyID, "project_id": project.id,
+                "status": serverShouldSchedule ? "active" : "completed"]
+            if serverShouldSchedule {
+                object["start_date"] = SupabaseDate.format(Date().addingTimeInterval(7 * 86_400))
+                object["end_date"] = object["start_date"]
+            }
+            let dto = try JSONDecoder().decode(SupabaseProjectTaskDTO.self, from: JSONSerialization.data(withJSONObject: object))
+            _ = try await controller.createTask(dto: dto)
+            XCTAssertEqual(project.status, serverShouldSchedule ? .accepted : .archived)
+            XCTAssertEqual(task.startDate != nil, serverShouldSchedule)
+            XCTAssertEqual(task.status, serverShouldSchedule ? .active : .completed)
+        }
+    }
+
+    func testReopenRemainsImmutableAndCannotBeDiscardedAheadOfItsTask() async throws {
+        let (controller, context, task, _) = try archivedFixture()
+        let saved = PermissionStore.shared.permissions
+        defer { PermissionStore.shared.permissions = saved }
+        PermissionStore.shared.permissions = ["projects.edit": "all"]
+        try await controller.updateTaskSchedule(task: task, startDate: date, endDate: date)
+        let operations = try context.fetch(FetchDescriptor<SyncOperation>())
+        let reopen = try XCTUnwrap(operations.first(where: ProjectReopenSync.isReopen))
+        let payload = reopen.payload
+        let child = try XCTUnwrap(operations.first(where: { $0.dependsOnId == reopen.id.uuidString }))
+        reopen.status = "failed"
+        reopen.lastAttemptedAt = Date()
+        try context.save()
+        XCTAssertTrue(controller.syncEngine.supersedeProjectStatus(entityID: reopen.entityId, with: "archived"))
+        XCTAssertEqual(reopen.payload, payload)
+        controller.syncEngine.cancelOperation(reopen)
+        let reread = try context.fetch(FetchDescriptor<SyncOperation>())
+        XCTAssertTrue(reread.contains { $0.id == reopen.id })
+        XCTAssertEqual(child.dependsOnId, reopen.id.uuidString)
+        XCTAssertEqual(reopen.payload, payload)
+    }
+
+    func testDeniedDetachedTaskCreationLeavesNoOrphan() async throws {
+        let (controller, context, existing, project) = try archivedFixture()
+        let saved = PermissionStore.shared.permissions
+        defer { PermissionStore.shared.permissions = saved }
+        PermissionStore.shared.permissions = [:]
+        let task = ProjectTask(id: UUID().uuidString.lowercased(), projectId: project.id, taskTypeId: "tt", companyId: companyID)
+        task.startDate = Date().addingTimeInterval(7 * 86_400)
+        task.endDate = task.startDate
+        do { try await controller.createTask(task: task); XCTFail("Project authorization must precede insertion") }
+        catch { XCTAssertEqual(error as? DataController.DurableSyncMutationError, .archivedProjectPermission) }
+        XCTAssertNil(task.modelContext)
+        XCTAssertEqual(try context.fetch(FetchDescriptor<ProjectTask>()).map(\.id), [existing.id])
+        XCTAssertTrue(try context.fetch(FetchDescriptor<SyncOperation>()).isEmpty)
+        XCTAssertEqual(project.status, .archived)
+    }
+
+    private func archivedFixture(cacheRevision: Bool = true) throws -> (DataController, ModelContext, ProjectTask, Project) {
+        let (controller, context, task) = try fixture()
+        let projectId = UUID().uuidString.lowercased()
+        var object: [String: Any] = ["id": projectId, "company_id": companyID, "title": "Archived fixture", "status": "archived"]
+        if cacheRevision { object["updated_at"] = "2026-09-12T10:11:12.123456Z" }
+        let dto = try JSONDecoder().decode(SupabaseProjectDTO.self, from: JSONSerialization.data(withJSONObject: object))
+        let project = dto.toModel()
+        context.insert(project)
+        task.projectId = projectId
+        task.project = project
+        project.tasks = [task]
+        controller.currentUser = User(id: "44444444-4444-4444-8444-444444444444", firstName: "Test", lastName: "Operator", role: .admin, companyId: companyID)
+        try context.save()
+        return (controller, context, task, project)
+    }
 
     func testDeletedTaskCannotBeScheduledOrQueued() async throws {
         let (controller, context, task) = try fixture()
@@ -426,9 +684,10 @@ final class TaskCalendarDeletionTests: XCTestCase {
             configurations: ModelConfiguration(schema: schema, isStoredInMemoryOnly: true))
         containers.append(container)
         let context = container.mainContext
-        let controller = DataController()
+        let controller = FixtureDataController(container: container)
         controllers.append(controller)
         controller.setModelContext(context)
+        controller.taskLifecycleSyncer = OfflineNotifications()
         controller.syncEngine.configure(modelContext: context, connectivity: offline)
         let task = ProjectTask(id: taskID, projectId: "33333333-3333-4333-8333-333333333333", taskTypeId: "tt", companyId: companyID)
         context.insert(task)

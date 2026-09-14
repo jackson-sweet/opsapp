@@ -90,7 +90,8 @@ enum SyncCrossEntityDependency {
         "client_id": SyncEntityType.client.rawValue,
         "primary_sub_client_id": SyncEntityType.subClient.rawValue,
         "company_id": SyncEntityType.company.rawValue,
-        "task_type_id": SyncEntityType.taskType.rawValue
+        "task_type_id": SyncEntityType.taskType.rawValue,
+        "paired_from_task_id": SyncEntityType.projectTask.rawValue
     ]
 
     /// Every status that means "the server does not have this row yet".
@@ -114,6 +115,7 @@ enum SyncCrossEntityDependency {
         isBlockedByUnresolvedCreate(operation, in: operations)
             || isBlockedByUnresolvedSameEntityCreate(operation, in: operations)
             || TaskLifecycleSync.isHeld(operation, in: operations)
+            || ProjectReopenSync.isHeld(operation, in: operations)
     }
 
     /// True when `operation` references an entity whose own create has not yet

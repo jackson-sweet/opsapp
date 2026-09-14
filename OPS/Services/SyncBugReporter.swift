@@ -63,7 +63,7 @@ struct SyncBugReporter: Sendable {
         let entity = SyncEntityType(rawValue: entityType)?.rawValue
             ?? (extraEntities.contains(entityType) ? entityType : "unknown")
         let operations: Set<String> = [
-            "pull", "create", "update", "delete", "linkOpportunity",
+            "pull", "create", "update", "delete", "linkOpportunity", ProjectReopenSync.operationType,
             TaskTypeMutationSync.reassignOperationType,
             TaskTypeMutationSync.mergeOperationType,
             SiteVisitSyncOperation.completionOperationType,
@@ -76,6 +76,13 @@ struct SyncBugReporter: Sendable {
     }
 
     private static func errorCode(_ error: Error) -> String {
+        if let reopen = error as? ProjectTaskReopenError {
+            switch reopen {
+            case .invalidCommand: return "PROJECT_REOPEN_INVALID_COMMAND"
+            case .companyMismatch: return "PROJECT_REOPEN_COMPANY_MISMATCH"
+            case .invalidReceipt: return "PROJECT_REOPEN_INVALID_RECEIPT"
+            }
+        }
         if let postgres = error as? PostgrestError {
             return postgresCode(postgres.code)
         }

@@ -207,6 +207,7 @@ extension SupabaseProjectDTO {
     /// - Project.init is `init(id:title:status:)` — plan template used `init(id:title:companyId:)`.
     ///   `companyId` is set as a property after init.
     func toModel() -> Project {
+        ProjectRevisionCache.shared.record(self)
         let resolvedStatus = Status(rawValue: status) ?? .rfq
         let project = Project(id: id, title: title, status: resolvedStatus)
         project.companyId = companyId

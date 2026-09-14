@@ -66,7 +66,7 @@ enum PendingWorkExpiryPolicy {
         case .op(let snapshot, _, _):
             // A create op is the only path for a whole record to reach the
             // server. Deleting it silently orphans the record forever.
-            guard snapshot.operationType != "create" else { return .keep }
+            guard snapshot.operationType != "create", snapshot.operationType != ProjectReopenSync.operationType else { return .keep }
             return .expire(.deleteOperations([snapshot.id]))
 
         case .autocreate(let snapshot, _, _):

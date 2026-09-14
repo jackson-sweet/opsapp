@@ -60,6 +60,23 @@ final class PendingWorkExpiryApplicationTests: XCTestCase {
 
     // MARK: - Loose operations
 
+    func testReopenAndDependentScheduleSurviveExpiryTogether() throws {
+        let context = try makeContext()
+        let reopen = makeOperation(entityType: .project, entityId: "archived-project",
+            operationType: ProjectReopenSync.operationType, status: "parked", createdAt: now.addingTimeInterval(-400 * day))
+        let schedule = makeOperation(entityType: .projectTask, entityId: "waiting-task",
+            operationType: "update", status: "failed", createdAt: now.addingTimeInterval(-399 * day))
+        schedule.dependsOnId = reopen.id.uuidString.lowercased()
+        context.insert(reopen)
+        context.insert(schedule)
+        try context.save()
+        XCTAssertEqual(apply(in: context), .none)
+        let remaining = try liveOperations(in: context)
+        XCTAssertTrue(remaining.contains { $0.id == reopen.id })
+        XCTAssertTrue(remaining.contains { $0.id == schedule.id })
+        XCTAssertEqual(schedule.dependsOnId, reopen.id.uuidString.lowercased())
+    }
+
     func test_stalledUpdateIsDeletedAndFreshWorkBesideItSurvives() throws {
         let context = try makeContext()
         let stale = makeOperation(

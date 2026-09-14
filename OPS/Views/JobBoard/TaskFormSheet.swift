@@ -1664,13 +1664,6 @@ struct TaskFormSheet: View {
                 }
 
                 if let project = task.project {
-                    print("[TASK_FORM] 📅 Syncing project dates...")
-                    try await dataController.updateProjectDates(
-                        project: project,
-                        startDate: project.startDate,
-                        endDate: project.endDate
-                    )
-
                     print("[TASK_FORM] 👥 Rolling up project team members from tasks...")
                     project.updateTeamMembersFromTasks(in: modelContext)
                     try? modelContext.save()
@@ -1760,7 +1753,7 @@ struct TaskFormSheet: View {
         if let taskType, taskType.id != task.taskTypeId {
             guard taskType.companyId.lowercased() == task.companyId.lowercased(),
                   taskType.deletedAt == nil else {
-                throw DurableSyncMutationError.taskUnavailable
+                throw DataController.DurableSyncMutationError.taskUnavailable
             }
             fields["task_type_id"] = .string(taskType.id)
         }

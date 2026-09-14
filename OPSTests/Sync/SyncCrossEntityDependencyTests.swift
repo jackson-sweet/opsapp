@@ -352,9 +352,10 @@ final class SyncCrossEntityDependencyTests: XCTestCase {
                 "client_id": SyncEntityType.client.rawValue,
                 "primary_sub_client_id": SyncEntityType.subClient.rawValue,
                 "company_id": SyncEntityType.company.rawValue,
-                "task_type_id": SyncEntityType.taskType.rawValue
+                "task_type_id": SyncEntityType.taskType.rawValue,
+                "paired_from_task_id": SyncEntityType.projectTask.rawValue
             ],
-            "the barrier arms on exactly these five foreign keys"
+            "the barrier arms on these foreign keys, including paired-task predecessors"
         )
     }
 

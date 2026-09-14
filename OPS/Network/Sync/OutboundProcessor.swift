@@ -439,7 +439,8 @@ final class OutboundProcessor {
         for (_, groupOps) in groups {
             guard !groupOps.isEmpty else { continue }
             // Preserve delete → restore → later edits as individually acknowledged commands.
-            if groupOps.contains(where: TaskLifecycleSync.isLifecycle) {
+            if groupOps.contains(where: TaskLifecycleSync.isLifecycle)
+                || groupOps.contains(where: ProjectReopenSync.preservesOrdering) {
                 result.append(contentsOf: groupOps.sorted(by: TaskLifecycleSync.precedes))
                 continue
             }
@@ -1210,6 +1211,12 @@ final class OutboundProcessor {
 
     private func handleProject(entityId: String, operationType: String, payload: [String: Any], companyId: String) async throws {
         let repo = ProjectRepository(companyId: companyId)
+        if operationType == ProjectReopenSync.operationType {
+            // A receipt proves historical execution; a replay must never
+            // overwrite a newer local/inbound status.
+            _ = try await repo.reopenForTask(entityId, fields: payloadToAnyJSON(payload))
+            return
+        }
         let sanitizedPayload = Self.sanitizedProjectPayloadForSync(payload)
 
         switch operationType {

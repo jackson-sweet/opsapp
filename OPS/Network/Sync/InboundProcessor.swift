@@ -1029,6 +1029,7 @@ final class InboundProcessor {
     }
 
     private func mergeProject(dto: SupabaseProjectDTO, context: ModelContext) throws {
+        ProjectRevisionCache.shared.record(dto)
         let id = dto.id
         let descriptor = FetchDescriptor<Project>(
             predicate: #Predicate { $0.id == id }

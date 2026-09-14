@@ -1225,6 +1225,8 @@ final class SyncEngine {
         let entityId: String
         let operationType: String
         let changedFields: [String: Any]
+        var dependsOnId: String? = nil
+        var operationId: UUID? = nil
     }
 
     enum TransactionalOperationStagingError: Error {
@@ -1275,8 +1277,9 @@ final class SyncEngine {
                 changedFields: Array(spec.changedFields.keys),
                 previousValues: nil,
                 priority: 1,
-                dependsOnId: nil
+                dependsOnId: spec.dependsOnId
             )
+            if let operationId = spec.operationId { operation.id = operationId }
             operation.createdAt = nextCreatedAt
             nextCreatedAt = Date(
                 timeIntervalSinceReferenceDate:
@@ -1568,7 +1571,8 @@ final class SyncEngine {
         let stale = allFailed.filter { op in
             // A durable stage command retains its original authority and receipt.
             // Generic legacy cleanup cannot erase its recovery custody.
-            guard op.operationType != SiteVisitSyncOperation.stageOperationType else { return false }
+            guard op.operationType != SiteVisitSyncOperation.stageOperationType,
+                  !ProjectReopenSync.preservesOrdering(op) else { return false }
             return (op.lastError?.contains("Not yet connected to repositories") == true) ||
                 (op.retryCount >= 20)
         }
@@ -2925,6 +2929,7 @@ final class SyncEngine {
             for operation in operations where
                 operation.entityType == SyncEntityType.project.rawValue
                     && operation.entityId.lowercased() == canonicalID
+                    && !ProjectReopenSync.isReopen(operation)
                     && ["pending", "inProgress", "failed"].contains(operation.status)
             {
                 guard let payload = Self.payload(
@@ -3128,6 +3133,13 @@ final class SyncEngine {
                     let operations = try modelContext.fetch(
                         FetchDescriptor<SyncOperation>()
                     )
+                    if ProjectReopenSync.isReopen(persistedOperation), operations.contains(where: {
+                        $0.dependsOnId?.lowercased() == persistedOperation.id.uuidString.lowercased()
+                            && TaskLifecycleSync.unresolvedStatuses.contains($0.status)
+                    }) {
+                        rejectionReason = "scheduled work still depends on this project reopening"
+                        return
+                    }
                     if let taskTypePlan =
                         TaskTypeMutationSync.discardPlanIfHandled(
                             persistedOperation,
@@ -3421,6 +3433,10 @@ final class SyncEngine {
         // Predicate-free by rule (see ClientLeadAutocreateQueue.syncOperations):
         // a #Predicate fetch of SyncOperation traps on a never-populated table.
         let allOperations = (try? modelContext.fetch(FetchDescriptor<SyncOperation>())) ?? []
+        let liveDependencyIds = Set(allOperations.compactMap { operation -> String? in
+            guard TaskLifecycleSync.unresolvedStatuses.contains(operation.status) else { return nil }
+            return operation.dependsOnId?.lowercased()
+        })
         let clientCreateIds = Set(
             allOperations
                 .filter { $0.entityType == SyncEntityType.client.rawValue && $0.operationType == "create" }
@@ -3441,6 +3457,8 @@ final class SyncEngine {
                 // build and this loop must not have its fresh attempt deleted.
                 let targets = allOperations.filter {
                     ids.contains($0.id) && ($0.status == "failed" || $0.status == "parked")
+                        && !ProjectReopenSync.preservesOrdering($0)
+                        && !liveDependencyIds.contains($0.id.uuidString.lowercased())
                 }
                 guard !targets.isEmpty else { continue }
                 targets.forEach { modelContext.delete($0) }
@@ -3488,7 +3506,7 @@ final class SyncEngine {
             let liveDependencyIds = Set(
                 allOperations.compactMap { operation -> String? in
                     guard operation.status != "completed" else { return nil }
-                    return operation.dependsOnId
+                    return operation.dependsOnId?.lowercased()
                 }
             )
             var deletedCount = 0
@@ -3496,7 +3514,7 @@ final class SyncEngine {
             for op in completed {
                 if let completedAt = op.completedAt,
                    completedAt < cutoff,
-                   !liveDependencyIds.contains(op.id.uuidString) {
+                   !liveDependencyIds.contains(op.id.uuidString.lowercased()) {
                     modelContext.delete(op)
                     deletedCount += 1
                 }

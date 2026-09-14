@@ -3205,11 +3205,16 @@ final class SyncEngine {
                             discardedIds: discardedIds,
                             in: operations
                         )
+                    let attachmentBaselineRebases = try ProjectNoteMentionEditSync
+                        .attachmentBaselineRebasesForDiscard(
+                            discardedIds: discardedIds,
+                            in: operations
+                        )
                     let touchedIds = discardedIds.union(
                         dependencyRewires.map {
                             $0.operation.id
                         }
-                    )
+                    ).union(attachmentBaselineRebases.map { $0.operation.id })
                     let hasExecutingDiscard = operations.contains {
                         touchedIds.contains($0.id)
                             && (
@@ -3280,17 +3285,21 @@ final class SyncEngine {
                             noteMutation: noteMutation,
                             operations: operations,
                             discardedIds: discardedIds,
-                            dependencyRewires: dependencyRewires
+                            dependencyRewires: dependencyRewires,
+                            attachmentBaselineRebases: attachmentBaselineRebases
                         )
                     ProjectNoteMentionEditSync.applyDiscardRewires(
                         dependencyRewires
+                    )
+                    ProjectNoteMentionEditSync.applyDiscardAttachmentBaselineRebases(
+                        attachmentBaselineRebases
                     )
                     if let reconciledState, let reconciledNote {
                         reconciledNote.content = reconciledState.content
                         reconciledNote.mentionedUserIds =
                             reconciledState.mentionedUserIds
-                        // nil means the discarded edit never touched the
-                        // note's photos, so leave them exactly as they are.
+                        // nil means cancellation owns no media mutation.
+                        // Preserve photos received independently of text edits.
                         if let attachments = reconciledState.attachments {
                             reconciledNote.attachments = attachments
                         }

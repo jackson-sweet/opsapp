@@ -4421,6 +4421,272 @@ final class ProjectNoteMentionEditTests: XCTestCase {
         )
     }
 
+    // MARK: - Attachment ownership across mixed edit chains
+
+    func testDiscardRemovedAttachmentWithLaterTextEditRestoresPhotos() throws {
+        let h = try attachmentDiscardHarness()
+        let media = try queueAttachmentDiscardEdit(h, sequence: 1, attachments: ["a"])
+        let text = try queueAttachmentDiscardEdit(h, sequence: 2)
+
+        h.dataController.syncEngine.cancelOperation(media)
+
+        XCTAssertEqual(try attachmentDiscardNote(h).attachments, ["a", "b", "c"])
+        XCTAssertEqual(try attachmentDiscardNote(h).content, "Edit 2")
+        XCTAssertNil(try decodedPayload(text)[ProjectNoteMentionEditSync.attachmentsPayloadKey])
+    }
+
+    func testDiscardRemovedAttachmentWithEarlierTextEditRestoresPhotos() throws {
+        let h = try attachmentDiscardHarness()
+        _ = try queueAttachmentDiscardEdit(h, sequence: 1)
+        let media = try queueAttachmentDiscardEdit(h, sequence: 2, attachments: ["a"])
+
+        h.dataController.syncEngine.cancelOperation(media)
+
+        XCTAssertEqual(try attachmentDiscardNote(h).attachments, ["a", "b", "c"])
+        XCTAssertEqual(try attachmentDiscardNote(h).content, "Edit 1")
+    }
+
+    func testDiscardTextOnlyEditPreservesNewerInboundAttachments() throws {
+        let h = try attachmentDiscardHarness()
+        let completedMedia = try queueAttachmentDiscardEdit(h, sequence: 1, attachments: ["a"])
+        completedMedia.status = "completed"
+        h.note.attachments = ["server-photo"]
+        try h.context.save()
+        let text = try queueAttachmentDiscardEdit(h, sequence: 2)
+
+        h.dataController.syncEngine.cancelOperation(text)
+
+        XCTAssertEqual(try attachmentDiscardNote(h).attachments, ["server-photo"])
+    }
+
+    func testDiscardMediaUsesCapturedBaselineOverOlderCompletedMedia() throws {
+        let h = try attachmentDiscardHarness()
+        let completedMedia = try queueAttachmentDiscardEdit(h, sequence: 1, attachments: ["a"])
+        completedMedia.status = "completed"
+        h.note.attachments = ["server-photo", "newer-photo"]
+        try h.context.save()
+        let media = try queueAttachmentDiscardEdit(h, sequence: 2, attachments: ["server-photo"])
+
+        h.dataController.syncEngine.cancelOperation(media)
+
+        XCTAssertEqual(try attachmentDiscardNote(h).attachments, ["server-photo", "newer-photo"])
+    }
+
+    func testDiscardMediaKeepsEarlierPendingMediaIntent() throws {
+        let h = try attachmentDiscardHarness()
+        _ = try queueAttachmentDiscardEdit(h, sequence: 1, attachments: ["a", "b"])
+        _ = try queueAttachmentDiscardEdit(h, sequence: 2)
+        let media = try queueAttachmentDiscardEdit(h, sequence: 3, attachments: ["a"])
+
+        h.dataController.syncEngine.cancelOperation(media)
+
+        XCTAssertEqual(try attachmentDiscardNote(h).attachments, ["a", "b"])
+        XCTAssertEqual(try attachmentDiscardNote(h).content, "Edit 2")
+    }
+
+    func testDiscardMediaKeepsLaterMediaIntentBehindTextEdit() throws {
+        let h = try attachmentDiscardHarness()
+        let media = try queueAttachmentDiscardEdit(h, sequence: 1, attachments: ["a", "b"])
+        _ = try queueAttachmentDiscardEdit(h, sequence: 2, attachments: ["a"])
+        _ = try queueAttachmentDiscardEdit(h, sequence: 3)
+
+        h.dataController.syncEngine.cancelOperation(media)
+
+        XCTAssertEqual(try attachmentDiscardNote(h).attachments, ["a"])
+        XCTAssertEqual(try attachmentDiscardNote(h).content, "Edit 3")
+    }
+
+    func testDiscardAllMediaEditsRestoresEarliestBaseline() throws {
+        let h = try attachmentDiscardHarness()
+        let first = try queueAttachmentDiscardEdit(h, sequence: 1, attachments: ["a", "b"])
+        let last = try queueAttachmentDiscardEdit(h, sequence: 2, attachments: ["a"])
+        let operations = try h.context.fetch(FetchDescriptor<SyncOperation>())
+
+        let state = try XCTUnwrap(ProjectNoteMentionEditSync.reconciledNoteStateAfterDiscard(
+            last, discardedIds: [first.id, last.id], in: operations
+        ))
+
+        XCTAssertEqual(state.attachments, ["a", "b", "c"])
+    }
+
+    func testMediaDiscardOrderingUsesOperationUUIDForEqualTimes() throws {
+        let h = try attachmentDiscardHarness()
+        let first = try queueAttachmentDiscardEdit(h, sequence: 1, attachments: ["a", "b"])
+        let last = try queueAttachmentDiscardEdit(h, sequence: 2, attachments: ["a"])
+        first.id = UUID(uuidString: "00000000-0000-4000-8000-000000000001")!
+        last.id = UUID(uuidString: "00000000-0000-4000-8000-000000000002")!
+        last.createdAt = first.createdAt
+        let operations = [last, first]
+
+        let firstDiscard = try XCTUnwrap(ProjectNoteMentionEditSync.reconciledNoteStateAfterDiscard(
+            first, discardedIds: [first.id], in: operations
+        ))
+        let allDiscard = try XCTUnwrap(ProjectNoteMentionEditSync.reconciledNoteStateAfterDiscard(
+            last, discardedIds: [first.id, last.id], in: operations
+        ))
+
+        XCTAssertEqual(firstDiscard.attachments, ["a"])
+        XCTAssertEqual(allDiscard.attachments, ["a", "b", "c"])
+    }
+
+    func testSequentialMediaDiscardsThroughTextRestoreOriginalPhotos() throws {
+        let h = try attachmentDiscardHarness()
+        let first = try queueAttachmentDiscardEdit(h, sequence: 1, attachments: ["a", "b"])
+        _ = try queueAttachmentDiscardEdit(h, sequence: 2)
+        let last = try queueAttachmentDiscardEdit(h, sequence: 3, attachments: ["a"])
+        let originalLastPayload = try decodedPayload(last)
+
+        h.dataController.syncEngine.cancelOperation(first)
+
+        XCTAssertEqual(try attachmentDiscardNote(h).attachments, ["a"])
+        let surviving = try XCTUnwrap(h.context.fetch(FetchDescriptor<SyncOperation>()).first { $0.id == last.id })
+        let survivingPayload = try decodedPayload(surviving)
+        XCTAssertEqual(survivingPayload[ProjectNoteMentionEditSync.previousAttachmentsPayloadKey] as? [String], ["a", "b", "c"])
+        for key in [ProjectNoteMentionEditSync.noteIdPayloadKey, ProjectNoteMentionEditSync.eventIdPayloadKey, ProjectNoteMentionEditSync.contentPayloadKey] {
+            XCTAssertEqual(survivingPayload[key] as? String, originalLastPayload[key] as? String)
+        }
+        XCTAssertEqual(survivingPayload[ProjectNoteMentionEditSync.attachmentsPayloadKey] as? [String], ["a"])
+
+        h.dataController.syncEngine.cancelOperation(surviving)
+
+        XCTAssertEqual(try attachmentDiscardNote(h).attachments, ["a", "b", "c"])
+        XCTAssertEqual(try attachmentDiscardNote(h).content, "Edit 2")
+    }
+
+    func testFailedMediaDiscardRestoresRebasedPayload() throws {
+        let h = try attachmentDiscardHarness()
+        let first = try queueAttachmentDiscardEdit(h, sequence: 1, attachments: ["a", "b"])
+        _ = try queueAttachmentDiscardEdit(h, sequence: 2)
+        _ = try queueAttachmentDiscardEdit(h, sequence: 3, attachments: ["a"])
+        let before = try currentDiscardState(noteId: h.note.id, context: h.context)
+        h.dataController.syncEngine.projectNoteDiscardFailureInjector = { throw ForcedDiscardFailure.stop }
+        defer { h.dataController.syncEngine.projectNoteDiscardFailureInjector = nil }
+
+        h.dataController.syncEngine.cancelOperation(first)
+
+        let after = try currentDiscardState(noteId: h.note.id, context: h.context)
+        XCTAssertEqual(after.note, before.note)
+        XCTAssertEqual(after.operations.map(\.id), before.operations.map(\.id))
+        for (actual, original) in zip(after.operations, before.operations) {
+            XCTAssertEqual(actual.dependsOnId, original.dependsOnId)
+            XCTAssertEqual(actual.status, original.status)
+            let actualPayload = try XCTUnwrap(JSONSerialization.jsonObject(with: actual.payload) as? [String: Any])
+            let originalPayload = try XCTUnwrap(JSONSerialization.jsonObject(with: original.payload) as? [String: Any])
+            XCTAssertTrue(NSDictionary(dictionary: actualPayload).isEqual(to: originalPayload))
+        }
+    }
+
+    func testFailedMediaDiscardPreservesConcurrentSurvivingPayloadMetadata() throws {
+        let h = try attachmentDiscardHarness()
+        let first = try queueAttachmentDiscardEdit(h, sequence: 1, attachments: ["a", "b"])
+        _ = try queueAttachmentDiscardEdit(h, sequence: 2)
+        let last = try queueAttachmentDiscardEdit(h, sequence: 3, attachments: ["a"])
+        let lastId = last.id
+        let otherContext = ModelContext(h.context.container)
+        var didCommitMetadata = false
+        h.dataController.syncEngine.projectNoteDiscardFailureInjector = {
+            try otherContext.transaction {
+                let operation = try XCTUnwrap(otherContext.fetch(FetchDescriptor<SyncOperation>()).first { $0.id == lastId })
+                var payload = try self.decodedPayload(operation)
+                payload[ProjectNoteMentionEditSync.previousUpdatedAtPayloadKey] = 1_760_000_999.0
+                payload["recovery_annotation"] = "preserve independent metadata"
+                operation.payload = try JSONSerialization.data(withJSONObject: payload)
+            }
+            didCommitMetadata = true
+            throw ForcedDiscardFailure.stop
+        }
+        defer { h.dataController.syncEngine.projectNoteDiscardFailureInjector = nil }
+
+        h.dataController.syncEngine.cancelOperation(first)
+
+        XCTAssertTrue(didCommitMetadata)
+        let verification = ModelContext(h.context.container)
+        let survivor = try XCTUnwrap(verification.fetch(FetchDescriptor<SyncOperation>()).first { $0.id == lastId })
+        let payload = try decodedPayload(survivor)
+        XCTAssertEqual(payload[ProjectNoteMentionEditSync.previousAttachmentsPayloadKey] as? [String], ["a", "b"])
+        XCTAssertEqual(payload[ProjectNoteMentionEditSync.previousUpdatedAtPayloadKey] as? Double, 1_760_000_999.0)
+        XCTAssertEqual(payload["recovery_annotation"] as? String, "preserve independent metadata")
+        XCTAssertEqual(payload[ProjectNoteMentionEditSync.attachmentsPayloadKey] as? [String], ["a"])
+        XCTAssertEqual(try attachmentDiscardNote(h).attachments, ["a"])
+    }
+
+    func testFailedMediaDiscardPreservesAbsentAndNullRollbackFields() throws {
+        let key = ProjectNoteMentionEditSync.previousAttachmentsPayloadKey
+        let legacyFields: [[String: Any]] = [[:], [key: NSNull()]]
+        for legacyField in legacyFields {
+            let h = try attachmentDiscardHarness()
+            let first = try queueAttachmentDiscardEdit(h, sequence: 1, attachments: ["a", "b"])
+            let last = try queueAttachmentDiscardEdit(h, sequence: 2, attachments: ["a"])
+            var payload = try decodedPayload(last)
+            payload.removeValue(forKey: key)
+            payload.merge(legacyField) { _, incoming in incoming }
+            last.payload = try JSONSerialization.data(withJSONObject: payload)
+            try h.context.save()
+            h.dataController.syncEngine.projectNoteDiscardFailureInjector = { throw ForcedDiscardFailure.stop }
+            defer { h.dataController.syncEngine.projectNoteDiscardFailureInjector = nil }
+
+            h.dataController.syncEngine.cancelOperation(first)
+
+            let context = ModelContext(h.context.container)
+            let survivor = try XCTUnwrap(context.fetch(FetchDescriptor<SyncOperation>()).first { $0.id == last.id })
+            let restored = try decodedPayload(survivor)
+            XCTAssertEqual(restored.keys.contains(key), legacyField.keys.contains(key))
+            if legacyField.keys.contains(key) { XCTAssertTrue(restored[key] is NSNull) }
+            XCTAssertEqual(restored[ProjectNoteMentionEditSync.attachmentsPayloadKey] as? [String], ["a"])
+        }
+    }
+
+    func testMediaDiscardDoesNotRebaseExecutingSuccessor() throws {
+        let h = try attachmentDiscardHarness()
+        let first = try queueAttachmentDiscardEdit(h, sequence: 1, attachments: ["a", "b"])
+        _ = try queueAttachmentDiscardEdit(h, sequence: 2)
+        let last = try queueAttachmentDiscardEdit(h, sequence: 3, attachments: ["a"])
+        last.status = "inProgress"
+        try h.context.save()
+        let before = try currentDiscardState(noteId: h.note.id, context: h.context)
+
+        h.dataController.syncEngine.cancelOperation(first)
+
+        XCTAssertEqual(try currentDiscardState(noteId: h.note.id, context: h.context), before)
+    }
+
+    private typealias AttachmentDiscardHarness = (
+        dataController: DataController, context: ModelContext, note: ProjectNote
+    )
+
+    private func attachmentDiscardHarness() throws -> AttachmentDiscardHarness {
+        let harness = try makeHarness(previousMentionIds: [])
+        harness.note.attachments = ["a", "b", "c"]
+        try harness.context.save()
+        return harness
+    }
+
+    private func queueAttachmentDiscardEdit(
+        _ harness: AttachmentDiscardHarness,
+        sequence: Int,
+        attachments: [String]? = nil
+    ) throws -> SyncOperation {
+        let id = String(format: "a0000000-0000-4000-8000-%012d", sequence)
+        XCTAssertTrue(harness.dataController.updateProjectNoteContent(
+            note: harness.note, content: "Edit \(sequence)", mentionedUserIds: [],
+            mentionEventId: id, attachments: attachments
+        ))
+        let operation = try XCTUnwrap(harness.context.fetch(FetchDescriptor<SyncOperation>()).first {
+            ProjectNoteMentionEditSync.isUpdateOperation($0) && mentionEventId(in: $0) == id
+        })
+        operation.createdAt = Date(timeIntervalSince1970: 1_760_000_000 + Double(sequence))
+        try harness.context.save()
+        return operation
+    }
+
+    private func attachmentDiscardNote(
+        _ harness: AttachmentDiscardHarness
+    ) throws -> (attachments: [String], content: String) {
+        let context = ModelContext(harness.context.container)
+        let note = try XCTUnwrap(ProjectNoteMentionEditSync.fetchProjectNote(matching: harness.note.id, in: context))
+        return (note.attachments, note.content)
+    }
+
     private var teamMembers: [TeamMember] {
         [
             TeamMember(id: aliceId, firstName: "Alice", lastName: "Able", role: "Crew"),

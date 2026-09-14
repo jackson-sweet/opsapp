@@ -1321,10 +1321,26 @@ enum ProjectNoteMentionEditSync {
         let dependsOnId: String?
     }
 
+    struct DiscardAttachmentBaselineSnapshot: Equatable {
+        let operationId: UUID
+        /// One-key JSON object, or {} when absent. Retains legacy null/shape
+        /// semantics without owning any other field in a surviving payload.
+        let previousAttachmentsField: Data
+    }
+
     struct DiscardRecoverySnapshot: Equatable {
         let discardedOperations: [DiscardOperationSnapshot]
         let rewiredDependencies: [DiscardDependencySnapshot]
+        let attachmentBaselines: [DiscardAttachmentBaselineSnapshot]
         let note: DiscardNoteRecoverySnapshot?
+    }
+
+    /// Only rollback metadata changes. The outgoing request/event identity is
+    /// unchanged, including when the surviving operation is retried later.
+    struct DiscardAttachmentBaselineRebase {
+        let operation: SyncOperation
+        let replacementPayload: Data
+        let previousAttachmentsField: Data
     }
 
     struct DiscardDependencyRewire {
@@ -1624,6 +1640,97 @@ enum ProjectNoteMentionEditSync {
         }
     }
 
+    /// Carry the pre-discard photo baseline past removed media edits. Without
+    /// this, discarding M1 then M2 would let M2 restore M1's cancelled removal.
+    /// Text-only rows are not media boundaries; the next explicit media edit
+    /// inherits the baseline. Request fields are never rebased.
+    static func attachmentBaselineRebasesForDiscard(
+        discardedIds: Set<UUID>,
+        in operations: [SyncOperation]
+    ) throws -> [DiscardAttachmentBaselineRebase] {
+        let affectedNoteIds = Set(operations.compactMap { operation -> String? in
+            guard discardedIds.contains(operation.id),
+                  isUpdateOperation(operation),
+                  payloadObject(from: operation)?[attachmentsPayloadKey] is [String] else {
+                return nil
+            }
+            return operation.entityId.lowercased()
+        })
+        var rebases: [DiscardAttachmentBaselineRebase] = []
+        for noteId in affectedNoteIds.sorted() {
+            var discardedBaseline: [String]?
+            for operation in orderedAttachmentEdits(for: noteId, in: operations) {
+                guard var payload = payloadObject(from: operation) else { continue }
+                if discardedIds.contains(operation.id) {
+                    if discardedBaseline == nil {
+                        discardedBaseline = payload[previousAttachmentsPayloadKey] as? [String]
+                    }
+                    continue
+                }
+                if let discardedBaseline,
+                   operation.status != "completed",
+                   payload[previousAttachmentsPayloadKey] as? [String] != discardedBaseline {
+                    let previousField = attachmentBaselineField(in: payload)
+                    payload[previousAttachmentsPayloadKey] = discardedBaseline
+                    rebases.append(DiscardAttachmentBaselineRebase(
+                        operation: operation,
+                        replacementPayload: try JSONSerialization.data(withJSONObject: payload),
+                        previousAttachmentsField: try JSONSerialization.data(withJSONObject: previousField)
+                    ))
+                }
+                // A surviving media request supplies the next baseline itself.
+                discardedBaseline = nil
+            }
+        }
+        return rebases
+    }
+
+    private static func attachmentBaselineField(in payload: [String: Any]) -> [String: Any] {
+        guard let value = payload[previousAttachmentsPayloadKey] else { return [:] }
+        return [previousAttachmentsPayloadKey: value]
+    }
+
+    static func applyDiscardAttachmentBaselineRebases(
+        _ rebases: [DiscardAttachmentBaselineRebase]
+    ) {
+        for rebase in rebases {
+            rebase.operation.payload = rebase.replacementPayload
+        }
+    }
+
+    private static func orderedAttachmentEdits(
+        for noteId: String,
+        in operations: [SyncOperation]
+    ) -> [SyncOperation] {
+        operations.filter {
+            isUpdateOperation($0)
+                && $0.entityId.lowercased() == noteId.lowercased()
+                && payloadObject(from: $0)?[attachmentsPayloadKey] is [String]
+        }.sorted {
+            if $0.createdAt != $1.createdAt { return $0.createdAt < $1.createdAt }
+            return $0.id.uuidString < $1.id.uuidString
+        }
+    }
+
+    /// Cancellation owns photos only if it removes an explicit media edit.
+    /// Start before the earliest discarded media edit, then use the newest
+    /// surviving media request after it. Earlier completed media events must
+    /// not overwrite newer inbound photos captured in that baseline.
+    private static func reconciledAttachmentsAfterDiscard(
+        noteId: String,
+        discardedIds: Set<UUID>,
+        in operations: [SyncOperation]
+    ) -> [String]? {
+        let edits = orderedAttachmentEdits(for: noteId, in: operations)
+        guard let firstDiscarded = edits.firstIndex(where: { discardedIds.contains($0.id) }) else {
+            return nil
+        }
+        if let surviving = edits[firstDiscarded...].last(where: { !discardedIds.contains($0.id) }) {
+            return payloadObject(from: surviving)?[attachmentsPayloadKey] as? [String]
+        }
+        return payloadObject(from: edits[firstDiscarded])?[previousAttachmentsPayloadKey] as? [String]
+    }
+
     /// Captures every queue field plus the complete note before cancellation
     /// mutates registered SwiftData models. This covers dependency rewires,
     /// note reconciliation/tombstones, and every object scheduled for deletion.
@@ -1650,7 +1757,8 @@ enum ProjectNoteMentionEditSync {
         noteMutation: DiscardNoteMutation?,
         operations: [SyncOperation],
         discardedIds: Set<UUID>,
-        dependencyRewires: [DiscardDependencyRewire]
+        dependencyRewires: [DiscardDependencyRewire],
+        attachmentBaselineRebases: [DiscardAttachmentBaselineRebase]
     ) -> DiscardRecoverySnapshot {
         let noteSnapshot: DiscardNoteRecoverySnapshot?
         if let note, let noteMutation {
@@ -1695,6 +1803,12 @@ enum ProjectNoteMentionEditSync {
                     $0.operationId.uuidString
                         < $1.operationId.uuidString
                 },
+            attachmentBaselines: attachmentBaselineRebases.map {
+                DiscardAttachmentBaselineSnapshot(
+                    operationId: $0.operation.id,
+                    previousAttachmentsField: $0.previousAttachmentsField
+                )
+            }.sorted { $0.operationId.uuidString < $1.operationId.uuidString },
             note: noteSnapshot
         )
     }
@@ -1728,6 +1842,24 @@ enum ProjectNoteMentionEditSync {
         for dependencySnapshot in snapshot.rewiredDependencies {
             operationsById[dependencySnapshot.operationId]?.dependsOnId =
                 dependencySnapshot.dependsOnId
+        }
+
+        for baselineSnapshot in snapshot.attachmentBaselines {
+            guard let operation = operationsById[baselineSnapshot.operationId],
+                  var payload = payloadObject(from: operation),
+                  let previousField = try JSONSerialization.jsonObject(
+                    with: baselineSnapshot.previousAttachmentsField
+                  ) as? [String: Any] else { continue }
+            // Another context may have committed unrelated rollback metadata.
+            // Restore only our key and leave that context's other fields intact.
+            guard !NSDictionary(dictionary: attachmentBaselineField(in: payload))
+                .isEqual(to: previousField) else { continue }
+            if let value = previousField[previousAttachmentsPayloadKey] {
+                payload[previousAttachmentsPayloadKey] = value
+            } else {
+                payload.removeValue(forKey: previousAttachmentsPayloadKey)
+            }
+            operation.payload = try JSONSerialization.data(withJSONObject: payload)
         }
 
         if let noteSnapshot = snapshot.note {
@@ -1772,6 +1904,9 @@ enum ProjectNoteMentionEditSync {
     ) -> ReconciledNoteState? {
         guard isUpdateOperation(operation) else { return nil }
         let noteId = operation.entityId.lowercased()
+        let attachments = reconciledAttachmentsAfterDiscard(
+            noteId: noteId, discardedIds: discardedIds, in: operations
+        )
         let unresolvedStatuses = Set([
             "pending",
             "inProgress",
@@ -1810,9 +1945,9 @@ enum ProjectNoteMentionEditSync {
             return ReconciledNoteState(
                 content: content,
                 mentionedUserIds: mentionedUserIds,
-                // Absent means the surviving edit was text-only, so the note's
-                // photos are not this operation's business to restate.
-                attachments: payload[attachmentsPayloadKey] as? [String],
+                // Media has independent ownership and can come from a different
+                // surviving operation than the latest text/mention replacement.
+                attachments: attachments,
                 needsSync:
                     survivingUpdate.status != "completed"
                         || hasSurvivingSameNoteWrite,
@@ -1839,12 +1974,7 @@ enum ProjectNoteMentionEditSync {
         return ReconciledNoteState(
             content: content,
             mentionedUserIds: mentionedUserIds,
-            // Only put the photos back when this edit actually moved them.
-            // Rows queued before bug f5f57917 carry neither key and correctly
-            // reconcile to "attachments unchanged".
-            attachments: payload.keys.contains(attachmentsPayloadKey)
-                ? (payload[previousAttachmentsPayloadKey] as? [String] ?? [])
-                : nil,
+            attachments: attachments,
             needsSync:
                 (payload[previousNeedsSyncPayloadKey] as? Bool ?? false)
                     || hasSurvivingSameNoteWrite,

@@ -28,6 +28,31 @@
 
 import Foundation
 import Supabase
+import FirebaseAuth
+import FirebaseCore
+
+/// The OPS row identity and Firebase transport identity are different values.
+/// Snapshot all three before suspension so delayed diagnostics cannot move to
+/// another account while logout/login updates those stores.
+struct AutoBugReportIdentity: Equatable, Sendable {
+    let companyID: String
+    let userID: String
+    let firebaseUserID: String
+
+    init(companyID: String, userID: String, firebaseUserID: String) {
+        self.companyID = companyID.lowercased()
+        self.userID = userID.lowercased()
+        self.firebaseUserID = firebaseUserID
+    }
+
+    static func current() -> AutoBugReportIdentity? {
+        guard FirebaseApp.app() != nil,
+              let firebaseID = Auth.auth().currentUser?.uid, !firebaseID.isEmpty,
+              let userID = UserDefaults.standard.string(forKey: "currentUserId"), !userID.isEmpty,
+              let companyID = UserDefaults.standard.string(forKey: "currentUserCompanyId"), !companyID.isEmpty else { return nil }
+        return Self(companyID: companyID, userID: userID, firebaseUserID: firebaseID)
+    }
+}
 
 @MainActor
 final class AutoBugReporter {
@@ -65,7 +90,7 @@ final class AutoBugReporter {
     private static let clientDedupeTTL: TimeInterval = 3600 // 1 hour
 
     /// In-memory cache of dedupe hashes that have been SUCCESSFULLY reported
-    /// to the RPC. Keys are the same SHA-256 hashes the server computes;
+    /// to the RPC. Keys include company plus the server's logical hash inputs;
     /// values are the timestamp of the last successful send. Set ONLY after
     /// the RPC round-trip returns — a failed RPC leaves the slot empty so
     /// the next fire can retry. Cleared on app cold-launch.
@@ -73,10 +98,33 @@ final class AutoBugReporter {
 
     /// Suppressed-fire counts per hash. Incremented every time the TTL guard
     /// skips an RPC call, AND every time we attempt an RPC (so a failed
-    /// attempt doesn't lose its count). Cleared on successful RPC.
+    /// attempt doesn't lose its count). Successful RPCs subtract their batch.
     private var pendingCount: [String: Int] = [:]
 
-    private init() {}
+    struct Request {
+        let identity: AutoBugReportIdentity
+        let screen: String
+        let suspectedFile: String
+        let errorCode: String
+        let summary: String
+        let metadata: [String: Any]
+        let fireCount: Int
+    }
+
+    private let currentIdentity: () -> AutoBugReportIdentity?
+    private let now: () -> Date
+    private let transport: ((Request) async -> Bool)?
+    private var inFlight: Set<String> = []
+
+    init(
+        currentIdentity: @escaping () -> AutoBugReportIdentity? = { AutoBugReportIdentity.current() },
+        now: @escaping () -> Date = Date.init,
+        transport: ((Request) async -> Bool)? = nil
+    ) {
+        self.currentIdentity = currentIdentity
+        self.now = now
+        self.transport = transport
+    }
 
     // MARK: - Public entry
 
@@ -101,50 +149,42 @@ final class AutoBugReporter {
         suspectedFile: String,
         errorCode: String,
         summary: String,
-        metadata: [String: Any] = [:]
+        metadata: [String: Any] = [:],
+        expectedIdentity: AutoBugReportIdentity? = nil
     ) async {
-        let hash = clientDedupeHash(
+        guard !Task.isCancelled, let identity = currentIdentity(),
+              expectedIdentity == nil || expectedIdentity == identity else { return }
+        // The server's active-ticket key includes company. Client suppression
+        // must use that same boundary, including for existing photo producers.
+        let hash = identity.companyID + ":" + clientDedupeHash(
             category: Self.defaultCategory,
             screen: screen,
             suspectedFile: suspectedFile,
             errorCode: errorCode
         )
-
-        // Within the 1-hour TTL since the last SUCCESSFUL send — accumulate
-        // the count but skip the RPC. The next out-of-TTL fire will send
-        // the accumulated burst as a single p_fire_count increment so the
-        // bug_reports.times_reported column reflects actual occurrences.
+        pendingCount[hash, default: 0] += 1
         if let lastSend = lastSuccessfulSend[hash],
-           Date().timeIntervalSince(lastSend) < Self.clientDedupeTTL {
-            pendingCount[hash, default: 0] += 1
-            return
+           now().timeIntervalSince(lastSend) < Self.clientDedupeTTL { return }
+        guard !inFlight.contains(hash) else { return }
+        let fireCount = pendingCount[hash] ?? 1
+        inFlight.insert(hash)
+        defer { inFlight.remove(hash) }
+        let request = Request(identity: identity, screen: screen, suspectedFile: suspectedFile,
+                              errorCode: errorCode, summary: summary, metadata: metadata, fireCount: fireCount)
+        // Last check before the transport begins. Never reinterpret a captured
+        // scope using whichever account happens to be signed in after an await.
+        guard identity == currentIdentity(), !Task.isCancelled else { return }
+        let success: Bool
+        if let transport {
+            success = await transport(request)
+        } else {
+            success = await postToRPC(request)
         }
-
-        // Fire count = accumulated suppressed fires + this one.
-        let suppressed = pendingCount[hash] ?? 0
-        let fireCount = suppressed + 1
-
-        // Pre-stage the count BEFORE the RPC. If the RPC fails, the slot
-        // stays at this value so the next retry resends it. If it succeeds,
-        // we clear the slot in the success branch below. Either way, no
-        // count is ever lost to a transient RPC failure.
-        pendingCount[hash] = fireCount
-
-        let success = await postToRPC(
-            screen: screen,
-            suspectedFile: suspectedFile,
-            errorCode: errorCode,
-            summary: summary,
-            metadata: metadata,
-            fireCount: fireCount
-        )
-
         if success {
-            // Mark only on RPC success — prevents the HIGH-2 case where a
-            // failed call would still suppress the next fire for 1h. And
-            // clear the pending count: the server has now absorbed it.
-            lastSuccessfulSend[hash] = Date()
-            pendingCount[hash] = 0
+            lastSuccessfulSend[hash] = now()
+            // Calls that arrived while this RPC was suspended belong to the
+            // next burst; clearing the whole slot would erase those occurrences.
+            pendingCount[hash] = max(0, (pendingCount[hash] ?? 0) - fireCount)
         }
     }
 
@@ -212,14 +252,17 @@ final class AutoBugReporter {
     /// throws — the entire point of this helper is that it never breaks the
     /// caller's retry / UI flow. A `false` return tells the caller (report())
     /// to leave the suppression cache un-set so the next fire can retry.
-    private func postToRPC(
-        screen: String,
-        suspectedFile: String,
-        errorCode: String,
-        summary: String,
-        metadata: [String: Any],
-        fireCount: Int
-    ) async -> Bool {
+    private func postToRPC(_ request: Request) async -> Bool {
+        // An app-hosted test must never create a real operational ticket.
+        // Tests exercise delivery through the injected transport above.
+        guard NSClassFromString("XCTestCase") == nil,
+              request.identity == currentIdentity(), !Task.isCancelled else { return false }
+        let screen = request.screen
+        let suspectedFile = request.suspectedFile
+        let errorCode = request.errorCode
+        let summary = request.summary
+        let metadata = request.metadata
+        let fireCount = request.fireCount
         let deviceInfo = BugReportCaptureService.shared.captureDeviceInfo()
         let networkType = currentNetworkType()
 

@@ -19,14 +19,17 @@ final class OutboundProcessor {
     private let projectTaskSyncingFactory: (String) -> ProjectTaskSyncing
     typealias RepositoryPush = (String, String, String, [String: Any]) async throws -> Void
     private let repositoryPush: RepositoryPush?
+    private let bugReporter: SyncBugReporter
     private var invalidated = false
 
     init(
         projectTaskSyncingFactory: @escaping (String) -> ProjectTaskSyncing = { TaskRepository(companyId: $0) },
-        repositoryPush: RepositoryPush? = nil
+        repositoryPush: RepositoryPush? = nil,
+        bugReporter: SyncBugReporter = .live
     ) {
         self.projectTaskSyncingFactory = projectTaskSyncingFactory
         self.repositoryPush = repositoryPush
+        self.bugReporter = bugReporter
     }
 
     /// Stop callbacks before the old account's context is cleared/replaced.
@@ -38,7 +41,9 @@ final class OutboundProcessor {
         let context: ModelContext
         let userID: String?
         let companyID: String?
-        init(context: ModelContext) {
+        let reportIdentity: AutoBugReportIdentity?
+        init(context: ModelContext, reportIdentity: AutoBugReportIdentity?) {
+            self.reportIdentity = reportIdentity
             self.container = context.container
             self.context = context
             self.userID = UserDefaults.standard.string(forKey: "currentUserId")?.lowercased()
@@ -81,7 +86,7 @@ final class OutboundProcessor {
         connectivity: ConnectivityManager
     ) async {
         guard !invalidated, !Task.isCancelled else { return }
-        let scope = RunScope(context: context)
+        let scope = RunScope(context: context, reportIdentity: bugReporter.captureIdentity())
         defer { withExtendedLifetime(scope) {} }
         guard isCurrent(scope) else { return }
         var shouldContinueDrain: Bool
@@ -537,7 +542,7 @@ final class OutboundProcessor {
     /// Sets status to "inProgress" before attempting, and updates status/retryCount on completion or failure.
     func executeOperation(_ operation: SyncOperation, context: ModelContext) async throws {
         guard !invalidated, !Task.isCancelled else { throw CancellationError() }
-        let scope = RunScope(context: context)
+        let scope = RunScope(context: context, reportIdentity: bugReporter.captureIdentity())
         defer { withExtendedLifetime(scope) {} }
         guard isCurrent(scope) else { throw CancellationError() }
         guard !DeckEditingSessionRegistry.shared.isHeld(
@@ -731,6 +736,15 @@ final class OutboundProcessor {
                 } else {
                     print("[OutboundProcessor] Parked \(operation.entityType) \(operation.entityId) — server rejected it (permanent); will not auto-retry: \(classified.localizedDescription)")
                 }
+                // Only unresolved custody reaches this reporter. Reconciled
+                // creates/tombstones already returned; locally retired chains
+                // must not manufacture a new bug after successful recovery.
+                if operation.status == "parked", isCurrent(scope, handle: handle) {
+                    bugReporter.reportPermanent(error,
+                        entityType: operation.entityType,
+                        operationType: operation.operationType,
+                        identity: scope.reportIdentity)
+                }
                 AnalyticsService.shared.track(
                     eventType: .error,
                     eventName: "sync_parked",
@@ -820,7 +834,7 @@ final class OutboundProcessor {
         context: ModelContext
     ) async -> Bool {
         guard !invalidated, !Task.isCancelled else { return false }
-        let scope = RunScope(context: context)
+        let scope = RunScope(context: context, reportIdentity: bugReporter.captureIdentity())
         defer { withExtendedLifetime(scope) {} }
         guard isCurrent(scope) else { return false }
         let handle = OperationHandle(operation)
@@ -1029,7 +1043,7 @@ final class OutboundProcessor {
     /// SyncOperation traps against a table that has never held a row.
     func resolveReconcilableParkedOperations(context: ModelContext) async {
         guard !invalidated, !Task.isCancelled else { return }
-        let scope = RunScope(context: context)
+        let scope = RunScope(context: context, reportIdentity: bugReporter.captureIdentity())
         defer { withExtendedLifetime(scope) {} }
         guard isCurrent(scope) else { return }
         let all = (try? context.fetch(FetchDescriptor<SyncOperation>())) ?? []

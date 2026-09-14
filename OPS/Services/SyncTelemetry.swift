@@ -47,13 +47,17 @@ enum SyncTelemetry {
     /// Fire-and-forget log of a sync failure to `app_events`.
     /// Best-effort: any failure here is itself swallowed because we'd otherwise
     /// recurse into the sync error path.
+    @discardableResult
     static func logError(
         entityType: String,
         error: Error,
         isFullSync: Bool,
         companyId: String,
-        userId: String?
-    ) {
+        userId: String?,
+        reportIdentity: AutoBugReportIdentity? = nil,
+        bugReporter: SyncBugReporter = .live,
+        persistEvent: (@Sendable (String, String?, Data) async throws -> Void)? = nil
+    ) -> Task<Void, Never> {
         let event = buildEvent(
             entityType: entityType, error: error,
             isFullSync: isFullSync, companyId: companyId, userId: userId
@@ -61,25 +65,33 @@ enum SyncTelemetry {
         // Console log first — survives even if Supabase write fails.
         print("[SyncTelemetry] sync_entity_failed entity=\(entityType) err=\(error.localizedDescription)")
 
-        Task.detached {
+        if reportIdentity?.companyID == companyId.lowercased(),
+           reportIdentity?.firebaseUserID == userId {
+            bugReporter.reportPermanent(error, entityType: entityType,
+                operationType: "pull", identity: reportIdentity)
+        }
+
+        let writeEvent = persistEvent ?? Self.persistEvent
+        return Task.detached {
             do {
-                struct AppEventInsert: Codable {
-                    let user_id: String?
-                    let company_id: String
-                    let event_name: String
-                    let properties: AnyJSON
-                }
                 let propsJSON = try JSONSerialization.data(withJSONObject: event)
-                let payload = AppEventInsert(
-                    user_id: event["user_id"] as? String,
-                    company_id: companyId,
-                    event_name: "sync_entity_failed",
-                    properties: try JSONDecoder().decode(AnyJSON.self, from: propsJSON)
-                )
-                _ = try await SupabaseService.shared.client.from("app_events").insert(payload).execute()
+                try await writeEvent(companyId, userId, propsJSON)
             } catch {
                 print("[SyncTelemetry] failed to persist failure event: \(error)")
             }
         }
+    }
+
+    private static func persistEvent(companyId: String, userId: String?, properties: Data) async throws {
+        struct AppEventInsert: Codable {
+            let user_id: String?
+            let company_id: String
+            let event_name: String
+            let properties: AnyJSON
+        }
+        let payload = AppEventInsert(user_id: userId, company_id: companyId,
+            event_name: "sync_entity_failed",
+            properties: try JSONDecoder().decode(AnyJSON.self, from: properties))
+        _ = try await SupabaseService.shared.client.from("app_events").insert(payload).execute()
     }
 }

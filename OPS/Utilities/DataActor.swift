@@ -59,6 +59,7 @@ actor DataActor {
     }
 
     private nonisolated let outboundLifetime = OutboundSessionLifetime()
+    private var syncBugReporter = SyncBugReporter.live
     nonisolated func invalidateOutboundWork() { outboundLifetime.invalidate() }
     nonisolated func resumeOutboundWork() { outboundLifetime.resume() }
 
@@ -66,6 +67,7 @@ actor DataActor {
         let generation: UInt64
         let userID: String?
         let companyID: String?
+        let reportIdentity: AutoBugReportIdentity?
     }
     private struct OutboundHandle {
         let model: SyncOperation
@@ -81,7 +83,8 @@ actor DataActor {
         guard SyncExecutionContext.isCurrent, let generation = outboundLifetime.snapshot() else { return nil }
         return OutboundScope(generation: generation,
             userID: UserDefaults.standard.string(forKey: "currentUserId")?.lowercased(),
-            companyID: UserDefaults.standard.string(forKey: "currentUserCompanyId")?.lowercased())
+            companyID: UserDefaults.standard.string(forKey: "currentUserCompanyId")?.lowercased(),
+            reportIdentity: syncBugReporter.captureIdentity())
     }
     private func outboundIsCurrent(_ scope: OutboundScope, handle: OutboundHandle? = nil) -> Bool {
         guard SyncExecutionContext.isCurrent, outboundLifetime.isCurrent(scope.generation),
@@ -122,6 +125,9 @@ actor DataActor {
     }
 
     #if DEBUG
+    func setSyncBugReporterForTesting(_ reporter: SyncBugReporter) {
+        syncBugReporter = reporter
+    }
     private var inboundClientsForTesting: (() async throws -> [SupabaseClientDTO])?
     func setInboundClientsForTesting(_ fetch: @escaping () async throws -> [SupabaseClientDTO]) {
         inboundClientsForTesting = fetch
@@ -482,7 +488,9 @@ actor DataActor {
                     error: error,
                     isFullSync: true,
                     companyId: companyId,
-                    userId: telemetryUserID
+                    userId: telemetryUserID,
+                    reportIdentity: inboundScope.reportIdentity,
+                    bugReporter: syncBugReporter
                 )
             }
         }
@@ -562,7 +570,9 @@ actor DataActor {
                     error: error,
                     isFullSync: false,
                     companyId: companyId,
-                    userId: telemetryUserID
+                    userId: telemetryUserID,
+                    reportIdentity: inboundScope.reportIdentity,
+                    bugReporter: syncBugReporter
                 )
             }
         }
@@ -621,7 +631,9 @@ actor DataActor {
                     error: error,
                     isFullSync: false,
                     companyId: companyId,
-                    userId: telemetryUserID
+                    userId: telemetryUserID,
+                    reportIdentity: inboundScope.reportIdentity,
+                    bugReporter: syncBugReporter
                 )
             }
         }
@@ -5623,6 +5635,12 @@ actor DataActor {
                     print("[DataActor] Retired rejected project-note edit \(operation.entityId) — later authoritative replacement released")
                 } else {
                     print("[DataActor] Parked \(operation.entityType) \(operation.entityId) — server rejected it (permanent); will not auto-retry: \(errorDescription)")
+                }
+                if operation.status == "parked", outboundIsCurrent(scope, handle: handle) {
+                    syncBugReporter.reportPermanent(error,
+                        entityType: entityType,
+                        operationType: operationType,
+                        identity: scope.reportIdentity)
                 }
                 await MainActor.run {
                     AnalyticsService.shared.track(

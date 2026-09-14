@@ -248,6 +248,7 @@ final class InboundProcessor {
         // Reset Spotlight tracker at sync start
         spotlightTracker.reset()
 
+        let reportIdentity = AutoBugReportIdentity.current()
         let capabilities = await CatalogSchemaCapabilityGate.refresh(companyId: companyId)
         let order = Self.syncOrder.filter { capabilities.supportsSync($0) }
         let totalSteps = Double(order.count)
@@ -271,7 +272,8 @@ final class InboundProcessor {
                     error: error,
                     isFullSync: true,
                     companyId: companyId,
-                    userId: SupabaseService.shared.currentUserId
+                    userId: reportIdentity?.firebaseUserID,
+                    reportIdentity: reportIdentity
                 )
             }
         }
@@ -318,6 +320,7 @@ final class InboundProcessor {
         // Reset Spotlight tracker at sync start
         spotlightTracker.reset()
 
+        let reportIdentity = AutoBugReportIdentity.current()
         let capabilities = await CatalogSchemaCapabilityGate.refresh(companyId: companyId)
 
         for entityType in Self.syncOrder {
@@ -337,7 +340,8 @@ final class InboundProcessor {
                     error: error,
                     isFullSync: false,
                     companyId: companyId,
-                    userId: SupabaseService.shared.currentUserId
+                    userId: reportIdentity?.firebaseUserID,
+                    reportIdentity: reportIdentity
                 )
             }
         }

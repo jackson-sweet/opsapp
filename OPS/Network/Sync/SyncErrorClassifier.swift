@@ -53,6 +53,12 @@ enum SyncErrorClassifier {
     /// for errors that only surface via `localizedDescription` (wrapped /
     /// re-thrown), then `.transient` — never park on a guess.
     static func disposition(for error: Error) -> SyncFailureDisposition {
+        // A reopen command can release dependent scheduled work only with its
+        // exact receipt. Invalid persisted identity or an unverifiable response
+        // needs review; timer retries must never weaken that proof boundary.
+        if error is ProjectTaskReopenError {
+            return .permanent
+        }
         if let write = error as? SiteVisitWriteError {
             switch write {
             case .conflict, .legacyPayload: return .permanent

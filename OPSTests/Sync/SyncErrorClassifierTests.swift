@@ -244,6 +244,13 @@ final class SyncErrorClassifierTests: XCTestCase {
         XCTAssertEqual(SyncErrorClassifier.disposition(for: SyncError.encodingFailed(detail: "bad")), .permanent)
     }
 
+    func testProjectTaskReopenIdentityAndReceiptFailuresPark() {
+        for error in [ProjectTaskReopenError.invalidCommand, .companyMismatch, .invalidReceipt] {
+            XCTAssertEqual(SyncErrorClassifier.disposition(for: error), .permanent)
+            XCTAssertEqual(SyncErrorClassifier.disposition(for: SyncError.apiError(error)), .permanent)
+        }
+    }
+
     func testSyncErrorApiErrorRecursesIntoUnderlying() {
         // .apiError / .unknown unwrap to the real transport error.
         XCTAssertEqual(

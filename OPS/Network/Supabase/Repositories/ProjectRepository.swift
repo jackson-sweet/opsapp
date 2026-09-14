@@ -294,6 +294,20 @@ class ProjectRepository {
             .value
     }
 
+    /// Replays the exact durable command through the guarded RPC. Internal
+    /// command metadata never enters the legacy table-update path below.
+    @discardableResult
+    func reopenForTask(_ projectId: String, fields: [String: AnyJSON]) async throws -> ProjectTaskReopenReceipt {
+        let command = try ProjectTaskReopenCommand(
+            projectId: projectId, companyId: companyId, fields: fields
+        )
+        let response = try await client
+            .rpc("reopen_project_for_task", params: command.rpcParameters)
+            .execute()
+            .data
+        return try command.validateReceipt(response)
+    }
+
     func updateFields(_ projectId: String, fields: [String: AnyJSON]) async throws {
         var payload = fields
         payload["updated_at"] = .string(isoNow())

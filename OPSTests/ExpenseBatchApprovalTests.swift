@@ -26,11 +26,8 @@ final class ExpenseBatchApprovalTests: XCTestCase {
         var approvedRows: [String: ExpenseBatchDTO] = [:]
         var lines: [String: [ExpenseDTO]] = [:]
         var approvalGate: CheckedContinuation<Void, Never>?
-        var syncGate: CheckedContinuation<Void, Never>?
         var pauseApproval = false
-        var pauseSync = false
         var approvalStarted: (() -> Void)?
-        var syncStarted: (() -> Void)?
 
         func fetchBatches() async throws -> [ExpenseBatchDTO] {
             consoleBatchReads += 1
@@ -80,12 +77,7 @@ final class ExpenseBatchApprovalTests: XCTestCase {
 
         func triggerAccountingSync(expenseId: String) async {
             syncCalls.append(expenseId)
-            if pauseSync {
-                await withCheckedContinuation { continuation in
-                    syncGate = continuation
-                    syncStarted?()
-                }
-            }
+            XCTFail("Accounting work belongs to the durable server queue")
         }
     }
 
@@ -130,39 +122,21 @@ final class ExpenseBatchApprovalTests: XCTestCase {
         XCTAssertTrue(reopenedRepo.syncCalls.isEmpty)
     }
 
-    func testAccountingRemainsSerialAndAwaitedWhileCanonicalApprovalIsVisible() async throws {
+    func testApprovalCompletesAfterCanonicalReadbackWithoutClientAccountingWork() async throws {
         let (model, repo, batch) = try fixture()
         repo.lines[batch.id] = [try line("one", batch: batch.id), try line("two", batch: batch.id)]
-        repo.pauseSync = true
-        let firstSync = expectation(description: "first accounting call started")
-        let secondSync = expectation(description: "second accounting call started")
-        repo.syncStarted = { [weak repo] in
-            if repo?.syncCalls.count == 1 { firstSync.fulfill() }
-            else { secondSync.fulfill() }
-        }
-        var completed = false
-        let operation = Task {
-            let result = await model.approveBatch(batch)
-            completed = true
-            return result
-        }
-        await fulfillment(of: [firstSync], timeout: 1)
-        XCTAssertTrue(model.isApprovingBatches)
-        XCTAssertTrue(model.hasSavedCurrentApproval)
-        XCTAssertFalse(completed)
-        XCTAssertEqual(model.reviewBatches.first?.status, "approved")
-        XCTAssertEqual(repo.syncCalls, ["one"])
-        XCTAssertEqual(repo.batchReads, [batch.id])
-        XCTAssertEqual(repo.lineReads, [batch.id])
-        repo.syncGate?.resume()
-        await fulfillment(of: [secondSync], timeout: 1)
-        XCTAssertFalse(completed)
-        XCTAssertEqual(repo.syncCalls, ["one", "two"])
-        repo.syncGate?.resume()
-        let saved = await operation.value
+
+        let saved = await model.approveBatch(batch)
+
         XCTAssertTrue(saved)
         XCTAssertFalse(model.isApprovingBatches)
         XCTAssertFalse(model.canApproveBatch(batch))
+        XCTAssertEqual(model.reviewBatches.first?.status, "approved")
+        XCTAssertEqual(Set(model.expenses.map(\.id)), ["one", "two"])
+        XCTAssertEqual(repo.approvalCalls, [batch.id])
+        XCTAssertEqual(repo.batchReads, [batch.id])
+        XCTAssertEqual(repo.lineReads, [batch.id])
+        XCTAssertTrue(repo.syncCalls.isEmpty, "The saved decision already owns durable accounting work")
     }
 
     func testFailedApprovalKeepsReviewStateAndAllowsExplicitRetry() async throws {
@@ -190,7 +164,7 @@ final class ExpenseBatchApprovalTests: XCTestCase {
         XCTAssertTrue(model.approvalRefreshRequired)
         XCTAssertNil(model.error, "Do not tell the operator the financial save failed")
         XCTAssertFalse(model.canApproveBatch(batch))
-        XCTAssertEqual(repo.syncCalls, ["one"], "A failed batch read must not skip known approved lines")
+        XCTAssertTrue(repo.syncCalls.isEmpty, "Readback failure must not dispatch duplicate accounting work")
         let duplicate = await model.approveBatch(batch)
         XCTAssertFalse(duplicate)
         XCTAssertEqual(repo.approvalCalls.count, 1)
@@ -204,7 +178,7 @@ final class ExpenseBatchApprovalTests: XCTestCase {
         XCTAssertTrue(model.approvalRefreshRequired)
         XCTAssertEqual(model.reviewBatches.first?.status, "approved")
         XCTAssertFalse(model.canApproveBatch(batch))
-        XCTAssertTrue(repo.syncCalls.isEmpty, "Do not guess which lines the server approved")
+        XCTAssertTrue(repo.syncCalls.isEmpty, "Accounting delivery must not depend on client readback")
     }
 
     func testNarrowReadbackReplacesOnlyAffectedBatchAndLines() async throws {
@@ -218,7 +192,7 @@ final class ExpenseBatchApprovalTests: XCTestCase {
         XCTAssertEqual(model.reviewBatches.map(\.status), ["approved", "pending_review"])
         XCTAssertEqual(Set(model.expenses.map(\.id)), ["one", "new", "unrelated"])
         XCTAssertEqual(model.expenses.first(where: { $0.id == "one" })?.status, "approved")
-        XCTAssertEqual(repo.syncCalls, ["one"], "Rejected lines never go to accounting")
+        XCTAssertTrue(repo.syncCalls.isEmpty, "The client never dispatches provider work for any line")
     }
 
     func testBulkDeduplicatesAndStopsAtFirstFailedWrite() async throws {

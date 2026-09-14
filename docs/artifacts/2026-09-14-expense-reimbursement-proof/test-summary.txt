@@ -1,0 +1,14 @@
+Test Suite 'ExpenseBatchApprovalTests' passed at 2026-09-12 15:33:49.486.
+	 Executed 15 tests, with 0 failures (0 unexpected) in 1.448 (1.455) seconds
+Test Suite 'ExpenseBucketsTests' passed at 2026-09-12 15:33:49.573.
+	 Executed 34 tests, with 0 failures (0 unexpected) in 0.056 (0.087) seconds
+Test Case '-[OPSTests.ExpenseConsoleSnapshotTests testRenderCompanyFundedHistoryAndMixedReimbursement]' started.
+Test Case '-[OPSTests.ExpenseConsoleSnapshotTests testRenderCompanyFundedHistoryAndMixedReimbursement]' passed (2.096 seconds).
+Test Suite 'ExpenseConsoleSnapshotTests' passed at 2026-09-12 15:33:56.656.
+	 Executed 3 tests, with 0 failures (0 unexpected) in 7.081 (7.083) seconds
+Test Suite 'ExpenseDecisionNotificationTests' passed at 2026-09-12 15:33:56.751.
+	 Executed 8 tests, with 0 failures (0 unexpected) in 0.091 (0.095) seconds
+Test Suite 'OPSTests.xctest' passed at 2026-09-12 15:33:56.752.
+	 Executed 60 tests, with 0 failures (0 unexpected) in 8.676 (8.721) seconds
+Test Suite 'Selected tests' passed at 2026-09-12 15:33:56.752.
+	 Executed 60 tests, with 0 failures (0 unexpected) in 8.676 (8.721) seconds

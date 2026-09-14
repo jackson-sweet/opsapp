@@ -392,9 +392,53 @@ struct ExpenseBatchDTO: Codable, Identifiable {
     /// review_frequency = 'per_job'; nil for period-mode batches.
     let scopeProjectId: String?
     /// Payout stage (2026-07-10). Non-nil once the office records the batch as
-    /// paid out — an approved batch with `paidAt == nil` is money still owed.
+    /// paid out. Company-funded batches need no crew reimbursement.
     let paidAt: String?
     let paidBy: String?
+    /// Approved gross crew reimbursement; nil preserves the legacy server contract.
+    let reimbursementAmount: Double?
+
+    init(
+        id: String,
+        companyId: String,
+        batchNumber: String,
+        periodStart: String? = nil,
+        periodEnd: String? = nil,
+        status: String,
+        submittedBy: String? = nil,
+        reviewedBy: String? = nil,
+        reviewedAt: String? = nil,
+        totalAmount: Double? = nil,
+        approvedAmount: Double? = nil,
+        parentBatchId: String? = nil,
+        amendmentNumber: Int? = nil,
+        reviewNotes: String? = nil,
+        createdAt: String,
+        scopeProjectId: String? = nil,
+        paidAt: String? = nil,
+        paidBy: String? = nil,
+        reimbursementAmount: Double? = nil
+    ) {
+        self.id = id
+        self.companyId = companyId
+        self.batchNumber = batchNumber
+        self.periodStart = periodStart
+        self.periodEnd = periodEnd
+        self.status = status
+        self.submittedBy = submittedBy
+        self.reviewedBy = reviewedBy
+        self.reviewedAt = reviewedAt
+        self.totalAmount = totalAmount
+        self.approvedAmount = approvedAmount
+        self.parentBatchId = parentBatchId
+        self.amendmentNumber = amendmentNumber
+        self.reviewNotes = reviewNotes
+        self.createdAt = createdAt
+        self.scopeProjectId = scopeProjectId
+        self.paidAt = paidAt
+        self.paidBy = paidBy
+        self.reimbursementAmount = reimbursementAmount
+    }
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -415,6 +459,7 @@ struct ExpenseBatchDTO: Codable, Identifiable {
         case scopeProjectId  = "scope_project_id"
         case paidAt          = "paid_at"
         case paidBy          = "paid_by"
+        case reimbursementAmount = "reimbursement_amount"
     }
 }
 

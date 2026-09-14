@@ -44,14 +44,13 @@ protocol ExpenseDecisionNotifying {
 
 extension NotificationRepository: ExpenseDecisionNotifying {}
 
-/// The approval transaction and its affected-row readback. Accounting remains
-/// sequential and awaited; this seam never substitutes local state for a save.
+/// The approval transaction and its affected-row readback. The database queues
+/// accounting work atomically; this seam never substitutes local state for a save.
 @MainActor
 protocol ExpenseBatchApprovalRepository {
     func approveBatchAtomic(_ batchId: String) async throws
     func fetchBatch(_ batchId: String) async throws -> ExpenseBatchDTO
     func fetchBatchExpenses(_ batchId: String) async throws -> [ExpenseDTO]
-    func triggerAccountingSync(expenseId: String) async
 }
 
 @MainActor
@@ -546,8 +545,7 @@ class ExpenseViewModel: ObservableObject {
             if let idx = expenses.firstIndex(where: { $0.id == expenseId }) {
                 expenses[idx] = updated
             }
-            // Fire-and-forget: trigger accounting sync if company has a connected provider
-            Task { await repo.triggerAccountingSync(expenseId: expenseId) }
+            // The saved status transition already queued its accounting work.
             ToastCenter.shared.present(Feedback.Expense.approved)
         } catch {
             self.error = error.localizedDescription
@@ -798,14 +796,12 @@ class ExpenseViewModel: ObservableObject {
         notifySubmitter(of: batch, notice: .approved)
 
         // Two affected-row reads replace the previous company-wide batches +
-        // expenses + settings reload. Read independently: a failed batch read
-        // must not discard approved lines needed for accounting.
+        // expenses + settings reload. Read independently so either successful
+        // response can refresh its canonical cache after the decision is saved.
         async let batchRead = repo.fetchBatch(batch.id)
         async let lineRead = repo.fetchBatchExpenses(batch.id)
-        var approvedLines: [ExpenseDTO] = []
         do {
             let lines = try await lineRead
-            approvedLines = lines.filter { ExpenseStatus(rawValue: $0.status) == .approved }
             expenses.removeAll { $0.batchId == batch.id }
             expenses.append(contentsOf: lines)
             if selectedBatchId == batch.id {
@@ -829,12 +825,8 @@ class ExpenseViewModel: ObservableObject {
         }
         consoleLoadGeneration += 1
 
-        // Preserve delivery semantics: awaited, one line at a time. The legacy
-        // provider handler has no durable expense queue or safe concurrent
-        // token-refresh contract, so do not detach or parallelize these calls.
-        for line in approvedLines {
-            await repo.triggerAccountingSync(expenseId: line.id)
-        }
+        // Provider delivery belongs to the durable database queue created by
+        // the decision transaction; it never extends this client operation.
         return true
     }
 
@@ -1069,7 +1061,6 @@ class ExpenseViewModel: ObservableObject {
 
             for expense in clean {
                 _ = try await repo.approve(expense.id, approvedBy: reviewedBy)
-                await repo.triggerAccountingSync(expenseId: expense.id)
             }
 
             let cleanAmount = clean.reduce(0.0) { $0 + $1.amount }

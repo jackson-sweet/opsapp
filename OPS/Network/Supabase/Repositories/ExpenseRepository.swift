@@ -103,23 +103,6 @@ class ExpenseRepository {
             .execute()
     }
 
-    // MARK: - Accounting Sync
-
-    /// Triggers the accounting-sync-expense Edge Function for an approved expense.
-    /// Best-effort and error-contained: logs failures without throwing.
-    /// Awaiting callers still wait for this request; this method does not
-    /// detach delivery or provide a durable retry queue.
-    func triggerAccountingSync(expenseId: String) async {
-        do {
-            try await client.functions.invoke(
-                "accounting-sync-expense",
-                options: .init(body: ["expense_id": expenseId])
-            )
-        } catch {
-            print("[ExpenseRepository] Accounting sync trigger failed for \(expenseId): \(error.localizedDescription)")
-        }
-    }
-
     // MARK: - Categories
 
     func fetchCategories() async throws -> [ExpenseCategoryDTO] {

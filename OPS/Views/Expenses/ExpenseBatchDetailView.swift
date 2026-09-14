@@ -228,8 +228,8 @@ struct ExpenseBatchDetailView: View {
             return [("OWED", BooksFormat.exact(owedAmount)),
                     ("ITEMS", items),
                     ("SUBMITTED", formatShortDate(batch.createdAt))]
-        case .paid:
-            let when = ExpenseBuckets.parseDate(batch.paidAt).map(formatDateValue) ?? "—"
+        case .paid where ExpenseBuckets.isPaid(currentBatch):
+            let when = ExpenseBuckets.parseDate(currentBatch.paidAt).map(formatDateValue) ?? "—"
             return [("PAID", BooksFormat.exact(owedAmount)),
                     ("ITEMS", items),
                     ("ON", when)]
@@ -253,12 +253,12 @@ struct ExpenseBatchDetailView: View {
     @ViewBuilder
     private var lifecycleLine: some View {
         switch bucket {
-        case .paid:
+        case .paid where ExpenseBuckets.isPaid(currentBatch):
             HStack(spacing: OPSStyle.Layout.spacing1) {
                 Circle()
                     .fill(OPSStyle.Colors.olive)
                     .frame(width: OPSStyle.Layout.Indicator.dotSM, height: OPSStyle.Layout.Indicator.dotSM)
-                if let when = ExpenseBuckets.parseDate(batch.paidAt) {
+                if let when = ExpenseBuckets.parseDate(currentBatch.paidAt) {
                     Text("PAID \(formatDateValue(when))")
                         .font(OPSStyle.Typography.smallCaption)
                         .foregroundColor(OPSStyle.Colors.olive)
@@ -291,6 +291,11 @@ struct ExpenseBatchDetailView: View {
                 }
             }
             .padding(.horizontal, OPSStyle.Layout.spacing3)
+        case .paid:
+            Text("APPROVED")
+                .font(OPSStyle.Typography.smallCaption)
+                .foregroundColor(OPSStyle.Colors.secondaryText)
+                .padding(.horizontal, OPSStyle.Layout.spacing3)
         case .crew where batchStatus == .open:
             HStack(spacing: OPSStyle.Layout.spacing1) {
                 Circle()

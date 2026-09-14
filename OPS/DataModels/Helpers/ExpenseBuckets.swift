@@ -12,7 +12,7 @@
 //             legacy submitted), cross-period
 //    pay    — approved money not yet settled up (approved / partially /
 //             auto, paid_at IS NULL)
-//    paid   — payout recorded (paid_at set), terminal reference
+//    paid   — payout recorded or approved with no crew reimbursement; history
 //    crew   — on the crew's side: filling envelopes + returned (rejected)
 //             batches that still hold lines to fix; a drained returned
 //             batch disappears
@@ -103,13 +103,20 @@ enum ExpenseBuckets {
 
     /// Recorded as paid out to the submitter — terminal.
     static func isPaid(_ batch: ExpenseBatchDTO) -> Bool {
-        batch.paidAt != nil
+        batch.paidAt != nil && batch.reimbursementAmount != 0
     }
 
     /// Approved money waiting to be settled up — the TO PAY working set.
     static func isAwaitingPayout(_ batch: ExpenseBatchDTO) -> Bool {
         let status = ExpenseBatchStatus(rawValue: batch.status)
         return (status?.isApproved ?? false) && batch.paidAt == nil
+            && (batch.reimbursementAmount == nil || (batch.reimbursementAmount ?? 0) > 0)
+    }
+
+    /// Approved company-funded spending remains reference history, without a crew payout.
+    static func isApprovedWithoutPayout(_ batch: ExpenseBatchDTO) -> Bool {
+        (ExpenseBatchStatus(rawValue: batch.status)?.isApproved ?? false)
+            && batch.reimbursementAmount == 0
     }
 
     /// The amount actually owed for a batch.
@@ -122,6 +129,8 @@ enum ExpenseBuckets {
     /// recalculated total. A positive figure on a full approval (the legacy
     /// iOS two-write path wrote one) is trusted.
     static func owedAmount(_ batch: ExpenseBatchDTO) -> Double {
+        // Gross crew principal already includes tax. A server zero is authoritative.
+        if let reimbursement = batch.reimbursementAmount { return reimbursement }
         if ExpenseBatchStatus(rawValue: batch.status) == .partiallyApproved {
             return batch.approvedAmount ?? batch.totalAmount ?? 0
         }
@@ -136,7 +145,7 @@ enum ExpenseBuckets {
     /// `lineCount` is the batch's live line count when known; pass nil while
     /// stats are loading and the batch stays visible.
     static func bucket(for batch: ExpenseBatchDTO, lineCount: Int?) -> ExpenseBucket? {
-        if isPaid(batch) { return .paid }
+        if isPaid(batch) || isApprovedWithoutPayout(batch) { return .paid }
         let status = ExpenseBatchStatus(rawValue: batch.status)
         if status?.needsReview == true { return .review }
         if isAwaitingPayout(batch) { return .pay }
@@ -283,13 +292,21 @@ enum ExpenseBuckets {
 
     // MARK: Paid ledger
 
-    /// PAID — month sections by payout date, newest first; newest payout
-    /// first within a month.
+    static func historyAmount(_ batch: ExpenseBatchDTO) -> Double {
+        isApprovedWithoutPayout(batch) ? batch.totalAmount ?? 0 : owedAmount(batch)
+    }
+
+    static func historyDate(_ batch: ExpenseBatchDTO) -> String? {
+        isApprovedWithoutPayout(batch) ? batch.reviewedAt ?? batch.createdAt : batch.paidAt
+    }
+
+    /// History groups actual payouts by payment date, and company-funded
+    /// approvals by review date. Newest decisions lead each month.
     static func paidSections(_ batches: [ExpenseBatchDTO]) -> [ExpensePaidSection] {
         var order: [String] = []
         var byMonth: [String: [ExpenseBatchDTO]] = [:]
         for batch in batches {
-            guard let paidAt = batch.paidAt else { continue }
+            guard let paidAt = historyDate(batch) else { continue }
             let key = String(paidAt.prefix(7))
             if byMonth[key] == nil { order.append(key) }
             byMonth[key, default: []].append(batch)
@@ -299,7 +316,7 @@ enum ExpenseBuckets {
             .map { key in
                 ExpensePaidSection(
                     monthKey: key,
-                    batches: byMonth[key, default: []].sorted { ($0.paidAt ?? "") > ($1.paidAt ?? "") }
+                    batches: byMonth[key, default: []].sorted { (historyDate($0) ?? "") > (historyDate($1) ?? "") }
                 )
             }
     }

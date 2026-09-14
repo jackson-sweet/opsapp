@@ -1,0 +1,23 @@
+{
+  "device": "jPhone",
+  "model": "iPhone 16 Pro",
+  "bundleId": "co.opsapp.ops.OPS",
+  "version": "3.0.5",
+  "bundleVersion": "3.0.5",
+  "developerBuilt": true,
+  "installExitCode": 0,
+  "readbackExitCode": 0,
+  "installReceiptMatchesIndependentInventory": true,
+  "bundleLocationChangedFromPrior": true,
+  "launched": false,
+  "uninstalled": false,
+  "appStoreReleased": false,
+  "verifiedAt": "2026-09-14T04:12:38.761Z",
+  "sourceHead": "2e46d7285170b7520ee73a7a12be0751b0713c9e",
+  "binarySha256": "99ae6e98834bf5cda03dd92057fc6c5269654a3263da07f7a099c9a536496d38",
+  "signatureReverified": true,
+  "appPath": "/private/tmp/ops-site-visits-choice-20260912/DerivedData/Build/Products/Release-iphoneos/OPS.app",
+  "rawReceiptsDirectory": "/private/tmp/ops-site-visits-choice-20260912",
+  "physicalWorkflowAcceptance": "not_performed",
+  "note": "In-place app replacement only. No direct store/queue edits or app launch. Permission-review timeout and connection failure preceded the successful retry; independent inventory matches its installation receipt."
+}

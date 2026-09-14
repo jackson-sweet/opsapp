@@ -3356,8 +3356,9 @@ struct ProjectFormSheet: View {
                 fields["end_date"] = .null
                 fields["duration"] = .integer(0)
             }
-            task.startDate = local.startDate
-            task.endDate = local.endDate
+            // DataController applies the dates with the queued write. Keep
+            // the original values intact so archived-project reopening and
+            // rollback observe the actual edit.
         }
 
         if !fields.isEmpty {

@@ -1566,6 +1566,24 @@ struct TaskFormSheet: View {
                     isEditMode = true
                     let previousTeamMemberIds = Set(task.getTeamMemberIds())
                     teamMembersChanged = previousTeamMemberIds != Set(snapshotTeamMemberIds)
+
+                    // Preserve the pre-edit schedule until the canonical writer
+                    // commits its task changes and any archived-project reopen
+                    // together. A local save here would hide the date change
+                    // from that boundary and leave edit-mode dates unqueued.
+                    let fields = try Self.editFields(
+                        for: task,
+                        taskType: snapshotTaskType,
+                        status: snapshotStatus,
+                        notes: snapshotNotes,
+                        dependencyOverrides: snapshotDependencyOverrides,
+                        startDate: snapshotStart,
+                        endDate: snapshotEnd,
+                        canSchedule: canSchedule
+                    )
+                    if !fields.isEmpty {
+                        try await dataController.updateTaskFields(taskId: task.id, fields: fields)
+                    }
                 } else {
                     guard let projectId = snapshotProjectId,
                           let taskTypeId = snapshotTaskTypeId else {
@@ -1624,27 +1642,28 @@ struct TaskFormSheet: View {
                     print("[TASK_CREATE] ✅ Task inserted locally with ID: \(task.id), color: \(task.taskColor), teamMembers: \(newTask.teamMembers.count)")
                 }
 
-                // Common writes (create + edit)
-                task.status = snapshotStatus
-                task.taskNotes = snapshotNotes.isEmpty ? nil : snapshotNotes
+                if !isEditMode {
+                    task.status = snapshotStatus
+                    task.taskNotes = snapshotNotes.isEmpty ? nil : snapshotNotes
 
-                if let overrides = snapshotDependencyOverrides {
-                    task.setDependencyOverrides(overrides)
-                } else {
-                    task.dependencyOverridesJSON = nil
+                    if let overrides = snapshotDependencyOverrides {
+                        task.setDependencyOverrides(overrides)
+                    } else {
+                        task.dependencyOverridesJSON = nil
+                    }
+
+                    task.startDate = snapshotStart
+                    task.endDate = snapshotEnd
+                    if let start = snapshotStart, let end = snapshotEnd {
+                        let daysDiff = Calendar.current.dateComponents([.day], from: start, to: end).day ?? 0
+                        task.duration = daysDiff + 1
+                    }
+
+                    task.needsSync = true
+
+                    try modelContext.save()
+                    print("[TASK_FORM] ✅ Task saved locally")
                 }
-
-                task.startDate = snapshotStart
-                task.endDate = snapshotEnd
-                if let start = snapshotStart, let end = snapshotEnd {
-                    let daysDiff = Calendar.current.dateComponents([.day], from: start, to: end).day ?? 0
-                    task.duration = daysDiff + 1
-                }
-
-                task.needsSync = true
-
-                try modelContext.save()
-                print("[TASK_FORM] ✅ Task saved locally")
             } catch {
                 isSaving = false
                 errorMessage = "Failed to save task locally: \(error.localizedDescription)"
@@ -1777,6 +1796,55 @@ struct TaskFormSheet: View {
             try? await Task.sleep(nanoseconds: 300_000_000)
             dismiss()
         }
+    }
+
+    /// The edit command is built without changing the persisted model. This
+    /// keeps the original schedule available to DataController's atomic writer.
+    @MainActor
+    static func editFields(
+        for task: ProjectTask,
+        taskType: TaskType?,
+        status: TaskStatus,
+        notes: String,
+        dependencyOverrides: [TaskTypeDependency]?,
+        startDate: Date?,
+        endDate: Date?,
+        canSchedule: Bool
+    ) throws -> [String: AnyJSON] {
+        var fields: [String: AnyJSON] = [:]
+        if let taskType, taskType.id != task.taskTypeId {
+            guard taskType.companyId.lowercased() == task.companyId.lowercased(),
+                  taskType.deletedAt == nil else {
+                throw DurableSyncMutationError.taskUnavailable
+            }
+            fields["task_type_id"] = .string(taskType.id)
+        }
+        if task.status != status { fields["status"] = .string(status.rawValue) }
+        if (task.taskNotes ?? "") != notes {
+            fields["task_notes"] = notes.isEmpty ? .null : .string(notes)
+        }
+        let existingOverrides = task.dependencyOverridesJSON
+            .flatMap { $0.data(using: .utf8) }
+            .flatMap { try? JSONDecoder().decode([TaskTypeDependency].self, from: $0) }
+        if existingOverrides != dependencyOverrides {
+            if let dependencyOverrides {
+                let data = try JSONEncoder().encode(dependencyOverrides)
+                fields["dependency_overrides"] = try JSONDecoder().decode(AnyJSON.self, from: data)
+            } else {
+                fields["dependency_overrides"] = .null
+            }
+        }
+        if canSchedule, task.startDate != startDate || task.endDate != endDate {
+            fields["start_date"] = startDate.map { AnyJSON.string(SupabaseDate.format($0)) } ?? .null
+            fields["end_date"] = endDate.map { AnyJSON.string(SupabaseDate.format($0)) } ?? .null
+            if let startDate, let endDate {
+                let days = Calendar.current.dateComponents([.day], from: startDate, to: endDate).day ?? 0
+                fields["duration"] = .integer(days + 1)
+            } else {
+                fields["duration"] = .integer(startDate == nil ? 0 : 1)
+            }
+        }
+        return fields
     }
 
     /// Remove duplicate ProjectTask rows for a given id. Winner is the copy

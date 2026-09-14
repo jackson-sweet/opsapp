@@ -1559,7 +1559,7 @@ struct TaskFormSheet: View {
             let isEditMode: Bool
             let teamMembersChanged: Bool
 
-            // ----- Phase 1: Local SwiftData write (MainActor) -----
+            // ----- Phase 1: Durable task write (MainActor) -----
             do {
                 if case .edit(let existingTask) = mode {
                     task = existingTask
@@ -1608,61 +1608,24 @@ struct TaskFormSheet: View {
                         status: snapshotStatus,
                         taskColor: taskColor
                     )
-                    // Insert into the context BEFORE wiring relationships so
-                    // SwiftData never sees a half-managed model referenced by
-                    // managed objects (a crash vector on iOS 18).
-                    print("[DUPE_TRACE] SAVETASK.insert id=\(newTask.id) ctx=\(ObjectIdentifier(modelContext)) thread=\(Thread.current)")
-                    modelContext.insert(newTask)
-
-                    if let project = selectedProject {
-                        newTask.project = project
-                    }
-                    if let taskType = snapshotTaskType {
-                        newTask.taskType = taskType
-                    }
+                    // Keep the model detached, with IDs only, until the task,
+                    // queue entry, and any parent reopen are saved together.
+                    // Managed relationships are adopted after that succeeds.
                     newTask.setTeamMemberIds(snapshotTeamMemberIds)
-
-                    // setTeamMemberIds only writes the ID string; it does NOT
-                    // cascade to the [User] relationship array that the task
-                    // list reads for avatar rendering. Populate it here so the
-                    // row shows avatars immediately instead of waiting for an
-                    // inbound sync to hydrate the relationship.
-                    if !snapshotTeamMemberIds.isEmpty {
-                        let ids = snapshotTeamMemberIds
-                        let descriptor = FetchDescriptor<User>(
-                            predicate: #Predicate<User> { user in ids.contains(user.id) }
-                        )
-                        newTask.teamMembers = (try? modelContext.fetch(descriptor)) ?? []
+                    newTask.taskNotes = snapshotNotes.isEmpty ? nil : snapshotNotes
+                    if let overrides = snapshotDependencyOverrides {
+                        newTask.setDependencyOverrides(overrides)
                     }
-
+                    newTask.startDate = snapshotStart
+                    newTask.endDate = snapshotEnd
+                    if let start = snapshotStart, let end = snapshotEnd {
+                        let days = Calendar.current.dateComponents([.day], from: start, to: end).day ?? 0
+                        newTask.duration = days + 1
+                    }
+                    try await dataController.createTask(task: newTask)
                     task = newTask
                     isEditMode = false
                     teamMembersChanged = false
-
-                    print("[TASK_CREATE] ✅ Task inserted locally with ID: \(task.id), color: \(task.taskColor), teamMembers: \(newTask.teamMembers.count)")
-                }
-
-                if !isEditMode {
-                    task.status = snapshotStatus
-                    task.taskNotes = snapshotNotes.isEmpty ? nil : snapshotNotes
-
-                    if let overrides = snapshotDependencyOverrides {
-                        task.setDependencyOverrides(overrides)
-                    } else {
-                        task.dependencyOverridesJSON = nil
-                    }
-
-                    task.startDate = snapshotStart
-                    task.endDate = snapshotEnd
-                    if let start = snapshotStart, let end = snapshotEnd {
-                        let daysDiff = Calendar.current.dateComponents([.day], from: start, to: end).day ?? 0
-                        task.duration = daysDiff + 1
-                    }
-
-                    task.needsSync = true
-
-                    try modelContext.save()
-                    print("[TASK_FORM] ✅ Task saved locally")
                 }
             } catch {
                 isSaving = false
@@ -1686,36 +1649,18 @@ struct TaskFormSheet: View {
                 }
 
                 if !isEditMode {
-                    if task.createdAt == nil { task.createdAt = Date() }
-                    let supabaseTaskDTO = SupabaseProjectTaskDTO(
-                        id: task.id,
-                        bubbleId: nil,
-                        companyId: task.companyId,
-                        projectId: task.projectId,
-                        taskTypeId: task.taskTypeId,
-                        customTitle: task.customTitle,
-                        taskNotes: task.taskNotes,
-                        status: task.status.rawValue,
-                        taskColor: task.taskColor,
-                        displayOrder: task.displayOrder,
-                        teamMemberIds: task.getTeamMemberIds(),
-                        sourceLineItemId: nil,
-                        sourceEstimateId: nil,
-                        startDate: task.startDate.map { ISO8601DateFormatter().string(from: $0) },
-                        endDate: task.endDate.map { ISO8601DateFormatter().string(from: $0) },
-                        duration: task.duration,
-                        dependencyOverrides: snapshotDependencyOverrides,
-                        startTime: nil,
-                        endTime: nil,
-                        pairedFromTaskId: nil,
-                        scheduleLocked: nil,
-                        deletedAt: nil,
-                        createdAt: task.createdAt.map { ISO8601DateFormatter().string(from: $0) }
-                    )
-                    // DataController.createTask is idempotent: it detects the
-                    // task we just inserted and only records the sync op.
-                    _ = try await dataController.createTask(dto: supabaseTaskDTO)
-                    print("[TASK_FORM] ✅ Task create op queued via DataController")
+                    // The canonical create has inserted the model. Hydrate
+                    // display relationships without risking an unqueued row
+                    // if validation or durable queue staging fails.
+                    task.taskType = snapshotTaskType
+                    let ids = snapshotTeamMemberIds
+                    if !ids.isEmpty {
+                        let descriptor = FetchDescriptor<User>(
+                            predicate: #Predicate<User> { user in ids.contains(user.id) }
+                        )
+                        task.teamMembers = try modelContext.fetch(descriptor)
+                    }
+                    try modelContext.save()
                 }
 
                 if let project = task.project {

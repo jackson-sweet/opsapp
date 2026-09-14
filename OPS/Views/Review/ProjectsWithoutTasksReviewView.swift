@@ -10,6 +10,7 @@
 
 import SwiftUI
 import SwiftData
+import Supabase
 
 struct ProjectsWithoutTasksReviewView: View {
     @Environment(\.dismiss) private var dismiss
@@ -375,16 +376,38 @@ struct ProjectsWithoutTasksReviewView: View {
         }
 
         if let task = existingTask {
-            task.taskTypeId = draft.taskTypeId
-            task.taskType = taskType
-            task.customTitle = draft.customTitle
-            task.status = draft.status
-            task.taskColor = taskType.color
-            task.startDate = draft.startDate
-            task.endDate = draft.endDate
-            task.setTeamMemberIds(draft.teamMemberIds)
-            try hydrateTeamMembers(for: task)
-            try await dataController.updateTask(task: task)
+            // The review retains its rows while the composer is open. A
+            // project may have been archived since loading, so retain the
+            // original dates until the durable writer evaluates the edit.
+            var fields: [String: AnyJSON] = [:]
+            if task.taskTypeId != draft.taskTypeId {
+                fields["task_type_id"] = .string(draft.taskTypeId)
+            }
+            if task.customTitle != draft.customTitle {
+                fields["custom_title"] = draft.customTitle.map(AnyJSON.string) ?? .null
+            }
+            if task.status != draft.status {
+                fields["status"] = .string(draft.status.rawValue)
+            }
+            if task.taskColor != taskType.color {
+                fields["task_color"] = .string(taskType.color)
+            }
+            if task.startDate != draft.startDate || task.endDate != draft.endDate {
+                fields["start_date"] = draft.startDate.map { AnyJSON.string(SupabaseDate.format($0)) } ?? .null
+                fields["end_date"] = draft.endDate.map { AnyJSON.string(SupabaseDate.format($0)) } ?? .null
+                if let start = draft.startDate, let end = draft.endDate {
+                    let days = Calendar.current.dateComponents([.day], from: start, to: end).day ?? 0
+                    fields["duration"] = .integer(days + 1)
+                } else {
+                    fields["duration"] = .integer(draft.startDate == nil ? 0 : 1)
+                }
+            }
+            if !fields.isEmpty {
+                try await dataController.updateTaskFields(taskId: task.id, fields: fields)
+            }
+            if Set(task.getTeamMemberIds()) != Set(draft.teamMemberIds) {
+                try await dataController.updateTaskTeamMembers(task: task, memberIds: draft.teamMemberIds)
+            }
             return draft
         }
 

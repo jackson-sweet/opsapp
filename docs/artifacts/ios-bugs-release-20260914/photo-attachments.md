@@ -44,3 +44,5 @@ Retained proof:
 After verification, this task removed its temporary simulator, 5.2GB DerivedData, 8.8GB package cache and copied ignored build configuration. Source and proof remain; reproducing the invocation requires provisioning a dedicated simulator and restoring the ignored build configuration/cache.
 
 Live readback at `2026-09-15T00:15:05.686583Z` still showed only the four-argument RPC with MD5 `9d16ec64ff2d15da9e00fe1fbeb1adc4`. The server migration remains unapplied. This proof establishes local simulator behavior, not original-phone acceptance, production media mutation, installation or an app release. The original bug owner is retained and the report remains open.
+
+The verified local result was appended to the original Supabase report under `[ios-bugs-progress:20260914-p8-ios-verified]`. Independent readback at `2026-09-15T00:19:32.371818Z` matched the exact note, preserved `claude-bug-sweep-2026-09-03`, `in_progress` and null fix/resolution fields, and a guard replay changed zero rows. [Metadata readback](photo-attachments-metadata-readback.json).

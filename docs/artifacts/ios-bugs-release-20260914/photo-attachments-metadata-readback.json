@@ -1,0 +1,13 @@
+{
+  "checked_at": "2026-09-15 00:19:32.371818+00",
+  "id": "f5f57917-ac58-4d51-b706-eff0e68131e5",
+  "status": "in_progress",
+  "assigned_to": "claude-bug-sweep-2026-09-03",
+  "fix_commit": null,
+  "fixed_at": null,
+  "resolved_at": null,
+  "exact_note_verified": true,
+  "changed_count": 1,
+  "guard_replay_changed_count": 0,
+  "marker": "[ios-bugs-progress:20260914-p8-ios-verified]"
+}

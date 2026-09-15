@@ -252,7 +252,7 @@ enum DeckCanvasPerimeterReorientationPhase {
 
 enum DeckCanvasPerimeterReorientationCameraAction: Equatable {
     case stopCurrentMotion
-    case centerOn(CGPoint)
+    case follow(CGPoint)
     case reconcileWorkspace
 }
 
@@ -273,16 +273,23 @@ enum DeckCanvasWorkspaceInteractionPolicy {
     /// A direction drag owns the camera until the finger lifts. This explicit
     /// completion action is required even when the final direction matches the
     /// last drag update and therefore emits no final perimeter-state change.
+    ///
+    /// On release the camera follows the draft's FAR END — the end the drag was
+    /// swinging (bug 5f285f64). It used to recentre on the anchor, which is the
+    /// one point the operator was not looking at: they had just aimed the run
+    /// somewhere new and the view snapped back to where the run started.
+    /// `draftFocus` comes from `DeckCanvasCameraPlan`; it is absent only when
+    /// the walk ended under the finger, which leaves nothing to follow.
     static func perimeterReorientationCameraAction(
         phase: DeckCanvasPerimeterReorientationPhase,
-        activeAnchor: PerimeterEntryAnchor?
+        draftFocus: CGPoint?
     ) -> DeckCanvasPerimeterReorientationCameraAction {
         switch phase {
         case .changed:
             return .stopCurrentMotion
         case .ended:
-            if let activeAnchor {
-                return .centerOn(activeAnchor.position)
+            if let draftFocus {
+                return .follow(draftFocus)
             }
             return .reconcileWorkspace
         }

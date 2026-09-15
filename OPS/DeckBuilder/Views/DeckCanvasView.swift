@@ -91,6 +91,23 @@ struct DeckCanvasView: View {
         return Swift.min(maxPt, Swift.max(minPt, compensated))
     }
 
+    /// Canvas-space geometry of the perimeter direction ghost — the dashed ray
+    /// the canvas draws from the anchor once a direction is chosen but before a
+    /// length exists. The camera reads the same numbers so a follow tracks
+    /// exactly what the operator can see, and the two can never drift apart.
+    private var perimeterDirectionGhostGap: CGFloat {
+        scaledSize(11, min: 8, max: 18)
+    }
+
+    private var perimeterDirectionGhostRayLength: CGFloat {
+        72 / Swift.max(canvasScale, 0.0001)
+    }
+
+    /// Distance from the anchor to the tip of the ghost ray.
+    private var perimeterDirectionGhostLength: CGFloat {
+        perimeterDirectionGhostGap + perimeterDirectionGhostRayLength
+    }
+
     /// Grid spacing for dot rendering. Always a whole multiple of the snap increment so
     /// every dot sits on a valid snap position — never lies to the user about where snap
     /// points are. At extreme scales we render every Nth snap line (or finer subdivision)
@@ -146,6 +163,14 @@ struct DeckCanvasView: View {
             drawingMode: viewModel.drawingMode,
             isReorientingPerimeterDraft: isReorientingPerimeterDraft
         )
+    }
+
+    /// A perimeter walk owns the camera: it is tracking the point being placed.
+    /// The fit-recentring that suits an idle canvas would throw that follow away
+    /// on any axis the workspace happens to fit — which, at fit zoom on a fresh
+    /// drawing, is both of them (bug 5f285f64).
+    private var cameraFollowsPerimeterWork: Bool {
+        viewModel.perimeterEntry.activeAnchor != nil
     }
 
     var body: some View {
@@ -263,7 +288,8 @@ struct DeckCanvasView: View {
                         centeredOffset,
                         scale: canvasScale,
                         viewportSize: newLayout.unobstructedSize,
-                        minimumVisibleLength: CGFloat(OPSStyle.Layout.touchTargetMin)
+                        minimumVisibleLength: CGFloat(OPSStyle.Layout.touchTargetMin),
+                        centerWhenWorkspaceFits: !cameraFollowsPerimeterWork
                     )
                 }
                 workspaceNeedsOffsetReconciliation = false
@@ -279,9 +305,9 @@ struct DeckCanvasView: View {
             }
             .onChange(of: viewModel.perimeterDraftPreview) { _, preview in
                 guard let preview else { return }
-                followPerimeterDraft(preview, viewportSize: unobstructedSize)
+                followPoint(preview.end, context: preview.start, viewportSize: unobstructedSize)
             }
-            .onChange(of: viewModel.perimeterEntry) { _, entry in
+            .onChange(of: viewModel.perimeterEntry) { previousEntry, entry in
                 if !DeckCanvasGesturePolicy.allowsPerimeterDraftReorientation(for: entry) {
                     isReorientingPerimeterDraft = false
                 }
@@ -293,7 +319,15 @@ struct DeckCanvasView: View {
                        perimeterLongPressWheelCenter != nil {
                         return
                     }
-                    centerViewport(on: anchor.position, viewportSize: unobstructedSize)
+                    // Follow the point being placed, not the one already placed
+                    // (bug 5f285f64). Starting a walk is the exception: the plan
+                    // reports no focus for it, and the operator gets a recentre
+                    // on the point they have just planted.
+                    if let focus = perimeterCameraFocus(after: entry, previous: previousEntry) {
+                        followPoint(focus, context: anchor.position, viewportSize: unobstructedSize)
+                    } else {
+                        centerViewport(on: anchor.position, viewportSize: unobstructedSize)
+                    }
                 } else {
                     perimeterWheelHighlightedDirection = nil
                     reconcileWorkspaceOffsetIfReady(viewportSize: unobstructedSize)
@@ -1351,8 +1385,8 @@ struct DeckCanvasView: View {
 
         // Start the ray clear of the anchor marker so it emanates from it rather
         // than piercing it; fixed on-screen ray + arrowhead length.
-        let gap = scaledSize(11, min: 8, max: 18)
-        let rayLength = 72 / scale
+        let gap = perimeterDirectionGhostGap
+        let rayLength = perimeterDirectionGhostRayLength
         let headLength = 16 / scale
         let origin = CGPoint(x: start.x + dirX * gap, y: start.y + dirY * gap)
         let end = CGPoint(x: start.x + dirX * (gap + rayLength), y: start.y + dirY * (gap + rayLength))
@@ -1787,23 +1821,53 @@ struct DeckCanvasView: View {
         )
     }
 
-    /// Keep the point being created in view as the operator draws or dictates
-    /// successive points (bug 5f285f64). The camera used to track only the
-    /// anchor — where the segment starts — so a dictated run walked its new
-    /// endpoint off-screen and the canvas appeared frozen.
+    /// The world point the camera should follow after a perimeter-entry change.
+    private func perimeterCameraFocus(
+        after next: PerimeterEntryMode,
+        previous: PerimeterEntryMode
+    ) -> CGPoint? {
+        DeckCanvasCameraPlan.focus(
+            after: next,
+            previous: previous,
+            ghostLength: perimeterDirectionGhostLength,
+            scaleFactor: viewModel.drawingData.scaleFactor
+        )
+    }
+
+    /// The world point the camera should follow for the state it is in, with no
+    /// transition to reason about — a direction drag that lifts on the direction
+    /// it was already showing emits no state change at all.
+    private func perimeterCameraFocus(for mode: PerimeterEntryMode) -> CGPoint? {
+        DeckCanvasCameraPlan.focus(
+            for: mode,
+            ghostLength: perimeterDirectionGhostLength,
+            scaleFactor: viewModel.drawingData.scaleFactor
+        )
+    }
+
+    /// Keep the point being placed in view as the operator draws, dictates or
+    /// re-aims (bug 5f285f64). The camera used to track only the anchor — where
+    /// the current segment STARTS — so a dictated run walked its new endpoint
+    /// off-screen, a commit parked the view on the point just left behind, and
+    /// the canvas appeared frozen.
     ///
-    /// Pans by the minimum amount that puts the new endpoint (and the anchor
-    /// too, whenever both fit) back inside the work area. Deliberately NOT a
-    /// recentre: recentring on every dictated digit would sling the drawing
-    /// around and cost the operator their bearings.
-    private func followPerimeterDraft(_ preview: PerimeterDraftPreview, viewportSize: CGSize) {
+    /// Pans by the minimum amount that puts `focus` (and `context` too, whenever
+    /// both fit) back inside the work area. Deliberately NOT a recentre:
+    /// recentring on every dictated digit would sling the drawing around and
+    /// cost the operator their bearings.
+    private func followPoint(_ focus: CGPoint, context: CGPoint?, viewportSize: CGSize) {
         // Never fight a finger that is already driving the camera.
         guard !hasActiveWorkspaceManipulation else { return }
         guard viewportSize.width > 0, viewportSize.height > 0 else { return }
+        guard focus.x.isFinite, focus.y.isFinite else { return }
 
-        // The draft can reach past the session's world bounds; grow them first
+        // The point can reach past the session's world bounds; grow them first
         // so the pan below is not immediately clamped back.
-        expandWorkspace(toInclude: [preview.start, preview.end], viewportSize: viewportSize)
+        var contentPoints = [focus]
+        if let context, context.x.isFinite, context.y.isFinite {
+            contentPoints.append(context)
+        }
+        expandWorkspace(toInclude: contentPoints, viewportSize: viewportSize)
 
         let margin = CGFloat(OPSStyle.Layout.touchTargetMin)
         let safeArea = CGRect(origin: .zero, size: viewportSize)
@@ -1811,8 +1875,8 @@ struct DeckCanvasView: View {
         guard safeArea.width > 0, safeArea.height > 0 else { return }
 
         let delta = DeckCanvasFollowPolicy.pan(
-            focus: screenPoint(fromCanvas: preview.end),
-            context: screenPoint(fromCanvas: preview.start),
+            focus: screenPoint(fromCanvas: focus),
+            context: context.map { screenPoint(fromCanvas: $0) },
             safeArea: safeArea
         )
         guard delta != .zero else { return }
@@ -1832,7 +1896,12 @@ struct DeckCanvasView: View {
                 next,
                 scale: canvasScale,
                 viewportSize: currentUnobstructedSize(fallback: viewportSize),
-                minimumVisibleLength: CGFloat(OPSStyle.Layout.touchTargetMin)
+                minimumVisibleLength: CGFloat(OPSStyle.Layout.touchTargetMin),
+                // A follow is a deliberate camera move. Recentring the workspace
+                // on any axis it happens to fit — which a small deck does on
+                // both — discards that move entirely, which is exactly how the
+                // point being placed stayed parked under the bottom chrome.
+                centerWhenWorkspaceFits: false
             )
         }
     }
@@ -2044,7 +2113,7 @@ struct DeckCanvasView: View {
                 applyPerimeterReorientationCameraAction(
                     DeckCanvasWorkspaceInteractionPolicy.perimeterReorientationCameraAction(
                         phase: .changed,
-                        activeAnchor: viewModel.perimeterEntry.activeAnchor
+                        draftFocus: nil
                     ),
                     viewportSize: size
                 )
@@ -2058,7 +2127,7 @@ struct DeckCanvasView: View {
                 applyPerimeterReorientationCameraAction(
                     DeckCanvasWorkspaceInteractionPolicy.perimeterReorientationCameraAction(
                         phase: .ended,
-                        activeAnchor: viewModel.perimeterEntry.activeAnchor
+                        draftFocus: perimeterCameraFocus(for: viewModel.perimeterEntry)
                     ),
                     viewportSize: size
                 )
@@ -2072,8 +2141,12 @@ struct DeckCanvasView: View {
         switch action {
         case .stopCurrentMotion:
             viewportSnap.stop()
-        case .centerOn(let point):
-            centerViewport(on: point, viewportSize: viewportSize)
+        case .follow(let point):
+            followPoint(
+                point,
+                context: viewModel.perimeterEntry.activeAnchor?.position,
+                viewportSize: viewportSize
+            )
         case .reconcileWorkspace:
             reconcileWorkspaceOffsetIfReady(viewportSize: viewportSize)
         }

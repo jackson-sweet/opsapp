@@ -1,0 +1,109 @@
+{
+  "source_commit": "7ef35203a4df1d1493664f10cb0a2a23fbe682f9",
+  "simulator": "7523294C-F50B-4E24-8B73-9FC7060A78D6",
+  "device": "iPhone 17",
+  "runtime": "iOS 26.5 (23F77)",
+  "source_sha256": {
+    "OPS/Network/Sync/ProjectNoteMentionEditSync.swift": "08653d885d2b12ae0fbb07eadeb8f799f298c0cc4465cdda5985809bab4a25dc",
+    "OPS/Network/Sync/SyncEngine.swift": "688dd8ff3e17f1fa6579ec0ef7e6c0b0539849c77560cab6af1d0738836b763b",
+    "OPSTests/ProjectNoteMentionEditTests.swift": "2ee56805435003fbd9c6ff27bf2149aaa28468da31b4c12c1a465ddaa8261f8f",
+    "OPSTests/Views/ActivityEntryEditAttachmentsTests.swift": "bf86c1ae443807b1337e0bbedc36bdd05140a6a40c3f2567591f3ec0e7e59366",
+    "OPSTests/ProjectNotesMergeTests.swift": "82ef3852d08a44485e528d4f91b847bcb0b61975e8c00c9e40461f2d26a0d850",
+    "OPSTests/Sync/ProjectNoteLocalSignalTests.swift": "bf8a5e9a7c06c9726252b535a98afd14ca34826b03e2b6923edf1ffb438d9cd5",
+    "OPS.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved": "1347dd64f7c7156a133137258eaaec791021015403ebc112b45669d292495826"
+  },
+  "integrated_commit": "b1cdc644c164d28c1dba8ae34047c46d70c461fc",
+  "test_result": {
+    "bundle": "/private/tmp/ops-ios-bugs-p8/focused-2.xcresult",
+    "exit_code": 0,
+    "passed": 118,
+    "failed": 0,
+    "skipped": 0,
+    "build_jobs": 1,
+    "parallel_testing": false
+  },
+  "first_attempt": {
+    "exit_code": 75,
+    "result": "Interrupted by this task before tests to reduce memory pressure",
+    "build_jobs": 2
+  },
+  "source_git_trees": {
+    "OPS": "7a9cc03005156d635d1518917facdb2ead275134",
+    "OPSTests": "16592102a159ff9c3653f6cd0780926c901f00de",
+    "OPS.xcodeproj": "03ac41bfafd82d4663665f74ae07f9d8f8395314"
+  },
+  "new_regressions": [
+    {
+      "test": "ProjectNoteMentionEditTests/testDiscardAllMediaEditsRestoresEarliestBaseline()",
+      "result": "Passed"
+    },
+    {
+      "test": "ProjectNoteMentionEditTests/testDiscardMediaKeepsEarlierPendingMediaIntent()",
+      "result": "Passed"
+    },
+    {
+      "test": "ProjectNoteMentionEditTests/testDiscardMediaKeepsLaterMediaIntentBehindTextEdit()",
+      "result": "Passed"
+    },
+    {
+      "test": "ProjectNoteMentionEditTests/testDiscardMediaUsesCapturedBaselineOverOlderCompletedMedia()",
+      "result": "Passed"
+    },
+    {
+      "test": "ProjectNoteMentionEditTests/testDiscardRemovedAttachmentWithEarlierTextEditRestoresPhotos()",
+      "result": "Passed"
+    },
+    {
+      "test": "ProjectNoteMentionEditTests/testDiscardRemovedAttachmentWithLaterTextEditRestoresPhotos()",
+      "result": "Passed"
+    },
+    {
+      "test": "ProjectNoteMentionEditTests/testDiscardTextOnlyEditPreservesNewerInboundAttachments()",
+      "result": "Passed"
+    },
+    {
+      "test": "ProjectNoteMentionEditTests/testFailedMediaDiscardPreservesAbsentAndNullRollbackFields()",
+      "result": "Passed"
+    },
+    {
+      "test": "ProjectNoteMentionEditTests/testFailedMediaDiscardPreservesConcurrentSurvivingPayloadMetadata()",
+      "result": "Passed"
+    },
+    {
+      "test": "ProjectNoteMentionEditTests/testFailedMediaDiscardRestoresRebasedPayload()",
+      "result": "Passed"
+    },
+    {
+      "test": "ProjectNoteMentionEditTests/testMediaDiscardDoesNotRebaseExecutingSuccessor()",
+      "result": "Passed"
+    },
+    {
+      "test": "ProjectNoteMentionEditTests/testMediaDiscardOrderingUsesOperationUUIDForEqualTimes()",
+      "result": "Passed"
+    },
+    {
+      "test": "ProjectNoteMentionEditTests/testSequentialMediaDiscardsThroughTextRestoreOriginalPhotos()",
+      "result": "Passed"
+    }
+  ],
+  "suite_counts": {
+    "ActivityEntryEditAttachmentsTests": 9,
+    "ProjectNoteLocalSignalTests": 2,
+    "ProjectNoteMentionEditTests": 103,
+    "ProjectNotesMergeTests": 4
+  },
+  "independent_review": "ios_bugs_p7_1: no actionable findings in 7ef35203 against daad6217; read-only review",
+  "server_preflight": {
+    "checked_at": "2026-09-15T00:15:05.686583Z",
+    "signature": "update_project_note_mentions(uuid,text,text[],uuid)",
+    "definition_md5": "9d16ec64ff2d15da9e00fe1fbeb1adc4",
+    "migration_applied": false
+  },
+  "cleanup": {
+    "temporary_simulator_deleted": true,
+    "derived_data_deleted": true,
+    "private_package_cache_deleted": true,
+    "copied_ignored_build_configuration_deleted": true,
+    "source_and_result_bundle_retained": true
+  }
+}

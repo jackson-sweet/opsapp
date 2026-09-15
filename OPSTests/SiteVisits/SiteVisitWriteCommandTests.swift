@@ -22,6 +22,25 @@ final class SiteVisitWriteCommandTests: XCTestCase {
         XCTAssertEqual(command.rows[0].baseRevision, 4)
         XCTAssertEqual(command.rows[0].values["text"], .string("next edit"))
     }
+    /// The capture screen freezes a base at the first keystroke and writes it
+    /// back when the buffer flushes. If the phone's own save landed in between,
+    /// the persisted (newer) revision wins — restoring the captured base would
+    /// re-create the stale_edit self-conflict of bug 0e110106.
+    func testCapturedKeystrokeBaseYieldsToARevisionSavedMeanwhile() {
+        var captured = SiteVisitWriteState(revision: 1)
+        captured.begin(.string("original"))
+        captured.explicitlyEdited = true
+        var persisted = SiteVisitWriteState(revision: 2)
+        persisted.baseRevision = 2
+        persisted.baseRow = .string("saved")
+        let merged = persisted.restoringCapturedBase(captured)
+        XCTAssertEqual(merged.revision, 2)
+        XCTAssertEqual(merged.baseRevision, 2)
+        XCTAssertEqual(merged.baseRow, .string("saved"))
+        XCTAssertEqual(merged.explicitlyEdited, true)
+        let unchanged = SiteVisitWriteState(revision: 1).restoringCapturedBase(captured)
+        XCTAssertEqual(unchanged, captured)
+    }
     func testFirstKeystrokeBaseSurvivesLaterIncomingRevision() {
         var state = SiteVisitWriteState(revision: 2)
         state.begin(.string("original"))

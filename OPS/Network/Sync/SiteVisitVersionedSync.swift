@@ -4,6 +4,8 @@ import Supabase
 
 enum SiteVisitVersionedSync {
     typealias Deliver = (UUID, SiteVisitWriteCommand, String) async throws -> SiteVisitWriteReceipt
+    /// (original command id, command, resolution, expected actor, use choice protocol)
+    typealias DeliverResolution = (UUID, SiteVisitWriteCommand, SiteVisitWriteResolution, String, Bool) async throws -> SiteVisitWriteReceipt
     static func handles(_ operation: SyncOperation) -> Bool {
         operation.entityType == SyncEntityType.siteVisitType.rawValue ||
             operation.entityType == SyncEntityType.siteVisitChecklistAnswer.rawValue
@@ -45,31 +47,140 @@ enum SiteVisitVersionedSync {
             params: Parameters(p_command_id: id, p_command: command, p_expected_actor: expectedActorId)).execute().value
     }
     static func execute(operation: SyncOperation, context: ModelContext, companyId: String, actorId: String?,
-                        isCurrent: () -> Bool, deliverWrite: Deliver = { try await deliver(id: $0, command: $1, expectedActorId: $2) }, isolation: isolated (any Actor)? = #isolation) async throws {
-        guard let command = command(operation), command.isSupported,
+                        isCurrent: () -> Bool, deliverWrite: Deliver = { try await deliver(id: $0, command: $1, expectedActorId: $2) },
+                        deliverResolution: DeliverResolution = { try await Self.deliverResolution(originalId: $0, command: $1, resolution: $2, expectedActorId: $3, useChoiceProtocol: $4) },
+                        isolation: isolated (any Actor)? = #isolation) async throws {
+        guard var command = command(operation), command.isSupported,
               command.companyId == companyId.lowercased(), !command.rows.isEmpty,
               command.rows.contains(where: { $0.id == operation.entityId.lowercased() }),
               let actorId = actorId?.lowercased(), !actorId.isEmpty,
               operation.siteVisitWriteActorId == actorId else { throw SiteVisitWriteError.legacyPayload }
+        let resolutionData = operation.siteVisitWriteResolutionData
         if operation.siteVisitWriteAttemptedAt == nil {
+            // A command that has not left the phone may still move onto the
+            // newest revision this queue has already seen for its rows. Once
+            // frozen it never changes: the server keys idempotency on its bytes.
+            if resolutionData == nil,
+               let rebased = try rebasedOntoOwnSavedRevisions(command, operation: operation, context: context) {
+                try setCommand(rebased, on: operation)
+                command = rebased
+            }
             operation.siteVisitWriteAttemptedAt = Date()
             try context.save() // Durable before transmission; never reset by Retry.
         }
-        let resolutionData = operation.siteVisitWriteResolutionData
         let resolution = try resolutionData.map { try JSONDecoder().decode(SiteVisitWriteResolution.self, from: $0) }
         let receipt: SiteVisitWriteReceipt
         if let resolution {
             let currentRequiresChoiceProtocol = try SiteVisitWriteModels.needsChoiceReview(command, context: context)
             let useChoiceProtocol = resolution.current.contains(where: \.containsChoiceMetadata)
                 || currentRequiresChoiceProtocol
-            receipt = try await deliverResolution(originalId: operation.id, command: command, resolution: resolution,
-                expectedActorId: actorId, useChoiceProtocol: useChoiceProtocol)
+            receipt = try await deliverResolution(operation.id, command, resolution, actorId, useChoiceProtocol)
         } else {
             receipt = try await deliverWrite(operation.id, command, actorId)
         }
         guard isCurrent(), !Task.isCancelled else { throw CancellationError() }
-        try applyReceipt(receipt, to: operation, command: command, resolutionData: resolutionData,
-            context: context, companyId: companyId, actorId: actorId)
+        do {
+            try applyReceipt(receipt, to: operation, command: command, resolutionData: resolutionData,
+                context: context, companyId: companyId, actorId: actorId)
+        } catch SiteVisitWriteError.conflict where resolutionData == nil {
+            // The phone conflicting with its own earlier save is not a review
+            // question — the local edit already builds on that save. Settle it
+            // as USE PENDING in this pass; a foreign row still parks for review.
+            guard let selfResolution = try selfConflictResolution(for: receipt, command: command,
+                                                                  operation: operation, context: context) else {
+                throw SiteVisitWriteError.conflict
+            }
+            let selfResolutionData = try JSONEncoder().encode(selfResolution)
+            operation.siteVisitWriteResolutionData = selfResolutionData
+            try context.save()
+            let currentRequiresChoiceProtocol = try SiteVisitWriteModels.needsChoiceReview(command, context: context)
+            let useChoiceProtocol = selfResolution.current.contains(where: \.containsChoiceMetadata)
+                || currentRequiresChoiceProtocol
+            let settled = try await deliverResolution(operation.id, command, selfResolution, actorId, useChoiceProtocol)
+            guard isCurrent(), !Task.isCancelled else { throw CancellationError() }
+            try applyReceipt(settled, to: operation, command: command, resolutionData: selfResolutionData,
+                context: context, companyId: companyId, actorId: actorId)
+        }
+    }
+
+    /// The highest revision this queue has already seen for each row of an
+    /// unattempted command — its own `saved` receipts, rows a review settled,
+    /// and the persisted write state — is the only honest base for it. Bug
+    /// 0e110106: a successor queued from a stale in-memory write state shipped
+    /// the revision from before the phone's own save and could never land.
+    /// Conflict receipts are never a source: their rows may be another writer's.
+    private static func rebasedOntoOwnSavedRevisions(_ command: SiteVisitWriteCommand, operation: SyncOperation,
+                                                    context: ModelContext) throws -> SiteVisitWriteCommand? {
+        let seen = try ownSeenRows(for: command, operation: operation,
+            outcomes: ["saved", "resolved", "superseded"], context: context)
+        var rebased = command
+        var changed = false
+        for index in rebased.rows.indices {
+            let row = rebased.rows[index]
+            var best: (revision: Int64, row: SiteVisitWriteJSON)?
+            for candidate in seen where candidate["id"]?.string == row.id {
+                guard let revision = candidate["write_revision"]?.revision,
+                      revision > (best?.revision ?? -1) else { continue }
+                best = (revision, candidate)
+            }
+            if let state = try persistedWriteState(entity: command.entity, id: row.id, companyId: command.companyId, context: context),
+               state.revision > (best?.revision ?? -1) {
+                let serverRow = [state.baseRow, state.remoteRow].compactMap { $0 }
+                    .first { $0["write_revision"]?.revision == state.revision }
+                best = (state.revision, serverRow ?? row.before)
+            }
+            guard let best, best.revision > row.baseRevision else { continue }
+            rebased.rows[index].baseRevision = best.revision
+            rebased.rows[index].before = best.row
+            changed = true
+        }
+        return changed ? rebased : nil
+    }
+
+    /// A `stale_edit` whose current rows are, byte for byte, rows this queue
+    /// itself delivered is the phone conflicting with its own earlier save.
+    /// The local edit already builds on that save, so USE PENDING is the only
+    /// answer the operator could give. Anything else stays a real conflict.
+    private static func selfConflictResolution(for receipt: SiteVisitWriteReceipt, command: SiteVisitWriteCommand,
+                                               operation: SyncOperation, context: ModelContext) throws -> SiteVisitWriteResolution? {
+        guard receipt.outcome == "conflict", receipt.reason == "stale_edit",
+              receipt.rows.count == command.rows.count else { return nil }
+        let delivered = try ownSeenRows(for: command, operation: operation, outcomes: ["saved"], context: context)
+        for row in command.rows {
+            guard let current = receipt.rows.first(where: { $0["id"]?.string == row.id }),
+                  delivered.contains(current) else { return nil }
+        }
+        return SiteVisitWriteResolution(id: UUID(), choice: "pending", current: receipt.rows)
+    }
+
+    /// Rows the server has echoed back to THIS queue for the command's rows:
+    /// receipts of other operations with one of `outcomes`, same company.
+    private static func ownSeenRows(for command: SiteVisitWriteCommand, operation: SyncOperation, outcomes: Set<String>,
+                                    context: ModelContext) throws -> [SiteVisitWriteJSON] {
+        let rowIds = Set(command.rows.map(\.id))
+        return try context.fetch(FetchDescriptor<SyncOperation>()).flatMap { candidate -> [SiteVisitWriteJSON] in
+            guard candidate.id != operation.id, candidate.entityType == operation.entityType,
+                  command.entity == "template" || rowIds.contains(candidate.entityId.lowercased()),
+                  let data = candidate.siteVisitWriteReceiptData,
+                  let receipt = try? JSONDecoder().decode(SiteVisitWriteReceipt.self, from: data),
+                  receipt.entity == command.entity, outcomes.contains(receipt.outcome) else { return [] }
+            return receipt.rows.filter { $0["company_id"]?.string == command.companyId }
+        }
+    }
+
+    /// The write state as the store holds it — never the registered object a
+    /// view model may still be showing from before a receipt landed.
+    private static func persistedWriteState(entity: String, id: String, companyId: String,
+                                            context: ModelContext) throws -> SiteVisitWriteState? {
+        let fresh = ModelContext(context.container)
+        if entity == "template" {
+            guard let type = try SiteVisitTypeServerMerge.fetch(id: id, context: fresh),
+                  type.companyId.lowercased() == companyId else { return nil }
+            return type.writeState
+        }
+        guard let answer = try fresh.fetch(FetchDescriptor<SiteVisitChecklistAnswer>(predicate: #Predicate { $0.id == id })).first,
+              answer.companyId.lowercased() == companyId else { return nil }
+        return answer.writeState
     }
 
     /// A network suspension can leave registered SwiftData objects older than
@@ -197,9 +308,13 @@ enum SiteVisitVersionedSync {
                     if receipt.outcome == "conflict" || hasLater || !exactLocal {
                         var state = model.writeState
                         state.remoteRow = saved
-                        if receipt.outcome == "saved" && resolution == nil && hasLater {
-                            state.revision = saved?["write_revision"]?.revision ?? state.revision
-                            state.baseRevision = state.revision; state.baseRow = saved
+                        // A saved row with this identity is the phone's own
+                        // newest revision whether or not a successor is queued
+                        // yet (bug 0e110106): every later edit builds on it.
+                        if receipt.outcome == "saved", let saved, saved["id"]?.string == id,
+                           let revision = saved["write_revision"]?.revision {
+                            state.revision = revision
+                            state.baseRevision = revision; state.baseRow = saved
                         }
                         model.writeState = state; model.needsSync = true
                     } else if let saved {
@@ -217,9 +332,10 @@ enum SiteVisitVersionedSync {
                     let exactLocal = SiteVisitWriteModels.values(model).matchesRequested(row.values)
                     if receipt.outcome == "conflict" || hasLater || !exactLocal {
                         var state = model.writeState; state.remoteRow = saved
-                        if receipt.outcome == "saved" && resolution == nil && hasLater {
-                            state.revision = saved?["write_revision"]?.revision ?? state.revision
-                            state.baseRevision = state.revision; state.baseRow = saved
+                        if receipt.outcome == "saved", let saved, saved["id"]?.string == id,
+                           let revision = saved["write_revision"]?.revision {
+                            state.revision = revision
+                            state.baseRevision = revision; state.baseRow = saved
                         }
                         model.writeState = state; model.needsSync = true
                     } else if let saved {

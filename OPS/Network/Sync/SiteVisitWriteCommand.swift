@@ -134,6 +134,21 @@ struct SiteVisitWriteState: Codable, Equatable, Sendable {
         explicitlyEdited = nil
         baseRevision = nil; baseRow = nil; remoteRow = nil
     }
+    /// The capture screen snapshots the write state at the first keystroke and
+    /// writes it back when the buffer flushes. A save that landed in between
+    /// moved `revision` forward; restoring the snapshot over it would re-create
+    /// the stale_edit self-conflict of bug 0e110106, so the newer persisted
+    /// revision wins and only the edit marker is carried across.
+    func restoringCapturedBase(_ captured: SiteVisitWriteState) -> SiteVisitWriteState {
+        guard revision > captured.revision else { return captured }
+        var merged = self
+        merged.explicitlyEdited = captured.explicitlyEdited ?? explicitlyEdited
+        if merged.baseRevision == nil {
+            merged.baseRevision = merged.revision
+            merged.baseRow = merged.remoteRow ?? captured.baseRow
+        }
+        return merged
+    }
 }
 
 enum SiteVisitWriteError: Error, LocalizedError {

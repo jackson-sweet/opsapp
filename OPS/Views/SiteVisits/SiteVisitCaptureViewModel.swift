@@ -477,7 +477,9 @@ final class SiteVisitCaptureViewModel: ObservableObject {
         guard persistSiteVisitChanges({
             let now = Date()
             for (answer, value) in changes {
-                if let original = pendingChecklistBases[answer.id] { answer.writeState = original }
+                if let original = pendingChecklistBases[answer.id] {
+                    answer.writeState = answer.writeState.restoringCapturedBase(original)
+                }
                 answer.answerValue = value
                 answer.updatedAt = now
                 answer.needsSync = true

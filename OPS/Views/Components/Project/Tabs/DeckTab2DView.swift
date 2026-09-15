@@ -226,6 +226,27 @@ struct DeckTab2DView: View {
 
     // MARK: - Viewport Centering
 
+    /// Camera scale that frames a drawing's span inside `viewportSize`.
+    ///
+    /// Bug 1959e011 — small decks rendered at near-1x because fitScale was
+    /// capped at 2.0 AND a fixed 200pt margin was added to span (which
+    /// dominated small drawings, dragging fitScale below 1). Use proportional
+    /// margin (15% padding via 0.85 multiplier) and a much higher cap so a
+    /// 200pt-wide deck can actually fill an iPhone viewport.
+    ///
+    /// Shared with the label tests: every on-screen size the canvas produces is
+    /// its canvas-space size times this scale.
+    static func fitScale(spanX: CGFloat, spanY: CGFloat, viewportSize: CGSize) -> CGFloat {
+        // Guard against degenerate spans (single vertex / colinear points) — fall
+        // back to a sensible reference span so we don't divide by ~zero.
+        let safeSpanX = max(spanX, 1)
+        let safeSpanY = max(spanY, 1)
+        let rawFit = min(viewportSize.width / safeSpanX, viewportSize.height / safeSpanY)
+        // 0.85 leaves ~7.5% margin on each side; 8.0 cap keeps very tiny
+        // drawings from rendering at ridiculous zoom (just enough to read).
+        return min(rawFit * 0.85, 8.0)
+    }
+
     private func centerViewport(viewportSize: CGSize) {
         // DECK-NEW-8 — frame the camera around ALL levels' bounds so every
         // level is visible. Previously only level 0 informed the fit, which
@@ -250,21 +271,11 @@ struct DeckTab2DView: View {
         let centerX = (xs.min()! + xs.max()!) / 2
         let centerY = (ys.min()! + ys.max()!) / 2
 
-        // Bug 1959e011 — small decks rendered at near-1x because fitScale was
-        // capped at 2.0 AND a fixed 200pt margin was added to span (which
-        // dominated small drawings, dragging fitScale below 1). Use proportional
-        // margin (15% padding via 0.85 multiplier) and a much higher cap so a
-        // 200pt-wide deck can actually fill an iPhone viewport.
-        let rawSpanX = xs.max()! - xs.min()!
-        let rawSpanY = ys.max()! - ys.min()!
-        // Guard against degenerate spans (single vertex / colinear points) — fall
-        // back to a sensible reference span so we don't divide by ~zero.
-        let spanX = max(rawSpanX, 1)
-        let spanY = max(rawSpanY, 1)
-        let rawFit = min(viewportSize.width / spanX, viewportSize.height / spanY)
-        // 0.85 leaves ~7.5% margin on each side; 8.0 cap keeps very tiny
-        // drawings from rendering at ridiculous zoom (just enough to read).
-        let fitScale = min(rawFit * 0.85, 8.0)
+        let fitScale = Self.fitScale(
+            spanX: xs.max()! - xs.min()!,
+            spanY: ys.max()! - ys.min()!,
+            viewportSize: viewportSize
+        )
 
         canvasScale = fitScale
         canvasOffset = CGSize(
@@ -385,17 +396,20 @@ struct DeckTab2DView: View {
         // Chrome padding is a screen measure, so it converts into canvas units
         // — capped at a quarter of the rectangle so a heavily zoomed-out deck
         // can't let the padding swallow the space the text was given.
-        let screenPadding = CGFloat(OPSStyle.Layout.spacing1) / safeScale
+        var padding = CGFloat(OPSStyle.Layout.spacing1) / safeScale
 
         let anchor: CGPoint
         let fit: DeckSurfaceLabelPlacement.Fit
         if let rect = DeckSurfaceLabelPlacement.largestInscribedRect(in: positions) {
             anchor = CGPoint(x: rect.midX, y: rect.midY)
+            // One padding value insets the text AND pads the pill, so the pill
+            // is exactly the rectangle the text was fitted into, never wider.
+            padding = min(padding, min(rect.width, rect.height) / 4)
             fit = DeckSurfaceLabelPlacement.fit(
                 text: label,
                 in: rect,
                 canvasScale: canvasScale,
-                padding: min(screenPadding, min(rect.width, rect.height) / 4),
+                padding: padding,
                 measure: measure
             )
         } else {
@@ -417,8 +431,8 @@ struct DeckTab2DView: View {
                 .foregroundColor(OPSStyle.Colors.text)
         )
         let textSize = fit.size
-        let horizontalPadding = screenPadding
-        let verticalPadding = screenPadding / 2
+        let horizontalPadding = padding
+        let verticalPadding = padding / 2
         let pillRect = CGRect(
             x: anchor.x - textSize.width / 2 - horizontalPadding,
             y: anchor.y - textSize.height / 2 - verticalPadding,

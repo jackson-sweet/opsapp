@@ -194,8 +194,8 @@ enum DeckSurfaceLabelPlacement {
         measure: (String, CGFloat) -> CGSize
     ) -> Fit {
         let scale = max(canvasScale, CGFloat.ulpOfOne.squareRoot())
-        let floor = screenFloorPoints / scale
-        let cap = screenCapPoints / scale
+        let floor = canvasSize(atLeast: screenFloorPoints, scale: scale)
+        let cap = canvasSize(atMost: screenCapPoints, scale: scale)
         let availW = max(rect.width - 2 * padding, 0)
         let availH = max(rect.height - 2 * padding, 0)
 
@@ -207,24 +207,80 @@ enum DeckSurfaceLabelPlacement {
         }
         size = min(cap, max(floor, size))
 
-        var candidate = text
-        var measured = measure(candidate, size)
-        if measured.width > availW && size <= floor + 0.01 {
-            // The floor cannot fit: truncate rather than overflow the rectangle.
-            var chars = Array(text)
-            while chars.count > 1 {
-                chars.removeLast()
-                candidate = String(chars).trimmingCharacters(in: .whitespaces) + ellipsis
-                measured = measure(candidate, size)
-                if measured.width <= availW { break }
-            }
-            if measured.width > availW {
-                // Not even one character plus the ellipsis fits. The mark alone
-                // still says "there is a label here" without covering geometry.
-                candidate = ellipsis
-                measured = measure(candidate, size)
-            }
+        let measured = measure(text, size)
+        guard measured.width > availW && size <= floor + 0.01 else {
+            return Fit(text: text, fontSize: size, size: measured)
         }
-        return Fit(text: candidate, fontSize: size, size: measured)
+        // The floor cannot fit: truncate rather than overflow the rectangle.
+        return fitting(text: text, toWidth: availW, fontSize: size, measure: measure)
     }
+
+    /// Longest prefix of `text` that fits `availableWidth` at a FIXED
+    /// `fontSize`, ending in the ellipsis whenever anything was dropped.
+    ///
+    /// Shared with surfaces whose type size is decided elsewhere (the builder
+    /// clamps its label to the zoom band rather than filling the rectangle),
+    /// so every OPS surface truncates a deck label the same way. Degrades to
+    /// the ellipsis alone when not even one character plus the mark fits: the
+    /// label is never hidden and never drawn past the space it was given.
+    static func fitting(
+        text: String,
+        toWidth availableWidth: CGFloat,
+        fontSize: CGFloat,
+        measure: (String, CGFloat) -> CGSize
+    ) -> Fit {
+        var candidate = text
+        var measured = measure(candidate, fontSize)
+        guard measured.width > availableWidth else {
+            return Fit(text: candidate, fontSize: fontSize, size: measured)
+        }
+
+        var chars = Array(text)
+        while chars.count > 1 {
+            chars.removeLast()
+            candidate = String(chars).trimmingCharacters(in: .whitespaces) + ellipsis
+            measured = measure(candidate, fontSize)
+            if measured.width <= availableWidth { break }
+        }
+        if measured.width > availableWidth {
+            // Not even one character plus the ellipsis fits. The mark alone
+            // still says "there is a label here" without covering geometry.
+            candidate = ellipsis
+            measured = measure(candidate, fontSize)
+        }
+        return Fit(text: candidate, fontSize: fontSize, size: measured)
+    }
+
+    /// Canvas-space size whose on-screen product is at most `screenPoints`.
+    ///
+    /// `screenPoints / scale * scale` can land an ulp ABOVE `screenPoints`, so
+    /// the quotient is stepped down until the product actually holds. Callers
+    /// (and their tests) can then assert the ceiling exactly instead of
+    /// carrying a tolerance for binary rounding.
+    static func canvasSize(atMost screenPoints: CGFloat, scale: CGFloat) -> CGFloat {
+        var size = screenPoints / scale
+        var steps = 0
+        while size * scale > screenPoints, steps < ulpStepLimit {
+            size = size.nextDown
+            steps += 1
+        }
+        return size
+    }
+
+    /// Canvas-space size whose on-screen product is at least `screenPoints` —
+    /// the legibility floor's mirror of `canvasSize(atMost:scale:)`.
+    static func canvasSize(atLeast screenPoints: CGFloat, scale: CGFloat) -> CGFloat {
+        var size = screenPoints / scale
+        var steps = 0
+        while size * scale < screenPoints, steps < ulpStepLimit {
+            size = size.nextUp
+            steps += 1
+        }
+        return size
+    }
+
+    /// A correctly rounded quotient is within one ulp of the exact value; a
+    /// handful of steps is a generous bound that also stops the loop dead on a
+    /// non-finite scale.
+    private static let ulpStepLimit = 8
 }

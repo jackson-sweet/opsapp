@@ -80,6 +80,78 @@ final class DeckSurfaceLabelPlacementTests: XCTestCase {
         XCTAssertLessThanOrEqual(fit.size.width, rect.width - 8)
     }
 
+    /// The clamp is a SCREEN contract: the canvas-space size times the canvas
+    /// scale must land inside [floor, cap] exactly, not an ulp outside it, so
+    /// callers can assert the ceiling without carrying a tolerance. 0.835125 is
+    /// the viewer's own fit scale for a 400x300 deck in a 393pt viewport, where
+    /// the naive `cap / scale * scale` lands at 28.000000000000004.
+    private let awkwardScale: CGFloat = 0.835125
+
+    func testFitNeverExceedsTheScreenCapAfterScalingBack() {
+        let fit = DeckSurfaceLabelPlacement.fit(
+            text: "Upper deck",
+            in: CGRect(x: 0, y: 0, width: 393.75, height: 295.3125),
+            canvasScale: awkwardScale,
+            padding: 4.79,
+            measure: measure
+        )
+        XCTAssertLessThanOrEqual(
+            fit.fontSize * awkwardScale,
+            DeckSurfaceLabelPlacement.screenCapPoints
+        )
+        XCTAssertGreaterThan(fit.fontSize * awkwardScale, 27.9, "the cap must still be reached")
+    }
+
+    func testFitNeverFallsBelowTheScreenFloorAfterScalingBack() {
+        let fit = DeckSurfaceLabelPlacement.fit(
+            text: "Upper deck",
+            in: CGRect(x: 0, y: 0, width: 60, height: 40),
+            canvasScale: awkwardScale,
+            padding: 4,
+            measure: measure
+        )
+        XCTAssertGreaterThanOrEqual(
+            fit.fontSize * awkwardScale,
+            DeckSurfaceLabelPlacement.screenFloorPoints
+        )
+        XCTAssertLessThan(fit.fontSize * awkwardScale, 11.1, "the floor must still bind")
+    }
+
+    // MARK: - Shared truncation
+
+    func testTruncationKeepsTheLongestPrefixThatFitsTheWidth() {
+        let fit = DeckSurfaceLabelPlacement.fitting(
+            text: "Upper deck level two",
+            toWidth: 52,
+            fontSize: 11,
+            measure: measure
+        )
+        XCTAssertEqual(fit.text, "Upper\u{2026}")
+        XCTAssertEqual(fit.fontSize, 11)
+        XCTAssertLessThanOrEqual(fit.size.width, 52)
+    }
+
+    func testTruncationLeavesALabelThatAlreadyFitsUntouched() {
+        let fit = DeckSurfaceLabelPlacement.fitting(
+            text: "Upper deck",
+            toWidth: 200,
+            fontSize: 11,
+            measure: measure
+        )
+        XCTAssertEqual(fit.text, "Upper deck")
+        XCTAssertEqual(fit.size, measure("Upper deck", 11))
+    }
+
+    func testTruncationDegradesToTheEllipsisWhenNothingFits() {
+        let fit = DeckSurfaceLabelPlacement.fitting(
+            text: "Upper deck level two",
+            toWidth: 6,
+            fontSize: 11,
+            measure: measure
+        )
+        XCTAssertEqual(fit.text, "\u{2026}")
+    }
+
     /// Terminal case of the truncation walk: when not even one character plus
     /// the ellipsis fits, the label degrades to the ellipsis alone rather than
     /// drawing a word across the neighbouring geometry.

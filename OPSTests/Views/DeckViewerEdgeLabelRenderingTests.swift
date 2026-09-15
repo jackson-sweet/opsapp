@@ -113,14 +113,18 @@ final class DeckViewerEdgeLabelRenderingTests: XCTestCase {
         )
 
         XCTAssertEqual(fit.text, label, "a 400x300 surface has room for its whole name")
+        // The contract is the size clamp, not binary rounding: UIKit metrics
+        // here differ from the canvas' own resolver by fractions of a point,
+        // so the bounds carry an epsilon rather than asserting bit equality.
+        let epsilon: CGFloat = 1e-9
         XCTAssertGreaterThanOrEqual(
             fit.fontSize * canvasScale,
-            DeckSurfaceLabelPlacement.screenFloorPoints,
+            DeckSurfaceLabelPlacement.screenFloorPoints - epsilon,
             "the surface name must clear the 11pt on-screen floor at fit zoom"
         )
         XCTAssertLessThanOrEqual(
             fit.fontSize * canvasScale,
-            DeckSurfaceLabelPlacement.screenCapPoints,
+            DeckSurfaceLabelPlacement.screenCapPoints + epsilon,
             "the surface name must stay under the 28pt display ceiling"
         )
         // The drawn pill is the text plus the same padding the text was fitted

@@ -448,17 +448,6 @@ struct SiteVisitOutboundSync {
             )
             try Task.checkCancellation()
             guard isCurrent() else { throw CancellationError() }
-        case .siteVisitChecklistAnswer:
-            try await executeChecklistAnswer(
-                operation: operation,
-                envelope: envelope,
-                repository: repository,
-                context: context,
-                isCurrent: isCurrent,
-                isolation: isolation
-            )
-            try Task.checkCancellation()
-            guard isCurrent() else { throw CancellationError() }
         case .siteVisitIdentityDraft:
             try await executeIdentityDraft(
                 operation: operation,
@@ -604,55 +593,6 @@ struct SiteVisitOutboundSync {
         }
     }
 
-    private func executeChecklistAnswer(
-        operation: SyncOperation,
-        envelope: SiteVisitSyncOperation.Payload,
-        repository: SiteVisitRemoteWriting,
-        context: ModelContext,
-        isCurrent: () -> Bool,
-        isolation: isolated (any Actor)?
-    ) async throws {
-        try Task.checkCancellation()
-        guard isCurrent() else { throw CancellationError() }
-        let answer = try fetchAnswer(id: envelope.entityId, context: context)
-        if operation.operationType == "delete" || answer?.deletedAt != nil {
-            try await repository.softDelete(
-                .checklistAnswers,
-                id: envelope.entityId,
-                at: answer?.deletedAt ?? Date()
-            )
-            try Task.checkCancellation()
-            guard isCurrent() else { throw CancellationError() }
-            if let answer {
-                try markSynced(answer, operation: operation, context: context)
-            }
-            return
-        }
-        guard let answer else { return }
-        try requireCompany(answer.companyId, expected: envelope.companyId)
-        try healAuthorIfNeeded(
-            answer,
-            parentVisitId: envelope.siteVisitId,
-            context: context
-        )
-        let response = try await repository.upsertChecklistAnswer(
-            try UpsertSiteVisitChecklistAnswerDTO(model: answer)
-        )
-        try Task.checkCancellation()
-        guard isCurrent() else { throw CancellationError() }
-        try context.transaction {
-            answer.lastSyncedAt = response.updatedAt
-            if !hasNewerCRUDOperation(
-                entityType: .siteVisitChecklistAnswer,
-                entityId: answer.id,
-                excluding: operation,
-                context: context
-            ) {
-                answer.needsSync = false
-            }
-        }
-    }
-
     private func executeIdentityDraft(
         operation: SyncOperation,
         envelope: SiteVisitSyncOperation.Payload,
@@ -757,24 +697,6 @@ struct SiteVisitOutboundSync {
     }
 
     private func markSynced(
-        _ answer: SiteVisitChecklistAnswer,
-        operation: SyncOperation,
-        context: ModelContext
-    ) throws {
-        try context.transaction {
-            answer.lastSyncedAt = Date()
-            if !hasNewerCRUDOperation(
-                entityType: .siteVisitChecklistAnswer,
-                entityId: answer.id,
-                excluding: operation,
-                context: context
-            ) {
-                answer.needsSync = false
-            }
-        }
-    }
-
-    private func markSynced(
         _ draft: SiteVisitIdentityDraft,
         operation: SyncOperation,
         context: ModelContext
@@ -853,20 +775,6 @@ struct SiteVisitOutboundSync {
         let lower = id.lowercased()
         let upper = id.uppercased()
         var descriptor = FetchDescriptor<SiteVisitCaptureArtifact>(
-            predicate: #Predicate { $0.id == exact || $0.id == lower || $0.id == upper }
-        )
-        descriptor.fetchLimit = 1
-        return try context.fetch(descriptor).first
-    }
-
-    private func fetchAnswer(
-        id: String,
-        context: ModelContext
-    ) throws -> SiteVisitChecklistAnswer? {
-        let exact = id
-        let lower = id.lowercased()
-        let upper = id.uppercased()
-        var descriptor = FetchDescriptor<SiteVisitChecklistAnswer>(
             predicate: #Predicate { $0.id == exact || $0.id == lower || $0.id == upper }
         )
         descriptor.fetchLimit = 1

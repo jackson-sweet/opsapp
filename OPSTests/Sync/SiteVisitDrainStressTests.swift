@@ -538,27 +538,6 @@ private final class StubSiteVisitWriter: SiteVisitRemoteWriting {
         """.utf8))
     }
 
-    func upsertChecklistAnswer(
-        _ payload: UpsertSiteVisitChecklistAnswerDTO
-    ) async throws -> SiteVisitChecklistAnswerDTO {
-        try JSONDecoder().decode(SiteVisitChecklistAnswerDTO.self, from: Data("""
-        {
-          "id":"\(payload.id)",
-          "site_visit_id":"\(payload.siteVisitId)",
-          "company_id":"\(payload.companyId)",
-          "field_id":"\(payload.fieldId)",
-          "label":"\(payload.label)",
-          "kind":"\(payload.kind.rawValue)",
-          "required":\(payload.required),
-          "sort_order":\(payload.sortOrder),
-          "answer_value":{"artifactIds":[]},
-          "created_by":"\(payload.createdBy)",
-          "created_at":"\(payload.createdAt)",
-          "updated_at":"\(payload.updatedAt)"
-        }
-        """.utf8))
-    }
-
     func upsertIdentityDraft(
         _ payload: UpsertSiteVisitIdentityDraftDTO
     ) async throws -> SiteVisitIdentityDraftDTO {

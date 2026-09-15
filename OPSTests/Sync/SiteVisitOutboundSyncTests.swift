@@ -1087,7 +1087,6 @@ private final class RecordingSiteVisitWriter: SiteVisitRemoteWriting {
     enum Call: Equatable {
         case upsertVisit(notes: String?)
         case upsertArtifact(createdBy: String)
-        case upsertChecklistAnswer(createdBy: String)
         case upsertIdentityDraft(createdBy: String)
         case softDelete(SiteVisitRemoteTable, String)
         case complete(notes: String?)
@@ -1139,28 +1138,6 @@ private final class RecordingSiteVisitWriter: SiteVisitRemoteWriting {
               "kind":"\(payload.kind.rawValue)",
               "source":"\(payload.source.rawValue)",
               "captured_at":"2026-07-31T18:12:45Z",
-              "created_by":"\(payload.createdBy)",
-              "created_at":"2026-07-31T18:12:45Z",
-              "updated_at":"2026-07-31T18:13:45Z"
-            }
-            """
-        )
-    }
-
-    func upsertChecklistAnswer(
-        _ payload: UpsertSiteVisitChecklistAnswerDTO
-    ) async throws -> SiteVisitChecklistAnswerDTO {
-        calls.append(.upsertChecklistAnswer(createdBy: payload.createdBy))
-        if let upsertError { throw upsertError }
-        return try Self.decode(
-            """
-            {
-              "id":"\(payload.id)",
-              "site_visit_id":"\(payload.siteVisitId)",
-              "company_id":"\(payload.companyId)",
-              "field_id":"\(payload.fieldId)",
-              "label":"\(payload.label)",
-              "kind":"\(payload.kind.rawValue)",
               "created_by":"\(payload.createdBy)",
               "created_at":"2026-07-31T18:12:45Z",
               "updated_at":"2026-07-31T18:13:45Z"

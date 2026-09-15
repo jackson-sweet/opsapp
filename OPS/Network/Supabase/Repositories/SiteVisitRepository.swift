@@ -43,9 +43,6 @@ protocol SiteVisitRemoteWriting: AnyObject {
     func upsertArtifact(
         _ payload: UpsertSiteVisitArtifactDTO
     ) async throws -> SiteVisitArtifactDTO
-    func upsertChecklistAnswer(
-        _ payload: UpsertSiteVisitChecklistAnswerDTO
-    ) async throws -> SiteVisitChecklistAnswerDTO
     func upsertIdentityDraft(
         _ payload: UpsertSiteVisitIdentityDraftDTO
     ) async throws -> SiteVisitIdentityDraftDTO
@@ -227,13 +224,6 @@ final class SiteVisitRepository: SiteVisitRemoteWriting, @unchecked Sendable {
     }
 
     @discardableResult
-    func upsertChecklistAnswer(
-        _ payload: UpsertSiteVisitChecklistAnswerDTO
-    ) async throws -> SiteVisitChecklistAnswerDTO {
-        throw SiteVisitWriteError.legacyPayload
-    }
-
-    @discardableResult
     func upsertIdentityDraft(
         _ payload: UpsertSiteVisitIdentityDraftDTO
     ) async throws -> SiteVisitIdentityDraftDTO {
@@ -364,9 +354,10 @@ private final class SupabaseSiteVisitRemoteTransport: SiteVisitRemoteTransport {
                     table: table.rawValue
                 )
             case .checklistAnswers:
-                return try await upsert(
-                    try decoder.decode(UpsertSiteVisitChecklistAnswerDTO.self, from: payload),
-                    table: table.rawValue
+                // Answers reach the server only through the versioned write
+                // RPCs (`SiteVisitVersionedSync`); this table has no REST upsert.
+                throw SiteVisitRepositoryError.schemaCapability(
+                    "Checklist answers are written only through apply_site_visit_write"
                 )
             case .identityDrafts:
                 return try await upsert(

@@ -618,67 +618,6 @@ struct UpsertSiteVisitArtifactDTO: Codable, Equatable {
     }
 }
 
-struct UpsertSiteVisitChecklistAnswerDTO: Codable, Equatable {
-    let id: String
-    let siteVisitId: String
-    let companyId: String
-    let opportunityId: String?
-    let siteVisitTypeId: String?
-    let fieldId: String
-    let label: String
-    let kind: SiteVisitFieldKind
-    let required: Bool
-    let helpText: String?
-    let sortOrder: Int
-    let answerValue: SiteVisitChecklistValue
-    let choiceSnapshot: SiteVisitSingleChoice?
-    let createdBy: String
-    let createdAt: String
-    let updatedAt: String
-    let deletedAt: String?
-
-    enum CodingKeys: String, CodingKey {
-        case id
-        case siteVisitId = "site_visit_id"
-        case companyId = "company_id"
-        case opportunityId = "opportunity_id"
-        case siteVisitTypeId = "site_visit_type_id"
-        case fieldId = "field_id"
-        case label, kind, required
-        case helpText = "help_text"
-        case sortOrder = "sort_order"
-        case answerValue = "answer_value"
-        case choiceSnapshot = "choice_snapshot"
-        case createdBy = "created_by"
-        case createdAt = "created_at"
-        case updatedAt = "updated_at"
-        case deletedAt = "deleted_at"
-    }
-
-    init(model: SiteVisitChecklistAnswer) throws {
-        guard let createdBy = model.createdBy, !createdBy.isEmpty else {
-            throw SiteVisitPayloadError.missingRequiredField("created_by")
-        }
-        id = try SiteVisitWire.payloadUUID(model.id, field: "id")
-        siteVisitId = try SiteVisitWire.payloadUUID(model.siteVisitId, field: "site_visit_id")
-        companyId = try SiteVisitWire.payloadText(model.companyId, field: "company_id").lowercased()
-        opportunityId = try SiteVisitWire.payloadOptionalUUID(model.opportunityId, field: "opportunity_id")
-        siteVisitTypeId = model.siteVisitTypeId
-        fieldId = try SiteVisitWire.payloadText(model.fieldId, field: "field_id")
-        label = try SiteVisitWire.payloadText(model.label, field: "label")
-        kind = model.kind
-        required = model.required
-        helpText = model.helpText
-        sortOrder = model.sortOrder
-        answerValue = SiteVisitWire.canonicalChecklistValue(model.answerValue)
-        choiceSnapshot = model.answerValue.choiceSnapshot
-        self.createdBy = createdBy.lowercased()
-        createdAt = SupabaseDate.format(model.createdAt)
-        updatedAt = SupabaseDate.format(model.updatedAt ?? model.createdAt)
-        deletedAt = model.deletedAt.map(SupabaseDate.format)
-    }
-}
-
 struct UpsertSiteVisitIdentityDraftDTO: Codable, Equatable {
     let id: String
     let siteVisitId: String

@@ -104,8 +104,7 @@ final class SiteVisitDTOTests: XCTestCase {
             createdBy: userId
         )
 
-        let payload = try UpsertSiteVisitChecklistAnswerDTO(model: answer)
-        let encoded = try JSONEncoder().encode(payload)
+        let encoded = try JSONEncoder().encode(SiteVisitWriteModels.values(answer))
         let object = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
         let answerValue = try XCTUnwrap(object["answer_value"] as? [String: Any])
 
@@ -115,8 +114,14 @@ final class SiteVisitDTOTests: XCTestCase {
         XCTAssertEqual(answerValue["artifactIds"] as? [String], ["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa01"])
         XCTAssertEqual(answerValue["deckDesignId"] as? String, "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa02")
 
-        let dto = try JSONDecoder().decode(SiteVisitChecklistAnswerDTO.self, from: encoded)
-        XCTAssertEqual(dto.answerValue, payload.answerValue)
+        let dto = try SiteVisitChecklistAnswerDTO.serverRow(for: answer)
+        XCTAssertEqual(dto.answerValue, SiteVisitChecklistValue(
+            text: "12 ft by 18 ft",
+            boolValue: false,
+            choice: "na",
+            artifactIds: ["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa01"],
+            deckDesignId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa02"
+        ))
     }
 
     func testIdentityPayloadNeverEncodesLocalSearchText() throws {

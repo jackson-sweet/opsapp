@@ -146,21 +146,19 @@ final class SiteVisitSingleChoiceTests: XCTestCase {
         XCTAssertTrue(model.isAnswered)
     }
 
-    func testDTOSeparatesSnapshotFromPureAnswerAndHydratesItForLocalStorage() throws {
+    func testWireSeparatesSnapshotFromPureAnswerAndInboundHydratesItForLocalStorage() throws {
         let model = try answer(); model.answerValue = .text("Cedar")
-        let upsert = try UpsertSiteVisitChecklistAnswerDTO(model: model)
-        let data = try JSONEncoder().encode(upsert)
-        let json = try JSONDecoder().decode(SiteVisitWriteJSON.self, from: data)
-        XCTAssertNotNil(json["choice_snapshot"])
-        XCTAssertNil(json["answer_value"]?["choiceSnapshot"])
-        let dto = try JSONDecoder().decode(SiteVisitChecklistAnswerDTO.self, from: data)
+        let wire = SiteVisitWriteModels.values(model)
+        XCTAssertNotNil(wire["choice_snapshot"])
+        XCTAssertNil(wire["answer_value"]?["choiceSnapshot"])
+        XCTAssertEqual(wire["answer_value"], .object(["text": .string("Cedar")]))
+        let dto = try SiteVisitChecklistAnswerDTO.serverRow(for: model)
         XCTAssertNil(dto.answerValue.choiceSnapshot)
         XCTAssertEqual(dto.hydratedAnswerValue.choiceSnapshot, options())
         XCTAssertEqual(dto.hydratedAnswerValue.selectedOption?.label, "Cedar")
         let roundTrip = try SiteVisitWriteJSON.encode(dto)
-        XCTAssertEqual(roundTrip["choice_snapshot"], json["choice_snapshot"])
+        XCTAssertEqual(roundTrip["choice_snapshot"], wire["choice_snapshot"])
         XCTAssertNil(roundTrip["answer_value"]?["choiceSnapshot"])
-        XCTAssertEqual(SiteVisitWriteModels.values(model)["answer_value"], .object(["text": .string("Cedar")]))
     }
 
     func testChoiceProtocolIncludesConversionAwayAndRemoteChoiceWithoutChangingLegacyCommands() throws {
@@ -236,9 +234,7 @@ final class SiteVisitSingleChoiceTests: XCTestCase {
         let parent = SiteVisit(id: visit, companyId: company, status: .inProgress, createdBy: actor)
         context.insert(parent); try context.save()
         let source = try answer(); source.answerValue = .text("Unrecognized legacy material")
-        var dto = try JSONDecoder().decode(SiteVisitChecklistAnswerDTO.self,
-            from: JSONEncoder().encode(UpsertSiteVisitChecklistAnswerDTO(model: source)))
-        dto.writeRevision = 1
+        var dto = try SiteVisitChecklistAnswerDTO.serverRow(for: source, writeRevision: 1)
         _ = try SiteVisitServerMerge.merge(checklistAnswer: dto, companyId: company, into: context)
         let fresh = try XCTUnwrap(context.fetch(FetchDescriptor<SiteVisitChecklistAnswer>()).first)
         XCTAssertEqual(fresh.answerValue.choiceSnapshot, options())
@@ -246,9 +242,7 @@ final class SiteVisitSingleChoiceTests: XCTestCase {
         XCTAssertFalse(fresh.isAnswered)
         XCTAssertFalse(fresh.needsSync)
         source.answerValue = .text("Cedar")
-        dto = try JSONDecoder().decode(SiteVisitChecklistAnswerDTO.self,
-            from: JSONEncoder().encode(UpsertSiteVisitChecklistAnswerDTO(model: source)))
-        dto.writeRevision = 2
+        dto = try SiteVisitChecklistAnswerDTO.serverRow(for: source, writeRevision: 2)
         _ = try SiteVisitServerMerge.merge(checklistAnswer: dto, companyId: company, into: context)
         XCTAssertEqual(fresh.answerValue.selectedOption?.label, "Cedar")
         fresh.answerValue = .text("Composite"); try context.save()

@@ -5,3 +5,4 @@ T2_probe 2026-09-15T06:06:10Z
 T3_bundle_apply_returned 2026-09-15T06:24:59Z name=expense_release_atomic
 T4_alias_observed 2026-09-15T06:28:37Z live=dpl_C9UyHjSR8nVTWxvxT9dNiH9rMk52
 T3b_project_ledger 20260915062603
+T5_main_autodeploy 2026-09-15T18:45:03Z

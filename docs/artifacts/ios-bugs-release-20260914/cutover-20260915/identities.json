@@ -1,14 +1,61 @@
 {
   "release_base_commit": "81f55e56cf7294e17a572608f576025446a843e1",
   "previous_live_deployment": "dpl_7A9wfWfSdLUAwyXHKSXXJxvdbANK",
-  "hold": {"commit": "e73cb9e2561e0eb14e3c469eb5c0d35cf0b328bb", "branch": "release/p9-expense-compatibility-hold-v2", "deployment": "dpl_64gTLur6w7iXuo1cuT5s4Pz2MVuT", "live_from": "2026-09-15T06:03:57Z", "live_until": "2026-09-15T06:28:37Z"},
-  "candidate": {"commit": "3fc2f6d76dce082235fc60b6f89e5ee652db011c", "branch": "release/p9-expense-candidate-v2", "deployment": "dpl_C9UyHjSR8nVTWxvxT9dNiH9rMk52", "live_from": "2026-09-15T06:28:37Z"},
-  "edge_adapter": {"slug": "accounting-sync-expense", "version": 6, "verify_jwt": false, "ezbr_sha256": "2f86ac7575ea84520d2522b958e3ffbf44d75a20996618b29be5cd0a33f580ec", "deployed_at": "2026-09-15T06:05:21Z", "replaced_version": 5},
+  "hold": {
+    "commit": "e73cb9e2561e0eb14e3c469eb5c0d35cf0b328bb",
+    "branch": "release/p9-expense-compatibility-hold-v2",
+    "deployment": "dpl_64gTLur6w7iXuo1cuT5s4Pz2MVuT",
+    "live_from": "2026-09-15T06:03:57Z",
+    "live_until": "2026-09-15T06:28:37Z"
+  },
+  "candidate": {
+    "commit": "3fc2f6d76dce082235fc60b6f89e5ee652db011c",
+    "branch": "release/p9-expense-candidate-v2",
+    "deployment": "dpl_C9UyHjSR8nVTWxvxT9dNiH9rMk52",
+    "live_from": "2026-09-15T06:28:37Z",
+    "live_until": "2026-09-15T18:45:03Z (superseded by main's own build of the same code)"
+  },
+  "edge_adapter": {
+    "slug": "accounting-sync-expense",
+    "version": 6,
+    "verify_jwt": false,
+    "ezbr_sha256": "2f86ac7575ea84520d2522b958e3ffbf44d75a20996618b29be5cd0a33f580ec",
+    "deployed_at": "2026-09-15T06:05:21Z",
+    "replaced_version": 5
+  },
   "ledger": [
-    {"version": "20260915062403", "name": "expense_release_atomic", "statements_md5": "4d1122b53e9e0218df4d243149fcae0d", "bytes": 146738, "source_sha256": "4d53da61929337ab783070818f387ac1e8650cd900230fd7685418a32c543d22"},
-    {"version": "20260915062603", "name": "project_task_reopen_receipts", "statements_md5": "b9472e0fd4867fe627796963a8dd9183", "bytes": 12417, "source_sha256": "18845d0b67e5b6116ec4e41c165e5a85e4472e22e8f99a60580a462e004b2657"}
+    {
+      "version": "20260915062403",
+      "name": "expense_release_atomic",
+      "statements_md5": "4d1122b53e9e0218df4d243149fcae0d",
+      "bytes": 146738,
+      "source_sha256": "4d53da61929337ab783070818f387ac1e8650cd900230fd7685418a32c543d22"
+    },
+    {
+      "version": "20260915062603",
+      "name": "project_task_reopen_receipts",
+      "statements_md5": "b9472e0fd4867fe627796963a8dd9183",
+      "bytes": 12417,
+      "source_sha256": "18845d0b67e5b6116ec4e41c165e5a85e4472e22e8f99a60580a462e004b2657"
+    }
   ],
-  "stale_unpromoted_builds": ["ops-4kw25ma4s (hold on b5b0cb592, build failed)", "ops-hlfcus7yc (candidate on b5b0cb592)", "ops-ptbmf3dpr (hold v2 unfixed, build failed)", "ops-kvoj7s63i (candidate v2 unfixed, build failed)"],
+  "stale_unpromoted_builds": [
+    "ops-4kw25ma4s (hold on b5b0cb592, build failed)",
+    "ops-hlfcus7yc (candidate on b5b0cb592)",
+    "ops-ptbmf3dpr (hold v2 unfixed, build failed)",
+    "ops-kvoj7s63i (candidate v2 unfixed, build failed)"
+  ],
   "expense_gate_env": "EXPENSE_ACCOUNTING_WRITE_ENABLED absent before and after stage 4",
-  "legacy_interval_rows": 0
+  "legacy_interval_rows": 0,
+  "main_merge": {
+    "pr": "https://github.com/jack-opsapp/ops-web/pull/124",
+    "merged_at": "2026-09-15T18:36:48Z",
+    "merge_commit": "f2db537737f67d320b5dbaebcc54bbbeb46bdd4f",
+    "auto_deployment": "dpl_FNhXwRERmtwe6ngTn46uq5kfzXPn",
+    "auto_deployment_live_observed": "2026-09-15T18:45:03Z",
+    "serving_checks": {
+      "GET /": 307,
+      "GET /api/integrations/accounting/expense-issues (unauthenticated)": 401
+    }
+  }
 }

@@ -21,6 +21,7 @@ final class SiteVisitOutboundSyncTests: XCTestCase {
     private let draftId = "55555555-5555-4555-8555-555555555555"
     private let answerId = "66666666-6666-4666-8666-666666666666"
     private let sessionUserId = "77777777-7777-4777-8777-777777777777"
+    private let deckId = "88888888-8888-4888-8888-888888888888"
 
     override func tearDown() {
         liveContainers.removeAll()
@@ -843,6 +844,105 @@ final class SiteVisitOutboundSyncTests: XCTestCase {
         }
     }
 
+    // MARK: - Deck attachment ordering (bug 6271078d)
+    //
+    // Device evidence 2026-09-15: a deck_design artifact was sent 90 seconds
+    // before its deck's own create existed (the editor holds deck writes until
+    // it closes) → 23503 site_visit_artifacts_deck_design_id_fkey → parked.
+
+    func test_deckArtifactWaitsForItsDeckDesignCreateToLand() throws {
+        let context = try makeContainer().mainContext
+        let visit = makeVisit()
+        let artifact = makeDeckArtifact()
+        context.insert(visit)
+        context.insert(artifact)
+        let parent = try insert(SiteVisitSyncOperation.parent(visit), in: context)
+        parent.status = "completed"
+        let deckCreate = SyncOperation(
+            entityType: SyncEntityType.deckDesign.rawValue,
+            entityId: deckId,
+            operationType: "create",
+            payload: Data("{}".utf8),
+            changedFields: ["title"]
+        )
+        context.insert(deckCreate)
+        let child = try insert(
+            SiteVisitSyncOperation.artifact(artifact),
+            dependsOn: parent,
+            in: context
+        )
+        XCTAssertFalse(
+            SiteVisitOutboundSync.isReady(child, in: try allOperations(context)),
+            "An artifact that points at a deck must wait for that deck's create"
+        )
+        deckCreate.status = "completed"
+        XCTAssertTrue(SiteVisitOutboundSync.isReady(child, in: try allOperations(context)))
+    }
+
+    func test_deckArtifactWaitsWhileItsDeckHasNeverReachedTheServer() throws {
+        let context = try makeContainer().mainContext
+        let visit = makeVisit()
+        context.insert(visit)
+        let deck = DeckDesign(id: deckId, companyId: companyId, title: "10295 Sparling place")
+        deck.markForSync() // exactly what saveDeckForCapture does to a fresh capture deck
+        context.insert(deck)
+        let artifact = makeDeckArtifact()
+        context.insert(artifact)
+        let operation = try insert(SiteVisitSyncOperation.artifact(artifact), in: context)
+        try context.save()
+
+        // No create queued yet (the editor is still open): the deck row is the
+        // only evidence, and it says the server has never seen it.
+        XCTAssertTrue(try SiteVisitOutboundSync.isHeldBehindUnsyncedDeck(
+            operation, in: try allOperations(context), context: context))
+
+        // A completed create means the server has the row even before the next
+        // pull stamps lastSyncedAt.
+        let deckCreate = SyncOperation(
+            entityType: SyncEntityType.deckDesign.rawValue,
+            entityId: deckId,
+            operationType: "create",
+            payload: Data("{}".utf8),
+            changedFields: ["title"]
+        )
+        deckCreate.status = "completed"
+        context.insert(deckCreate)
+        try context.save()
+        XCTAssertFalse(try SiteVisitOutboundSync.isHeldBehindUnsyncedDeck(
+            operation, in: try allOperations(context), context: context))
+
+        // A deck the server already confirmed never holds anything.
+        context.delete(deckCreate)
+        deck.lastSyncedAt = Date()
+        try context.save()
+        XCTAssertFalse(try SiteVisitOutboundSync.isHeldBehindUnsyncedDeck(
+            operation, in: try allOperations(context), context: context))
+
+        // A legacy local deck that was never marked dirty is not this phone's to
+        // deliver; holding on it would wedge the artifact for good.
+        deck.lastSyncedAt = nil
+        deck.needsSync = false
+        try context.save()
+        XCTAssertFalse(try SiteVisitOutboundSync.isHeldBehindUnsyncedDeck(
+            operation, in: try allOperations(context), context: context))
+
+        // A photo carries no deck and is never held.
+        let photo = SiteVisitCaptureArtifact(
+            id: "99999999-9999-4999-8999-999999999999",
+            siteVisitId: visitId,
+            companyId: companyId,
+            kind: .photo,
+            source: .camera,
+            localAssetURL: "local://project_images/photo.jpg",
+            createdBy: userId
+        )
+        context.insert(photo)
+        let photoOperation = try insert(SiteVisitSyncOperation.artifact(photo), in: context)
+        try context.save()
+        XCTAssertFalse(try SiteVisitOutboundSync.isHeldBehindUnsyncedDeck(
+            photoOperation, in: try allOperations(context), context: context))
+    }
+
     private func makeVisit() -> SiteVisit {
         makeVisit(author: userId)
     }
@@ -906,6 +1006,20 @@ final class SiteVisitOutboundSyncTests: XCTestCase {
 
     private func makeArtifact(localURL: String?) -> SiteVisitCaptureArtifact {
         makeArtifact(localURL: localURL, author: userId)
+    }
+
+    private func makeDeckArtifact() -> SiteVisitCaptureArtifact {
+        SiteVisitCaptureArtifact(
+            id: artifactId,
+            siteVisitId: visitId,
+            companyId: companyId,
+            kind: .deckDesign,
+            source: .deckBuilder,
+            title: "10295 Sparling place",
+            deckDesignId: deckId,
+            createdBy: userId,
+            createdAt: Date(timeIntervalSince1970: 1_700_000_001)
+        )
     }
 
     private func makeArtifact(
@@ -972,6 +1086,7 @@ final class SiteVisitOutboundSyncTests: XCTestCase {
             SiteVisitChecklistAnswer.self,
             SiteVisitIdentityDraft.self,
             SyncOperation.self,
+            DeckDesign.self,
         ])
         let configuration = ModelConfiguration(
             schema: schema,

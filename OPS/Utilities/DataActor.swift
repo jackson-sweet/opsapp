@@ -5267,6 +5267,20 @@ actor DataActor {
                 return false
             }
 
+            // A deck_design artifact whose deck the server has never seen: the
+            // editor still holds that deck's create, and sending the artifact
+            // now is a guaranteed 23503 (bug 6271078d).
+            if SiteVisitOutboundSync.isSiteVisitOperation(op),
+               (try? SiteVisitOutboundSync.isHeldBehindUnsyncedDeck(
+                   op, in: allOperations, context: modelContext
+               )) == true {
+                print(
+                    "[DataActor] Holding \(op.operationType) \(op.entityId) "
+                        + "behind a deck design the server has not seen"
+                )
+                return false
+            }
+
             // Create ordering. Two failures, one gate:
             //   * an op referencing a row whose create has not reached the
             //     server cannot pass that server's RLS check, and the rejection
@@ -5968,6 +5982,10 @@ actor DataActor {
             ) else {
                 return false
             }
+            let heldByDeck = try SiteVisitOutboundSync.isHeldBehindUnsyncedDeck(
+                operation, in: operations, context: modelContext
+            )
+            guard !heldByDeck else { return false }
         }
         if try TaskTypeMutationSync.isBlockedByUnresolvedMutation(
             operation,

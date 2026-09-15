@@ -23,6 +23,10 @@ enum SiteVisitSyncOperation {
         let stageCommand: SiteVisitStageCommand?
         let writeCommand: SiteVisitWriteCommand?
         let discard: SiteVisitDiscardIntent?
+        /// The deck a `deck_design` artifact points at. Carried so the queue
+        /// can hold the artifact until that deck's own create has landed —
+        /// `site_visit_artifacts.deck_design_id` is a foreign key (bug 6271078d).
+        let deckDesignId: String?
 
         enum CodingKeys: String, CodingKey {
             case companyId = "company_id"
@@ -32,6 +36,7 @@ enum SiteVisitSyncOperation {
             case completion
             case stageCommand = "stage_command"
             case writeCommand = "write_command"
+            case deckDesignId = "deck_design_id"
         }
 
         init(
@@ -41,7 +46,8 @@ enum SiteVisitSyncOperation {
             completion: SiteVisitCompletionPayload? = nil,
             stageCommand: SiteVisitStageCommand? = nil,
             writeCommand: SiteVisitWriteCommand? = nil,
-            discard: SiteVisitDiscardIntent? = nil
+            discard: SiteVisitDiscardIntent? = nil,
+            deckDesignId: String? = nil
         ) {
             self.companyId = companyId.lowercased()
             self.siteVisitId = siteVisitId.lowercased()
@@ -50,6 +56,7 @@ enum SiteVisitSyncOperation {
             self.stageCommand = stageCommand
             self.writeCommand = writeCommand
             self.discard = discard
+            self.deckDesignId = deckDesignId?.lowercased()
         }
     }
 
@@ -99,7 +106,8 @@ enum SiteVisitSyncOperation {
             payload: Payload(
                 companyId: artifact.companyId,
                 siteVisitId: artifact.siteVisitId,
-                entityId: artifact.id
+                entityId: artifact.id,
+                deckDesignId: artifact.deckDesignId
             ),
             changedFields: [
                 "opportunity_id", "kind", "source", "title", "body", "asset_url",

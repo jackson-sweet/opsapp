@@ -91,6 +91,17 @@ struct SiteVisitOutboundSync {
                candidate.operationType == SiteVisitSyncOperation.discardOperationType && unresolvedStatuses.contains(candidate.status) &&
                    (try? JSONDecoder().decode(SiteVisitSyncOperation.Payload.self, from: candidate.payload))?.siteVisitId == envelope.siteVisitId
            }) { return false }
+        // A deck_design artifact is a foreign key onto deck_designs. Its deck's
+        // own create must land first or Postgres answers 23503 and the artifact
+        // parks (bug 6271078d). The editor-open window, where no deck create is
+        // queued yet, is `isHeldBehindUnsyncedDeck`'s to answer from the row.
+        if let deckId = referencedDeckDesignId(of: operation),
+           operations.contains(where: { candidate in
+               candidate.entityType == SyncEntityType.deckDesign.rawValue
+                   && candidate.operationType == "create"
+                   && candidate.entityId.lowercased() == deckId
+                   && unresolvedDeckCreateStatuses.contains(candidate.status)
+           }) { return false }
         let referencedMedia = Set(SiteVisitVersionedSync.command(operation)?.rows.flatMap { row -> [String] in
             guard case .array(let ids) = row.values["answer_value"]?["artifactIds"] else { return [] }
             return ids.compactMap { $0.string?.lowercased() }
@@ -226,6 +237,61 @@ struct SiteVisitOutboundSync {
         readyAfterPass: Set<UUID>
     ) -> Bool {
         !readyAfterPass.isEmpty && readyAfterPass != readyBeforePass
+    }
+
+    /// Every status that means "the server does not have this deck yet".
+    /// Mirrors `SyncCrossEntityDependency`'s create statuses.
+    private static let unresolvedDeckCreateStatuses: Set<String> = [
+        "pending", "inProgress", "failed", "parked", "quarantined",
+    ]
+
+    /// The deck a metadata write for a `deck_design` artifact points at, or
+    /// nil for photos, media uploads, and tombstones.
+    private static func referencedDeckDesignId(of operation: SyncOperation) -> String? {
+        guard operation.entityType == SyncEntityType.siteVisitArtifact.rawValue,
+              operation.operationType != SiteVisitSyncOperation.mediaOperationType,
+              operation.operationType != "delete",
+              let envelope = try? JSONDecoder().decode(SiteVisitSyncOperation.Payload.self, from: operation.payload),
+              let deckId = envelope.deckDesignId?.lowercased(), !deckId.isEmpty else { return nil }
+        return deckId
+    }
+
+    /// True while a `deck_design` artifact's deck has never reached the server
+    /// and nothing in the queue is about to deliver it — the window in which
+    /// the deck editor is still open and holds the deck's own create back.
+    /// Sending then is a guaranteed `23503`; holding costs one more pass.
+    ///
+    /// A completed create, a stamped `lastSyncedAt`, or a deck this phone never
+    /// marked dirty (not its to deliver) all release the hold. Envelopes queued
+    /// before the deck reference travelled in the payload fall back to the
+    /// artifact row.
+    static func isHeldBehindUnsyncedDeck(
+        _ operation: SyncOperation,
+        in operations: [SyncOperation],
+        context: ModelContext
+    ) throws -> Bool {
+        guard operation.entityType == SyncEntityType.siteVisitArtifact.rawValue,
+              operation.operationType != SiteVisitSyncOperation.mediaOperationType,
+              operation.operationType != "delete" else { return false }
+        var deckId = referencedDeckDesignId(of: operation)
+        if deckId == nil {
+            let artifactIds = [operation.entityId.lowercased(), operation.entityId.uppercased()]
+            deckId = try context.fetch(FetchDescriptor<SiteVisitCaptureArtifact>(
+                predicate: #Predicate { artifactIds.contains($0.id) }
+            )).first?.deckDesignId?.lowercased()
+        }
+        guard let deckId, !deckId.isEmpty else { return false }
+        if operations.contains(where: { candidate in
+            candidate.entityType == SyncEntityType.deckDesign.rawValue
+                && candidate.operationType == "create"
+                && candidate.entityId.lowercased() == deckId
+                && candidate.status == "completed"
+        }) { return false }
+        let deckIds = [deckId, deckId.uppercased()]
+        guard let deck = try context.fetch(FetchDescriptor<DeckDesign>(
+            predicate: #Predicate { deckIds.contains($0.id) }
+        )).first else { return false }
+        return deck.lastSyncedAt == nil && deck.needsSync
     }
 
     static func coalesceOperations(

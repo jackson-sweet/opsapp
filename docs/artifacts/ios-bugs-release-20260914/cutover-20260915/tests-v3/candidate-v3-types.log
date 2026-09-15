@@ -1,0 +1,5 @@
+tsc start 05:42:44
+TSC_EXIT=2 05:42:51
+6
+no production-source type errors
+no type errors in the 71 candidate paths

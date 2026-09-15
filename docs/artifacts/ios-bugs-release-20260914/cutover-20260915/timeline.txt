@@ -1,0 +1,7 @@
+T1_promote_start 2026-09-15T06:03:47.3NZ
+T1_alias_observed 2026-09-15T06:03:57.3NZ live=dpl_64gTLur6w7iXuo1cuT5s4Pz2MVuT
+T2_edge_v6_deployed 2026-09-15T06:05:21Z (updated_at 1789452321739) ezbr=2f86ac7575ea84520d2522b958e3ffbf44d75a20996618b29be5cd0a33f580ec
+T2_probe 2026-09-15T06:06:10Z
+T3_bundle_apply_returned 2026-09-15T06:24:59Z name=expense_release_atomic
+T4_alias_observed 2026-09-15T06:28:37Z live=dpl_C9UyHjSR8nVTWxvxT9dNiH9rMk52
+T3b_project_ledger 20260915062603

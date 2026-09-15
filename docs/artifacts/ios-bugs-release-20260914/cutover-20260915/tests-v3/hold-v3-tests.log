@@ -1,0 +1,27 @@
+[33mThe CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.[39m
+
+ RUN  v2.1.9 /Users/jacksonsweet/Projects/OPS/.worktrees/ios-bugs-p9-accounting-hold
+
+stderr | tests/integration/qbo-push-queue-route.test.ts > POST /api/cron/accounting/quickbooks/push-queue > stops the batch on a code-only 53300 Supabase read instead of scheduling retry
+[cron/quickbooks-push] QuickBooks accounting_connections lookup failed: database rejected the request
+
+stderr | tests/integration/qbo-push-queue-route.test.ts > POST /api/cron/accounting/quickbooks/push-queue > stops later provider writes after accepted-write DB finalization pressure
+[cron/quickbooks-push] OPS qb_id writeback failed: database rejected the finalization
+
+ ✓ tests/integration/qbo-push-queue-route.test.ts (36 tests) 173ms
+stderr | tests/integration/sage-reconcile-route.test.ts > Sage reconcile route > quarantines a source/resource substitution before provider I/O
+[cron/sage-reconcile] Sage reconcile route mismatch for invoice.
+
+ ✓ tests/integration/sage-reconcile-route.test.ts (5 tests) 7ms
+stderr | tests/integration/sage-push-queue-route.test.ts > Sage push queue route > stops the batch immediately after uncertain acceptance durability
+[cron/sage-push] acceptance persistence failed
+
+ ✓ tests/integration/sage-push-queue-route.test.ts (7 tests) 7ms
+ ✓ tests/unit/expenses/expense-accounting-compatibility-hold.test.ts (13 tests) 4ms
+
+ Test Files  4 passed (4)
+      Tests  61 passed (61)
+   Start at  22:41:22
+   Duration  1.68s (transform 139ms, setup 301ms, collect 79ms, tests 192ms, environment 593ms, prepare 87ms)
+
+VITEST_EXIT=0

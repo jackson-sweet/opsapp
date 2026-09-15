@@ -1,0 +1,47 @@
+[33mThe CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.[39m
+
+ RUN  v2.1.9 /Users/jacksonsweet/Projects/OPS/.worktrees/ios-bugs-p9-expense-release
+
+stderr | tests/integration/qbo-push-queue-route.test.ts > POST /api/cron/accounting/quickbooks/push-queue > stops the batch on a code-only 53300 Supabase read instead of scheduling retry
+[cron/quickbooks-push] QuickBooks accounting_connections lookup failed: database rejected the request
+
+stderr | tests/integration/qbo-push-queue-route.test.ts > POST /api/cron/accounting/quickbooks/push-queue > stops later provider writes after accepted-write DB finalization pressure
+[cron/quickbooks-push] OPS qb_id writeback failed: database rejected the finalization
+
+ ✓ tests/integration/qbo-push-queue-route.test.ts (36 tests) 229ms
+ ✓ tests/unit/settings/expense-accounting-settings.test.tsx (26 tests) 420ms
+ ✓ tests/unit/expenses/expense-accounting-worker.test.ts (30 tests) 13ms
+ ✓ tests/unit/expenses/expense-provider-repository.test.ts (16 tests) 9ms
+ ✓ tests/integration/sage-war-game.test.ts (7 tests) 20ms
+ ✓ tests/unit/expenses/batch-detail-panel-review-footer.test.tsx (10 tests) 67ms
+ ✓ tests/unit/expenses/expense-provider-mappers.test.ts (17 tests) 5ms
+ ✓ tests/unit/expenses/expense-buckets.test.ts (12 tests) 3ms
+ ✓ tests/unit/settings/expense-accounting-issues.test.tsx (15 tests) 198ms
+stderr | tests/integration/sage-reconcile-route.test.ts > Sage reconcile route > quarantines a source/resource substitution before provider I/O
+[cron/sage-reconcile] Sage reconcile route mismatch for invoice.
+
+ ✓ tests/integration/sage-reconcile-route.test.ts (5 tests) 7ms
+stderr | tests/integration/sage-push-queue-route.test.ts > Sage push queue route > stops the batch immediately after uncertain acceptance durability
+[cron/sage-push] acceptance persistence failed
+
+ ✓ tests/integration/sage-push-queue-route.test.ts (7 tests) 7ms
+ ✓ tests/unit/expenses/expense-reimbursement-contract.test.ts (15 tests) 4ms
+ ✓ tests/unit/expenses/expense-metrics.test.ts (5 tests) 3ms
+ ✓ tests/unit/expenses/expense-decision-client.test.tsx (5 tests) 341ms
+ ✓ tests/unit/expenses/expense-recovery-policy.test.ts (18 tests) 3ms
+ ✓ tests/integration/accounting-sync-issues-route.test.ts (3 tests) 15ms
+ ✓ tests/unit/settings/accounting-expense-entry.test.tsx (3 tests) 66ms
+ ✓ tests/unit/expenses/expense-company-funded-history.test.tsx (2 tests) 40ms
+ ✓ tests/unit/expenses/expense-accounting-configuration.test.ts (29 tests) 13ms
+ ✓ tests/integration/expense-accounting-settings-route.test.ts (13 tests) 9ms
+ ✓ tests/unit/expenses/expense-review-service.test.ts (9 tests) 4ms
+ ✓ tests/unit/expenses/expense-sync-edge-handler.test.ts (22 tests) 6ms
+ ✓ tests/integration/expense-accounting-issues-route.test.ts (17 tests) 8ms
+ ✓ tests/unit/expenses/expense-sage-project-reads.test.ts (1 test) 3ms
+
+ Test Files  24 passed (24)
+      Tests  323 passed (323)
+   Start at  22:43:28
+   Duration  7.91s (transform 358ms, setup 1.27s, collect 899ms, tests 1.49s, environment 2.17s, prepare 448ms)
+
+VITEST_EXIT=0

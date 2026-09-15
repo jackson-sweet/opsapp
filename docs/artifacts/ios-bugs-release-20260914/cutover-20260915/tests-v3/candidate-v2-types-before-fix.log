@@ -1,0 +1,37 @@
+COMMAND: NODE_OPTIONS=--max-old-space-size=8192 npx tsc --noEmit -p tsconfig.json 2>&1 | grep -F -f /private/tmp/claude-501/-Users-jacksonsweet-Projects-OPS/8fa78c8c-273d-4d58-8d97-045c4909305c/scratchpad/release/p9-paths.txt
+tests/integration/expense-decision-authority-postgres-runtime.test.ts(33,19): error TS2769: No overload matches this call.
+tests/integration/expense-decision-authority-postgres-runtime.test.ts(40,8): error TS2769: No overload matches this call.
+tests/integration/expense-decision-authority-postgres-runtime.test.ts(86,8): error TS2769: No overload matches this call.
+tests/integration/expense-decision-authority-postgres-runtime.test.ts(89,10): error TS2339: Property 'stdout' does not exist on type 'never'.
+tests/integration/expense-decision-authority-postgres-runtime.test.ts(90,10): error TS2339: Property 'stderr' does not exist on type 'never'.
+tests/integration/expense-decision-authority-postgres-runtime.test.ts(92,12): error TS2339: Property 'once' does not exist on type 'never'.
+tests/integration/expense-decision-authority-postgres-runtime.test.ts(93,12): error TS2339: Property 'once' does not exist on type 'never'.
+tests/integration/expense-decision-authority-postgres-runtime.test.ts(93,27): error TS7006: Parameter 'error' implicitly has an 'any' type.
+tests/integration/expense-decision-authority-postgres-runtime.test.ts(105,12): error TS2339: Property 'stdin' does not exist on type 'never'.
+tests/integration/expense-decision-authority-postgres-runtime.test.ts(140,12): error TS2339: Property 'stdin' does not exist on type 'never'.
+tests/integration/expense-decision-authority-postgres-runtime.test.ts(168,16): error TS2339: Property 'exitCode' does not exist on type 'never'.
+tests/integration/expense-decision-authority-postgres-runtime.test.ts(168,42): error TS2339: Property 'kill' does not exist on type 'never'.
+tests/integration/expense-decision-authority-postgres-runtime.test.ts(192,119): error TS2769: No overload matches this call.
+tests/integration/expense-decision-authority-postgres-runtime.test.ts(194,10): error TS2339: Property 'stdout' does not exist on type 'never'.
+tests/integration/expense-decision-authority-postgres-runtime.test.ts(195,10): error TS2339: Property 'stderr' does not exist on type 'never'.
+tests/integration/expense-decision-authority-postgres-runtime.test.ts(197,12): error TS2339: Property 'once' does not exist on type 'never'.
+tests/integration/expense-decision-authority-postgres-runtime.test.ts(198,12): error TS2339: Property 'once' does not exist on type 'never'.
+tests/integration/expense-decision-authority-postgres-runtime.test.ts(198,25): error TS7006: Parameter 'cause' implicitly has an 'any' type.
+tests/integration/expense-decision-authority-postgres-runtime.test.ts(201,12): error TS2339: Property 'stdin' does not exist on type 'never'.
+tests/integration/expense-decision-authority-postgres-runtime.test.ts(214,12): error TS2339: Property 'stdin' does not exist on type 'never'.
+tests/integration/expense-decision-authority-postgres-runtime.test.ts(232,15): error TS2339: Property 'exitCode' does not exist on type 'never'.
+tests/integration/expense-decision-authority-postgres-runtime.test.ts(232,39): error TS2339: Property 'kill' does not exist on type 'never'.
+tests/integration/expense-decision-authority-postgres-runtime.test.ts(250,119): error TS2769: No overload matches this call.
+tests/integration/expense-decision-authority-postgres-runtime.test.ts(252,10): error TS2339: Property 'stdout' does not exist on type 'never'.
+tests/integration/expense-decision-authority-postgres-runtime.test.ts(253,10): error TS2339: Property 'stderr' does not exist on type 'never'.
+tests/integration/expense-decision-authority-postgres-runtime.test.ts(255,12): error TS2339: Property 'once' does not exist on type 'never'.
+tests/integration/expense-decision-authority-postgres-runtime.test.ts(256,12): error TS2339: Property 'once' does not exist on type 'never'.
+tests/integration/expense-decision-authority-postgres-runtime.test.ts(256,25): error TS7006: Parameter 'cause' implicitly has an 'any' type.
+tests/integration/expense-decision-authority-postgres-runtime.test.ts(260,12): error TS2339: Property 'stdin' does not exist on type 'never'.
+tests/integration/expense-decision-authority-postgres-runtime.test.ts(273,12): error TS2339: Property 'stdin' does not exist on type 'never'.
+tests/integration/expense-decision-authority-postgres-runtime.test.ts(280,15): error TS2339: Property 'exitCode' does not exist on type 'never'.
+tests/integration/expense-decision-authority-postgres-runtime.test.ts(280,39): error TS2339: Property 'kill' does not exist on type 'never'.
+tests/integration/expense-decision-authority-postgres-runtime.test.ts(293,12): error TS2769: No overload matches this call.
+tests/integration/expense-decision-authority-postgres-runtime.test.ts(298,12): error TS2769: No overload matches this call.
+tests/integration/expense-decision-authority-postgres-runtime.test.ts(329,14): error TS2769: No overload matches this call.
+TSC_EXIT=2 WALL_SECONDS=47 TOTAL_ERROR_LINES=42

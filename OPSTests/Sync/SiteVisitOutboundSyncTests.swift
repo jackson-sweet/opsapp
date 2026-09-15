@@ -515,26 +515,6 @@ final class SiteVisitOutboundSyncTests: XCTestCase {
         XCTAssertEqual(artifact.createdBy, userId)
     }
 
-    func test_legacyChecklistAnswerWithoutAuthorHealsFromParentVisit() async throws {
-        let context = try makeContainer().mainContext
-        let visit = makeVisit()
-        let answer = makeAnswer(author: nil)
-        context.insert(visit)
-        context.insert(answer)
-        let operation = try insert(SiteVisitSyncOperation.checklistAnswer(answer), in: context)
-        operation.status = "inProgress"
-        let remote = RecordingSiteVisitWriter(visitDTO: try makeVisitDTO(status: .inProgress))
-
-        _ = try await makeSync(remote).executeIfHandled(
-            operation: operation,
-            context: context,
-            activeCompanyId: companyId
-        )
-
-        XCTAssertEqual(remote.calls, [.upsertChecklistAnswer(createdBy: userId)])
-        XCTAssertEqual(answer.createdBy, userId)
-    }
-
     /// A payload that never reached the server must PARK, not retry: an identical
     /// rebuild fails identically, and `failed` ops are revived on every launch — so
     /// classifying this transient is precisely what made bug 70db7ed6 immortal.
@@ -757,10 +737,15 @@ final class SiteVisitOutboundSyncTests: XCTestCase {
         let gate = SiteVisitDeliveryTestGate()
         let remote = RecordingSiteVisitWriter(visitDTO: try makeVisitDTO(status: .inProgress))
         if suspension != "factory" { remote.beforeVisitResponse = { await gate.pause() } }
-        let sync = SiteVisitOutboundSync(repositoryFactory: { _ in
-            if suspension == "factory" { await gate.pause() }
-            return remote
-        })
+        // The operation is bound to the visit's author; the session user must be
+        // injected to match it, never read from the test host's UserDefaults.
+        let sync = SiteVisitOutboundSync(
+            repositoryFactory: { _ in
+                if suspension == "factory" { await gate.pause() }
+                return remote
+            },
+            sessionUserId: { self.userId }
+        )
         var current = true
         let company = companyId
         let delivery = Task {

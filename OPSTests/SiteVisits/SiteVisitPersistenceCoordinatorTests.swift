@@ -601,6 +601,64 @@ final class SiteVisitPersistenceCoordinatorTests: XCTestCase {
         XCTAssertEqual(completion.siteVisitWriteActorId, userId)
     }
 
+    // MARK: - Local until save (2026-09-15)
+    //
+    // Typing must not touch the upload queue; saving the visit queues every
+    // dirty row for it. Jackson: "It should only be uploading when the user
+    // saves the site visit. Otherwise, just saving locally on the phone."
+
+    func test_localOnlyCommitQueuesNothingUntilDirtyWorkIsQueuedForSave() throws {
+        let context = try makeContainer().mainContext
+        let coordinator = SiteVisitPersistenceCoordinator(
+            modelContext: context,
+            companyId: companyId
+        )
+        let visit = makeVisit()
+        _ = try coordinator.commit { context.insert(visit) } // the visit row itself reaches the server at once
+        let answer = SiteVisitChecklistAnswer(
+            id: "55555555-5555-4555-8555-555555555555",
+            siteVisitId: visitId,
+            companyId: companyId,
+            opportunityId: nil,
+            siteVisitTypeId: nil,
+            fieldId: "notes",
+            label: "General Notes",
+            kind: .longText,
+            required: false,
+            sortOrder: 40,
+            createdBy: userId
+        )
+
+        let local = try coordinator.commit(queueing: false) {
+            context.insert(answer)
+            answer.answerValue = .text("Client would like")
+            answer.needsSync = true
+        }
+        XCTAssertTrue(local.operationIds.isEmpty)
+        XCTAssertEqual(try context.fetch(FetchDescriptor<SyncOperation>()).count, 1, "Only the visit's own create may be queued")
+        XCTAssertEqual(try context.fetch(FetchDescriptor<SiteVisitChecklistAnswer>()).first?.answerValue.text, "Client would like")
+
+        _ = try coordinator.commit(queueing: false) {
+            answer.answerValue = .text("Client would like to rebuild")
+            answer.needsSync = true
+        }
+        XCTAssertEqual(try context.fetch(FetchDescriptor<SyncOperation>()).count, 1)
+
+        let saved = try coordinator.queueDirtyWork(siteVisitId: visitId)
+        let operations = try context.fetch(FetchDescriptor<SyncOperation>())
+        let write = try XCTUnwrap(operations.first { $0.entityType == SyncEntityType.siteVisitChecklistAnswer.rawValue })
+        let parent = try XCTUnwrap(operations.first { $0.entityType == SyncEntityType.siteVisit.rawValue })
+        XCTAssertTrue(saved.operationIds.contains(write.id))
+        XCTAssertEqual(operations.count, 2)
+        XCTAssertEqual(write.status, "pending")
+        XCTAssertEqual(write.dependsOnId, parent.id.uuidString.lowercased())
+        XCTAssertEqual(
+            SiteVisitVersionedSync.command(write)?.rows[0].values["answer_value"]?["text"],
+            .string("Client would like to rebuild"),
+            "The save ships the latest local text, not the first keystroke"
+        )
+    }
+
     private func makeVisit() -> SiteVisit {
         SiteVisit(
             id: visitId,

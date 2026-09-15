@@ -22,3 +22,24 @@ E. Deck ordering: `SiteVisitSyncOperation.artifact` carries `deck_design_id` in 
 - New tests in `SiteVisitVersionedSyncTests`, `SiteVisitWriteCommandTests`, `SiteVisitFieldWorkflowTests`, `SiteVisitOutboundSyncTests` — each watched RED before the code lands, then GREEN, counts read from the xcresult.
 - Existing site-visit sync suites stay green.
 - Device evidence after Jackson's next install: typing through a save no longer parks; PENDING WORK stays empty after a normal visit.
+
+---
+
+# Part 2 — Local until save (Jackson, 2026-09-15: "It should only be uploading when the user saves the site visit. Otherwise, just saving locally on the phone.")
+
+## Why typing lagged
+
+`SiteVisitChecklistAnswerRow`'s TextField binding calls `bufferChecklistAnswer` on every keystroke, which flushes synchronously: `persistSiteVisitChanges` → `SiteVisitPersistenceCoordinator.commit` (a SwiftData transaction on a 95 MB store, change-boundary tracking, a predicate fetch over the 3,000-row SyncOperation table to find/coalesce the answer's op, JSON-encoding the write command) → `reloadChecklistAnswers()` (refetch + re-render every row) → the DataActor's `ModelContext.didSave` observer starts a drain that fetches every SyncOperation again while the next keystroke waits on the store. Same path that produced the self-conflict.
+
+## Behavior
+
+- **Typing writes to the phone only.** Checklist answers, notes, measurements, identity fields, deck attachment and address edits persist locally (`needsSync = true`) with no queue entry. Keystrokes are debounced (400 ms, flush on focus loss) so the store is touched once per pause, not per character; the screen shows the buffer immediately.
+- **Saving the visit queues everything dirty for the visit and starts the upload.** Save = DONE, SAVE DRAFT & CLOSE, the review sheet's "save draft" path, and completion. `saveDraft()` = flush buffers → `queueDirtyWork(siteVisitId:)` → `onWorkQueued` (the view wires it to `syncEngine.notifyDurableOperationQueued()`).
+- **Going to the background, closing without confirming, opening the deck editor** keep the draft local (`preserveDraft()` only flushes).
+- **Unchanged:** the visit row itself is created server-side when the visit starts (children need the parent); photo bytes keep uploading as captured (recommendation pending Jackson's veto); lead binding / reassign / discard / completion keep their immediate server semantics; the launch orphan sweep still delivers any dirty rows it finds.
+
+## Tests first
+
+- `SiteVisitPersistenceCoordinatorTests.test_localOnlyCommitQueuesNothingUntilDirtyWorkIsQueuedForSave`
+- `SiteVisitFieldWorkflowTests.testTypingSavesLocallyAndUploadsOnlyWhenTheVisitIsSaved`
+- `SiteVisitFieldWorkflowTests.testKeystrokesWaitBeforeTouchingTheStore`

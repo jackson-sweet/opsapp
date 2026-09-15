@@ -72,6 +72,11 @@ struct SiteVisitCaptureView: View {
                     if let initialSiteVisitType {
                         vm.selectSiteVisitType(initialSiteVisitType)
                     }
+                    // Saving the visit is the only moment the phone uploads;
+                    // the queue drains as soon as the save lands.
+                    vm.onWorkQueued = { [weak dataController] in
+                        dataController?.syncEngine?.notifyDurableOperationQueued()
+                    }
                     viewModel = vm
                 }
             }
@@ -390,7 +395,7 @@ private struct SiteVisitCaptureConsole: View {
             titleVisibility: .visible
         ) {
             Button("SAVE DRAFT & CLOSE") {
-                if viewModel.preserveDraft() { onClose() }
+                if viewModel.saveDraft() { onClose() }
             }
             Button("DISCARD VISIT", role: .destructive) {
                 viewModel.discardVisit()
@@ -411,7 +416,7 @@ private struct SiteVisitCaptureConsole: View {
             leading: { OPSHeaderCloseButton(action: attemptClose) },
             trailing: {
                 Button {
-                    if viewModel.preserveDraft() { showingReview = true }
+                    if viewModel.saveDraft() { showingReview = true }
                 } label: {
                     Text("DONE")
                         .font(OPSStyle.Typography.captionBold)
@@ -2789,7 +2794,7 @@ private struct SiteVisitReviewSheet: View {
             if let decision {
                 result = await viewModel.saveVisit(stageDecision: decision)
             } else if !viewModel.canComplete {
-                result = viewModel.preserveDraft() ? .draftSaved : .notCommitted(.persistence)
+                result = viewModel.saveDraft() ? .draftSaved : .notCommitted(.persistence)
             } else {
                 // Unbound visit — nothing to re-stage; just complete it.
                 let completion = await viewModel.completeVisit()

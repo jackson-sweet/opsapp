@@ -88,11 +88,38 @@ final class SiteVisitPersistenceCoordinator {
     /// Runs the model mutation, builds/coalesces all matching durable queue
     /// work, and lets SwiftData commit the transaction exactly once.
     @discardableResult
+    /// Queues every dirty row of one visit — the moment the operator SAVES.
+    ///
+    /// Typing persists through `commit(queueing: false)`, which leaves the rows
+    /// carrying `needsSync` and nothing in the upload queue; this is the only
+    /// path that turns those rows into operations (Jackson, 2026-09-15: "It
+    /// should only be uploading when the user saves the site visit"). Unattempted
+    /// commands for the same rows are refreshed in place, attempted ones gain a
+    /// sequenced successor, and a pending completion is re-anchored behind the
+    /// new tail.
+    func queueDirtyWork(siteVisitId: String) throws -> CommitResult {
+        var queuedIds: [UUID] = []
+        let ids: Set<String> = [siteVisitId.lowercased()]
+        do {
+            try modelContext.transaction {
+                let result = try queueDirtyGraphs(onlyOrphans: false, siteVisitIds: ids)
+                queuedIds = result.operationIds
+                try repairCompletionDependencies(chainTips: result.chainTips, siteVisitIds: ids)
+                try validateCommit()
+            }
+        } catch {
+            modelContext.rollback()
+            throw Error.transactionFailed(error)
+        }
+        return CommitResult(operationIds: queuedIds, completionOperationId: nil)
+    }
+
     func commit(
         completing visit: SiteVisit? = nil,
         discarding discardedVisit: SiteVisit? = nil,
         stageCommand: SiteVisitStageCommand? = nil,
         revisedMediaArtifactIds: Set<String> = [],
+        queueing: Bool = true,
         mutation: () throws -> Void
     ) throws -> CommitResult {
         // The compatible closure API cannot identify which pre-existing WIP
@@ -153,8 +180,13 @@ final class SiteVisitPersistenceCoordinator {
                     modelContext.insert(operation)
                     transactionOperationIds.insert(operation.id)
                     result = QueueResult(operationIds: [operation.id], chainTips: [discardedVisit.id.lowercased(): operation.id.uuidString.lowercased()])
-                } else {
+                } else if queueing || visit != nil || stageCommand != nil {
                     result = try queueChangedEntities(changed, completing: visit, revisedMediaArtifactIds: revisedMediaArtifactIds)
+                } else {
+                    // Local-only save: the rows keep `needsSync`, and
+                    // `queueDirtyWork` turns them into operations when the
+                    // operator saves the visit.
+                    result = QueueResult(operationIds: [], chainTips: [:])
                 }
                 queuedIds = result.operationIds
 

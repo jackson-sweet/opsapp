@@ -193,6 +193,7 @@ final class SiteVisitFieldWorkflowTests: XCTestCase {
                 let edited = try XCTUnwrap(vm.checklistAnswers.first { $0.id == answer.id })
                 vm.bufferChecklistAnswer(edited, value: .text(blank))
                 XCTAssertTrue(vm.flushChecklistEdits()); XCTAssertNil(vm.errorMessage)
+                XCTAssertTrue(vm.saveDraft()) // typing stays local; saving the visit queues the clear
                 let verify = ModelContext(container)
                 let operations = try verify.fetch(FetchDescriptor<SyncOperation>())
                 let sent = try XCTUnwrap(operations.first { $0.id == old.id })
@@ -218,6 +219,66 @@ final class SiteVisitFieldWorkflowTests: XCTestCase {
                 }
             }
         }
+    }
+
+    // MARK: - Local until save (2026-09-15)
+
+    /// Typing stays on the phone. Going to the background stays on the phone.
+    /// Saving the visit queues what was typed and starts the upload.
+    func testTypingSavesLocallyAndUploadsOnlyWhenTheVisitIsSaved() throws {
+        let (container, vm) = try packet(fields: [
+            .init(id: "notes", label: "General Notes", kind: .longText, sortOrder: 0)
+        ])
+        vm.checklistFlushDelayNanoseconds = 0
+        let queue = ModelContext(container)
+        for operation in try queue.fetch(FetchDescriptor<SyncOperation>()) {
+            operation.status = "completed"
+            operation.completedAt = Date()
+        }
+        try queue.save()
+        let answer = try XCTUnwrap(vm.checklistAnswers.first)
+        var uploadsStarted = 0
+        vm.onWorkQueued = { uploadsStarted += 1 }
+
+        vm.bufferChecklistAnswer(answer, value: .text("Client would like"))
+        vm.bufferChecklistAnswer(answer, value: .text("Client would like to rebuild"))
+        XCTAssertTrue(vm.flushChecklistEdits())
+        XCTAssertEqual(answer.answerValue.text, "Client would like to rebuild")
+        XCTAssertTrue(answer.needsSync)
+        XCTAssertTrue(try pendingOperations(in: container).isEmpty, "Typing must not queue an upload")
+        XCTAssertEqual(uploadsStarted, 0)
+
+        XCTAssertTrue(vm.preserveDraft())
+        XCTAssertTrue(try pendingOperations(in: container).isEmpty, "Backgrounding keeps the draft on the phone")
+        XCTAssertEqual(uploadsStarted, 0)
+
+        XCTAssertTrue(vm.saveDraft())
+        let write = try XCTUnwrap(pendingOperations(in: container).first { $0.entityId == answer.id })
+        XCTAssertEqual(
+            SiteVisitVersionedSync.command(write)?.rows[0].values["answer_value"]?["text"],
+            .string("Client would like to rebuild")
+        )
+        XCTAssertEqual(uploadsStarted, 1)
+    }
+
+    /// A keystroke shows on screen at once and reaches the store only after the
+    /// operator pauses — one transaction per pause, not one per character.
+    func testKeystrokesWaitBeforeTouchingTheStore() async throws {
+        let (container, vm) = try packet(fields: [
+            .init(id: "notes", label: "General Notes", kind: .longText, sortOrder: 0)
+        ])
+        vm.checklistFlushDelayNanoseconds = 40_000_000
+        let answer = try XCTUnwrap(vm.checklistAnswers.first)
+        vm.bufferChecklistAnswer(answer, value: .text("C"))
+        XCTAssertEqual(vm.checklistValue(for: answer).text, "C")
+        XCTAssertNil(answer.answerValue.text, "The store is not touched on the keystroke itself")
+        try await Task.sleep(nanoseconds: 250_000_000)
+        XCTAssertEqual(answer.answerValue.text, "C")
+        withExtendedLifetime(container) {}
+    }
+
+    private func pendingOperations(in container: ModelContainer) throws -> [SyncOperation] {
+        try ModelContext(container).fetch(FetchDescriptor<SyncOperation>()).filter { $0.status != "completed" }
     }
 
     func testDiscardRejectsBookedVisitBeforeLocalTombstones() throws {

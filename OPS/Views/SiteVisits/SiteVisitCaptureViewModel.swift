@@ -85,7 +85,9 @@ final class SiteVisitCaptureViewModel: ObservableObject {
     @Published private(set) var pendingChecklistValues: [String: SiteVisitChecklistValue] = [:]
     private var pendingChecklistBases: [String: SiteVisitWriteState] = [:]
     private var checklistSaveTask: Task<Void, Never>?
+    var checklistFlushDelayNanoseconds: UInt64 = 400_000_000
     var flushIdentityEdits: (() -> Void)?
+    var onWorkQueued: (() -> Void)?
 
     private let companyId: String
     private let userId: String?
@@ -392,7 +394,7 @@ final class SiteVisitCaptureViewModel: ObservableObject {
             opportunityId: activeOpportunityId,
             createdBy: userId
         ).filter { candidate in !existing.contains(where: { $0.fieldId == candidate.fieldId }) }
-        guard persistSiteVisitChanges({
+        guard persistLocally({
             for answer in replacements { modelContext.insert(answer) }
         }) else { return }
         reloadChecklistAnswers()
@@ -417,7 +419,7 @@ final class SiteVisitCaptureViewModel: ObservableObject {
             opportunityId: activeOpportunityId,
             createdBy: userId
         ).filter { candidate in !activeExisting.contains(where: { $0.fieldId == candidate.fieldId }) }
-        guard persistSiteVisitChanges({
+        guard persistLocally({
             for answer in answers {
                 modelContext.insert(answer)
             }
@@ -436,7 +438,7 @@ final class SiteVisitCaptureViewModel: ObservableObject {
     ) {
         let value = value.retainingChoiceSnapshot(answer.answerValue.choiceSnapshot)
         guard answer.answerValue != value else { return }
-        guard persistSiteVisitChanges({
+        guard persistLocally({
             var state = answer.writeState; state.explicitlyEdited = true; answer.writeState = state
             answer.answerValue = value
             answer.updatedAt = Date()
@@ -461,7 +463,21 @@ final class SiteVisitCaptureViewModel: ObservableObject {
             pendingChecklistBases[answer.id] = state
         }
         pendingChecklistValues[answer.id] = value
-        _ = flushChecklistEdits()
+        scheduleChecklistFlush()
+    }
+
+    /// One store transaction per pause in typing, not one per character. The
+    /// buffer drives the screen meanwhile; focus loss, navigation and save
+    /// flush at once. Bounded loss on a crash: the last few hundred
+    /// milliseconds of typing.
+    private func scheduleChecklistFlush() {
+        checklistSaveTask?.cancel()
+        let delay = checklistFlushDelayNanoseconds
+        checklistSaveTask = Task { @MainActor [weak self] in
+            if delay > 0 { try? await Task.sleep(nanoseconds: delay) }
+            guard !Task.isCancelled, let self else { return }
+            _ = self.flushChecklistEdits()
+        }
     }
 
     @discardableResult
@@ -474,7 +490,7 @@ final class SiteVisitCaptureViewModel: ObservableObject {
             return (answer, value)
         }
         guard !changes.isEmpty else { pendingChecklistValues = [:]; pendingChecklistBases = [:]; return true }
-        guard persistSiteVisitChanges({
+        guard persistLocally({
             let now = Date()
             for (answer, value) in changes {
                 if let original = pendingChecklistBases[answer.id] {
@@ -490,7 +506,26 @@ final class SiteVisitCaptureViewModel: ObservableObject {
         return true
     }
 
-    /// Flush before navigation/backgrounding. A failed write retains buffers.
+    /// The operator saved the visit: flush every buffer, queue every dirty row
+    /// of this visit, and start the upload. DONE, SAVE DRAFT & CLOSE and
+    /// completion come through here; going to the background does not.
+    @discardableResult
+    func saveDraft() -> Bool {
+        guard preserveDraft() else { return false }
+        guard let visit = siteVisit else { return true }
+        do {
+            let result = try persistenceCoordinator.queueDirtyWork(siteVisitId: visit.id)
+            errorMessage = nil
+            if !result.operationIds.isEmpty { onWorkQueued?() }
+            return true
+        } catch {
+            errorMessage = "SAVE FAILED"
+            return false
+        }
+    }
+
+    /// Flush buffers to the phone before navigation/backgrounding. Nothing is
+    /// queued for upload here. A failed write retains buffers.
     @discardableResult
     func preserveDraft() -> Bool {
         errorMessage = nil
@@ -532,7 +567,7 @@ final class SiteVisitCaptureViewModel: ObservableObject {
             sortOrder: nextSortOrder,
             createdBy: userId
         )
-        guard persistSiteVisitChanges({
+        guard persistLocally({
             modelContext.insert(answer)
         }) else { return }
         reloadChecklistAnswers()
@@ -628,7 +663,7 @@ final class SiteVisitCaptureViewModel: ObservableObject {
             capturedAt: Date(),
             createdBy: userId
         )
-        guard persistSiteVisitChanges({
+        guard persistLocally({
             modelContext.insert(artifact)
         }) else { return }
         noteDraft = ""
@@ -642,7 +677,7 @@ final class SiteVisitCaptureViewModel: ObservableObject {
 
         if trimmed.isEmpty {
             if let artifact = autosavedNoteArtifact() {
-                guard persistSiteVisitChanges({
+                guard persistLocally({
                     artifact.deletedAt = Date()
                     artifact.updatedAt = Date()
                     artifact.needsSync = true
@@ -655,7 +690,7 @@ final class SiteVisitCaptureViewModel: ObservableObject {
 
         if let artifact = autosavedNoteArtifact(), artifact.isActive {
             guard artifact.body != trimmed else { return }
-            guard persistSiteVisitChanges({
+            guard persistLocally({
                 artifact.body = trimmed
                 artifact.updatedAt = Date()
                 artifact.needsSync = true
@@ -675,7 +710,7 @@ final class SiteVisitCaptureViewModel: ObservableObject {
             capturedAt: Date(),
             createdBy: userId
         )
-        guard persistSiteVisitChanges({
+        guard persistLocally({
             modelContext.insert(artifact)
         }) else { return }
         autosavedNoteArtifactId = artifact.id
@@ -701,7 +736,7 @@ final class SiteVisitCaptureViewModel: ObservableObject {
         guard !trimmed.isEmpty, let visit = requireVisit() else { return }
 
         let existing = autosavedNoteArtifact()
-        guard persistSiteVisitChanges({
+        guard persistLocally({
             if let artifact = existing, artifact.isActive {
                 artifact.body = trimmed
                 artifact.updatedAt = Date()
@@ -743,7 +778,7 @@ final class SiteVisitCaptureViewModel: ObservableObject {
             capturedAt: Date(),
             createdBy: userId
         )
-        guard persistSiteVisitChanges({
+        guard persistLocally({
             modelContext.insert(artifact)
         }) else { return }
         measurementDraft = ""
@@ -783,7 +818,7 @@ final class SiteVisitCaptureViewModel: ObservableObject {
         let alreadyAttached = activeArtifacts.contains {
             $0.kind == .deckDesign && $0.deckDesignId == deckDesign.id
         }
-        guard persistSiteVisitChanges({
+        guard persistLocally({
             if !alreadyAttached {
                 let artifact = SiteVisitCaptureArtifact(
                     siteVisitId: visit.id,
@@ -844,7 +879,7 @@ final class SiteVisitCaptureViewModel: ObservableObject {
 
     func setIncluded(_ artifact: SiteVisitCaptureArtifact, included: Bool) {
         guard artifact.includedInProjectReview != included else { return }
-        guard persistSiteVisitChanges({
+        guard persistLocally({
             artifact.includedInProjectReview = included
             artifact.updatedAt = Date()
             artifact.needsSync = true
@@ -868,7 +903,7 @@ final class SiteVisitCaptureViewModel: ObservableObject {
         }
 
         if artifact.body == trimmed { return true }
-        guard persistSiteVisitChanges({
+        guard persistLocally({
             artifact.body = trimmed
             artifact.updatedAt = Date()
             artifact.needsSync = true
@@ -894,7 +929,10 @@ final class SiteVisitCaptureViewModel: ObservableObject {
     }
 
     func completeVisit(stageCommand: SiteVisitStageCommand? = nil) async -> SiteVisitCompletionResult {
-        guard preserveDraft() else { return .notCommitted(.persistence) }
+        guard saveDraft() else {
+            errorMessage = "VISIT NOT SAVED"
+            return .notCommitted(.persistence)
+        }
         guard missingRequiredChecklistAnswers.isEmpty else {
             errorMessage = "COMPLETE REQUIRED FIELDS"
             return .notCommitted(.requiredAnswers)
@@ -1328,7 +1366,7 @@ final class SiteVisitCaptureViewModel: ObservableObject {
             || draft.contactName != contactName || draft.preferredEmail != preferredEmail
             || draft.additionalEmails != emails || draft.phoneNumber != phoneNumber
             || draft.address != canonicalAddress || draft.notes != notes else { return }
-        guard persistSiteVisitChanges({
+        guard persistLocally({
             draft.searchText = searchText
             draft.clientName = clientName
             draft.contactName = contactName
@@ -1441,7 +1479,7 @@ final class SiteVisitCaptureViewModel: ObservableObject {
         let normalized = trimmed.isEmpty ? nil : trimmed
 
         guard let visit = requireVisit() else { return }
-        guard persistSiteVisitChanges({
+        guard persistLocally({
             visit.address = normalized
             visit.updatedAt = Date()
             visit.needsSync = true
@@ -1694,7 +1732,7 @@ final class SiteVisitCaptureViewModel: ObservableObject {
             address: currentOpportunity?.address ?? visit.address ?? "",
             createdBy: userId
         )
-        guard persistSiteVisitChanges({
+        guard persistLocally({
             modelContext.insert(draft)
         }) else { return }
         identityDraft = draft
@@ -1895,7 +1933,7 @@ final class SiteVisitCaptureViewModel: ObservableObject {
         }
 
         if !changes.isEmpty,
-           persistSiteVisitChanges({
+           persistLocally({
                for (answer, value) in changes {
                    answer.answerValue = value
                    answer.updatedAt = Date()
@@ -1962,10 +2000,17 @@ final class SiteVisitCaptureViewModel: ObservableObject {
     }
 
     @discardableResult
+    /// Writes to the phone only. The rows keep `needsSync`; nothing reaches the
+    /// upload queue until the operator saves the visit (`saveDraft`).
+    private func persistLocally(_ mutation: () throws -> Void) -> Bool {
+        persistSiteVisitChanges(queueing: false, mutation)
+    }
+
     private func persistSiteVisitChanges(
         completing visit: SiteVisit? = nil,
         discarding discardedVisit: SiteVisit? = nil,
         revisedMediaArtifactIds: Set<String> = [],
+        queueing: Bool = true,
         _ mutation: () throws -> Void
     ) -> Bool {
         do {
@@ -1973,6 +2018,7 @@ final class SiteVisitCaptureViewModel: ObservableObject {
                 completing: visit,
                 discarding: discardedVisit,
                 revisedMediaArtifactIds: revisedMediaArtifactIds,
+                queueing: queueing,
                 mutation: mutation
             )
             errorMessage = nil

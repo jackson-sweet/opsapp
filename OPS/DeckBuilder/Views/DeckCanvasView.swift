@@ -816,12 +816,33 @@ struct DeckCanvasView: View {
                      at: CGPoint(x: cx, y: cy))
     }
 
+    /// Surface label — pill on the surface's largest inscribed rectangle.
+    ///
+    /// The builder keeps its own `scaledSize` type clamps (this is an editing
+    /// surface, not a finished drawing), but shares the viewer's anchor so a
+    /// label never lands outside a concave surface, and clamps the pill to the
+    /// rectangle so it can never cover the geometry being edited (f7dd3673).
     private func drawSurfaceLabel(context: GraphicsContext, positions: [CGPoint], label: String) {
-        let cx = positions.map(\.x).reduce(0, +) / CGFloat(positions.count)
-        let cy = positions.map(\.y).reduce(0, +) / CGFloat(positions.count)
+        let inscribed = DeckSurfaceLabelPlacement.largestInscribedRect(in: positions)
+        let anchor: CGPoint
+        if let inscribed {
+            anchor = CGPoint(x: inscribed.midX, y: inscribed.midY)
+        } else if let centroid = PolygonMath.polygonCentroid(vertices: positions) {
+            anchor = centroid
+        } else {
+            return
+        }
+        let cx = anchor.x
+        let cy = anchor.y
         let charW = scaledSize(7, min: 5, max: 11)
-        let pillW = CGFloat(label.count) * charW + scaledSize(16, min: 10, max: 22)
-        let pillH = scaledSize(20, min: 14, max: 28)
+        let pillW = min(
+            CGFloat(label.count) * charW + scaledSize(16, min: 10, max: 22),
+            inscribed?.width ?? CGFloat.greatestFiniteMagnitude
+        )
+        let pillH = min(
+            scaledSize(20, min: 14, max: 28),
+            inscribed?.height ?? CGFloat.greatestFiniteMagnitude
+        )
         let cr = scaledSize(4, min: 2, max: 6)
         let pillRect = CGRect(x: cx - pillW / 2, y: cy - pillH / 2, width: pillW, height: pillH)
         context.fill(Path(roundedRect: pillRect, cornerRadius: cr),

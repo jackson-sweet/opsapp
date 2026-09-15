@@ -1,0 +1,29 @@
+{
+  "project": "ijeekuhbatykdomumfjx",
+  "mode": "anonymous no-change API probes",
+  "customer_mutations": false,
+  "results": [
+    {
+      "case": "legacy_four_arguments",
+      "http_status": 400,
+      "code": "22023",
+      "message": "invalid project note mention edit",
+      "expected_rejection": true
+    },
+    {
+      "case": "attachment_array_anonymous_denied",
+      "http_status": 401,
+      "code": "42501",
+      "message": "project note mention edit actor is unavailable",
+      "expected_rejection": true
+    },
+    {
+      "case": "attachment_shape_validation",
+      "http_status": 400,
+      "code": "22023",
+      "message": "note attachments must be a json array",
+      "expected_rejection": true
+    }
+  ],
+  "checked_at_utc": "2026-09-15T02:21:24.007489+00:00"
+}

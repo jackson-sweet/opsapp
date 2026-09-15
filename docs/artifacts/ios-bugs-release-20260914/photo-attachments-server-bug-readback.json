@@ -1,0 +1,12 @@
+{
+  "checked_at_utc": "2026-09-15 02:28:48.306606+00",
+  "id": "f5f57917-ac58-4d51-b706-eff0e68131e5",
+  "status": "in_progress",
+  "assigned_to": "claude-bug-sweep-2026-09-03",
+  "fix_commit": null,
+  "fixed_at": null,
+  "resolved_at": null,
+  "note_exact_suffix": true,
+  "marker_occurrences": 1,
+  "guard_replay_updated_count": 0
+}

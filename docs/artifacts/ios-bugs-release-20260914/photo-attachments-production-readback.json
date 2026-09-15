@@ -1,0 +1,113 @@
+{
+  "project": "ijeekuhbatykdomumfjx",
+  "authorization": "User explicitly approved applying the prepared photo-removal database update to production.",
+  "prepared_artifact": "20260914224026_project_note_mentions_attachments.sql",
+  "applied_artifact": "20260915021754_project_note_mentions_attachments.sql",
+  "migration_sha256": "863b2db89142bf2cc3728fb389786489ac71bd6e5d4ff82794baa3fd876e1d1d",
+  "baseline_guard": {
+    "checked_at": "2026-09-15 02:17:00.985846+00",
+    "result": "passed"
+  },
+  "apply_success": true,
+  "ledger": {
+    "version": "20260915021754",
+    "name": "project_note_mentions_attachments",
+    "statement_count": 1,
+    "statement_bytes": 20739,
+    "statements_md5": "2b3cee1e9abeaabff9407eea04e03aed"
+  },
+  "live_function": {
+    "checked_at": "2026-09-15 02:18:43.07205+00",
+    "signature": "update_project_note_mentions(uuid,text,text[],uuid,jsonb)",
+    "arguments": "p_note_id uuid, p_content text, p_mentioned_user_ids text[], p_event_id uuid, p_attachments jsonb DEFAULT NULL::jsonb",
+    "definition_md5": "2bbb8d6782b140843ab050fabe72431b",
+    "owner": "postgres",
+    "security_definer": true,
+    "proconfig": [
+      "search_path=pg_catalog, public, private, pg_temp"
+    ],
+    "proacl": "{postgres=X/postgres,anon=X/postgres,authenticated=X/postgres}",
+    "signature_count": 1
+  },
+  "security": {
+    "columns": [
+      {
+        "name": "attachments_snapshot",
+        "type": "jsonb",
+        "default": null,
+        "nullable": "YES"
+      },
+      {
+        "name": "requested_attachments",
+        "type": "jsonb",
+        "default": null,
+        "nullable": "YES"
+      }
+    ],
+    "event_policy": [
+      {
+        "name": "project_note_mention_events_no_client_access",
+        "check": "false",
+        "roles": "{16480,16481}",
+        "using": "false",
+        "permissive": false
+      }
+    ],
+    "table_security": [
+      {
+        "acl": "{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres}",
+        "rls": true,
+        "owner": "postgres",
+        "table": "project_notes",
+        "force_rls": false
+      },
+      {
+        "acl": "{postgres=arwdDxtm/postgres,service_role=r/postgres}",
+        "rls": true,
+        "owner": "postgres",
+        "table": "project_note_mention_events",
+        "force_rls": false
+      }
+    ],
+    "identity_helpers": [
+      {
+        "md5": "3de642ffe4b81ee8827c1cc6507f85c4",
+        "signature": "private.get_user_company_id()"
+      },
+      {
+        "md5": "127ffd06387933500d95f96aba24b605",
+        "signature": "private.get_current_user_id()"
+      }
+    ],
+    "immutable_trigger": [
+      {
+        "name": "project_note_mention_events_immutable",
+        "type": 27,
+        "enabled": "O",
+        "function": "private.project_note_mention_events_are_immutable()",
+        "function_md5": "663c280831375d0a14ab477f4da39797"
+      }
+    ]
+  },
+  "verification_scope": {
+    "local_sql_assertions": 62,
+    "local_adversarial_checks": 24,
+    "ios_simulator_tests": 118,
+    "new_ios_regressions": 13,
+    "production_customer_note_edits": false,
+    "phone_installation": false,
+    "app_release": false
+  },
+  "security_advisors": {
+    "total_notices": 6,
+    "expected_existing_function_notices": [
+      "anon_security_definer_function_executable",
+      "authenticated_security_definer_function_executable"
+    ],
+    "rationale": "The author/company-guarded public RPC preserves its prior SECURITY DEFINER setting and exact EXECUTE ACL; no new role gains access.",
+    "remediation_urls": [
+      "https://supabase.com/docs/guides/database/database-linter?lint=0028_anon_security_definer_function_executable",
+      "https://supabase.com/docs/guides/database/database-linter?lint=0029_authenticated_security_definer_function_executable"
+    ]
+  }
+}

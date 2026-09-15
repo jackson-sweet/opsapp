@@ -1,0 +1,25 @@
+{
+  "slug": "accounting-sync-expense",
+  "version": 5,
+  "status": "ACTIVE",
+  "verify_jwt": false,
+  "ezbr_sha256": "0135ba82e5fff4165e7eab7ea90d42afa70833c3388b5583859ffaeaa9849048",
+  "created_at": 1772333215435,
+  "updated_at": 1772333215435,
+  "project": "ijeekuhbatykdomumfjx",
+  "files": [
+    {
+      "name": "functions/accounting-sync-expense/index.ts",
+      "bytes": 12970
+    },
+    {
+      "name": "functions/_shared/supabase-client.ts",
+      "bytes": 416
+    },
+    {
+      "name": "functions/_shared/cors.ts",
+      "bytes": 158
+    }
+  ],
+  "source_retrieved": true
+}

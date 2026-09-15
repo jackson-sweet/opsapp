@@ -1,0 +1,7 @@
+PASS: 9 original identity observations; fixed expectation rejects original code
+PASS: 9 repaired identity observations with unchanged financial state on denial
+PASS: 6 original role sequence calls allowed; 6 repaired calls denied; owner allocation preserved
+PASS: 69 correction assertions and 7 existing correction contention checks
+PASS: 123 existing P5 accounting assertions with P7 installed
+PASS: 2 existing P7 migration guard rejections
+PASS: existing payroll contract and 17 reimbursement projection assertions

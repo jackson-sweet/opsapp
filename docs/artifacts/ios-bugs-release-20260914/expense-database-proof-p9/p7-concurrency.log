@@ -1,0 +1,8 @@
+PASS concurrent same-request retry commits one receipt and one notification
+PASS concurrent allocation write cannot bypass revision CAS or partially correct
+PASS actor revocation during company-lock wait denies correction
+PASS submitter revocation during company-lock wait denies correction
+PASS actor authority stays locked through correction commit
+PASS submitter authority stays locked through correction commit
+PASS company authority stays locked through correction commit
+7 real contention checks passed

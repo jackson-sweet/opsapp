@@ -1,0 +1,21 @@
+{
+  "prepareOnly": true,
+  "gatewayVerifyJWT": false,
+  "gatewayEvidence": "/private/tmp/ops-ios-bugs-p9-runtime/live-expense-edge.json",
+  "legacyVersion": 5,
+  "files": [
+    {
+      "path": "supabase/functions/accounting-sync-expense/index.ts",
+      "sha256": "34db00f0aa6838fc680c76a7685e581ba3c6ae3ab6efd6aa660824eb26163f7e"
+    },
+    {
+      "path": "supabase/functions/accounting-sync-expense/handler.ts",
+      "sha256": "6565c86464e3726a9c709feb9fa60bff8e6093779b82cf3f4135de07b4c6f320"
+    },
+    {
+      "path": "tests/unit/expenses/expense-sync-edge-handler.test.ts",
+      "sha256": "cfbcd2aaa42a54fd68940e3eb22ddcd1500c0e14f7ac3157749f7c487282978a"
+    }
+  ],
+  "deployed": false
+}

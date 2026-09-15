@@ -2,6 +2,8 @@
 
 This began as a release preparation record against iOS main `95bfaf20` and web main `134be2424`. Subsequent explicit approvals covered the photo repair's serial simulator verification and its independent production database update, recorded below. No phone interaction, provider transactions, worker/environment changes, pushes or iOS releases were performed. This is not an all-bugs-fixed claim.
 
+**Updated 2026-09-15 (P9-4).** The expense release is now prepared as an exact web candidate on the actual production commit, a temporary compatibility hold build, a queue-only edge adapter and one atomic database bundle, each with retained proof. The migration hashes below supersede the 2026-09-14 table; the earlier authority/lifecycle/project hashes are no longer the release source. Production deployment, the database install, provider activation, phone operations and iOS release remain separately unauthorized.
+
 ## Verified local stack
 
 | Repair | Local implementation | Existing proof |
@@ -15,41 +17,54 @@ Current source independently matches every retained P6 hash (27 files) and P7 ha
 
 Evidence: [P6 verification](../ios-bugs-p6-20260914/verification.md), [P7 verification](../ios-bugs-p7-20260914/verification.md), [live preflight](preflight.json). P5 provider and database proof are in OPS-Web `docs/artifacts/2026-09-12-expense-provider-contract.md` and `2026-09-14-expense-accounting-database-proof.md`.
 
-## Exact pending migration stack
+## Exact pending release sources (2026-09-15)
 
-Files are in OPS-Web `supabase/migrations/`. None of these five ledger versions were present in the live database at 2026-09-14T22:27Z.
+Production web is `b5b0cb59275f0addf923db608b1daeac4afca844` (Vercel READY `dpl_138EdNzoYSP4peM1qg9Yk5H7rWdF`, `app.opsapp.co`). Local web main `4baf3fe23` contains all fixes but also unrelated unreleased work; it is not the release source and must not be pushed as this release.
 
-| Order | Migration | SHA256 |
+| Artifact | Identity | Proof |
 |---|---|---|
-| 1 | `20260912012607_expense_decision_company_authority.sql` | `93f4d57097e05cda31b993d84445356bde43d21a44cb20acdf9575524d04b939` |
-| 2 | `20260912203328_expense_accounting_lifecycle.sql` | `713b56128ac1ce2632ae62ecdb3d90dc5eb2ed09bbdc5db1f235cc0d00523eff` |
-| 3 | `20260914200910_expense_payroll_reimbursement_projection.sql` | `78db2cee099061cd5d31be11a8de4c174cbb6022a0c66c590f08feb53902dc0b` |
-| 4 | `20260914210950_project_task_reopen_receipts.sql` | `9ea711a3a2de58ed18607fa8f30804bf19d116615c527e74aa8a5d1b176fa6c6` |
-| 5 | `20260914214748_expense_admin_correction_review.sql` | `f5a6d66815c8e9468817fc28d24a5fe1d7caa68dcb671b3b379a1ad227b5f015` |
+| Web expense candidate | OPS-Web `d2d7457f19c594d20701e480ca9f0ed211656222`, branch `release/p9-expense-candidate`, 71 scoped paths on production (`expense-candidate-manifest-p9.json`) | 318/318 web tests in 23 files; bounded TypeScript and named-file ESLint pass (`expense-web-tests-p9.*`, `expense-scoped-types-p9.log`, `expense-lint-p9.log`) |
+| Compatibility hold build | OPS-Web `e6336445f54b8f3a1a38489fc5d4c50dae7449f7`, branch `release/p9-expense-compatibility-hold`, exactly production plus seven files (patch SHA256 `e18e8be02c710f173ff791491ed0bb1d3ffa949d39c3475b833d70f2bf372a80`) | 56/56 tests in 3 files, bounded TypeScript and lint pass (`claude-handoff/hold-*`) |
+| Queue-only edge adapter | `supabase/functions/accounting-sync-expense/{index,handler}.ts` in the candidate (`claude-handoff/queue-only-edge/manifest.json`); replaces live direct-provider v5, keeps `verify_jwt:false` | Missing-RPC 404 and transport 503 regressions inside the 318 |
+| Atomic expense bundle | `claude-handoff/atomic-install/expense-release-atomic.sql`, SHA256 `4d53da61929337ab783070818f387ac1e8650cd900230fd7685418a32c543d22`, 146738 bytes; initial guard SHA256 `0c7f1fd89944620614ba17b595ffcccbe0d14b1c8f324f7719997d919b010423` | Disposable PG17 proof below; identical guard passed live READ ONLY at `2026-09-15T03:37:42Z` (`expense-atomic-live-preflight-p9.json`) |
+| Independent project migration | `20260914210950_project_task_reopen_receipts.sql`, SHA256 `18845d0b67e5b6116ec4e41c165e5a85e4472e22e8f99a60580a462e004b2657` (P6 checkout `8d769e5ec`) | 30 behavior assertions, 14 guard rejections, 4 identity-unlink races, untouched install/rollback control (`project-reopen-regressions-p9.log`); prerequisite block passed live READ ONLY at `2026-09-15T03:24:50.560841Z` |
 
-Expense authority → accounting lifecycle → payroll compatibility → correction is a strict dependency chain. Project reopening is independent and can be installed separately; its plain CREATE statements must not be blindly replayed.
+The bundle contains, in order and byte-identical apart from three removed outer BEGIN/COMMIT pairs (`atomic-install/manifest.json`):
+
+| Order | Constituent | Final SHA256 |
+|---|---|---|
+| 1 | `20260912012607_expense_decision_company_authority.sql` | `07b6791dbeb19e365d20361242d5cb1103cff6b5037ce0a56d3c4e5a3b3d6cef` |
+| 2 | `20260912203328_expense_accounting_lifecycle.sql` | `77b420827c616996a062f35787e6bb257141b1c7da468a4253a61536ee922e23` |
+| 3 | `20260914200910_expense_payroll_reimbursement_projection.sql` | `78db2cee099061cd5d31be11a8de4c174cbb6022a0c66c590f08feb53902dc0b` |
+| 4 | `20260914214748_expense_admin_correction_review.sql` | `f5a6d66815c8e9468817fc28d24a5fe1d7caa68dcb671b3b379a1ad227b5f015` |
+
+Constituents 1 and 2 changed after the 2026-09-14 table: the approver helper re-resolves login and company after row-lock waits, and the lifecycle migration revokes independent client grants on the event identity sequence. The constituents must never be applied individually; the approved mechanism records one actual bundle ledger version, after which the four prepared paths are archived and the submitted bytes are added under the returned version. All five ledger versions and every target object were absent live at the last read; re-read immediately before any authorized install.
+
+### Atomic bundle proof (disposable PostgreSQL 17, synthetic data, 2026-09-15)
+
+Harness `claude-handoff/atomic-fixture/run-atomic-fixture.sh`; logs `expense-atomic-proof-p9/`. Codex's three fixture drafts ran unmodified.
+
+- Read-only preflight and standalone guard pass on the exact captured baseline; live payroll MD5 `c3e517bcc781f6866601c5966fa0b58d` confirmed before install.
+- Whole bundle installs in one transaction ending in `COMMIT`; all postconditions pass (11 relations, replaced payroll/authority/placement hashes, authenticated-only correction grants, sequence grants revoked, no financial or correction work generated, seeded batch projection unchanged).
+- Blind reapplication is rejected by the guard and the bundle with a byte-identical catalog/data snapshot afterwards.
+- A deliberate failure inserted before the final `COMMIT` ends in `ROLLBACK`; the snapshot is byte-identical to pre-run, the guard passes again, postconditions fail, and a fresh connection sees none of the 11 relations or the reimbursement column.
+- Seven drift fixtures are each rejected before any migration body runs, with byte-identical snapshots: changed function definition, wrong function owner, renamed function, partial target table, partial target function under a different signature, pre-existing `reimbursement_amount`, non-postgres migration owner.
+- On bundle-installed databases: 123 accounting assertions, 69 correction assertions and 7 real contention checks pass.
+- Release-day verification file `claude-handoff/atomic-install/postconditions-production.sql` (SHA256 `a4b8f4d6e2e280555f8ef53a726112cea4dc0bdc18e8cf264a156929120a4c48`, read-only transaction) passes on a bundle-installed database, rejects an uninstalled one, and ignores pre-existing non-expense queue rows.
 
 P4 multiple-choice prerequisites are already installed: ledger `20260912213224 site_visit_single_choice_v2` and `20260912213347 site_visit_mcp_choice_coexistence`. Earlier bug notes saying these remain unapplied have been explicitly superseded. This ledger read does not establish physical-phone acceptance.
 
-## Coordinated accounting release requirement
+## Staged expense cutover (prepared, not authorized)
 
-Applying the lifecycle migration begins capturing and queuing new expense decisions for connected, sync-enabled push/bidirectional connections. One such connection existed at 22:30Z. There is no expense-specific provider-delivery switch, and global accounting gates affect other accounting entities.
+Production today has no expense processors, an ACTIVE legacy edge function `accounting-sync-expense` v5 (source SHA256 `0135ba82e5fff4165e7eab7ea90d42afa70833c3388b5583859ffaeaa9849048`) that writes directly to providers and ignores Vercel flags, `ACCOUNTING_WRITE_ENABLED=true` by configuration inference, no Sage flags, no `EXPENSE_ACCOUNTING_WRITE_ENABLED`, one eligible QuickBooks push connection, zero expense queue rows and two unrelated nonterminal QuickBooks rows (`deployed-runtime-settings-p9.json`, `expense-edge-live-p9.json`, `worker-health-p9.json`). Installing the lifecycle schema starts capturing expense decisions immediately, so runtime and schema must change in this order:
 
-Before any authorized cutover, resolve the deployed worker/edge versions and current write-gate state. Keep old delivery paths from consuming new expense events during the schema/runtime transition. The matching runtime must contain both expense-aware QuickBooks/Sage push-queue handlers, their expense processor/provider services, the expense-settings/expense-issues routes and corresponding mapping/recovery UI, plus the forwarding-only Supabase `accounting-sync-expense` edge function including `handler.ts`. Preserve its recorded `verify_jwt:false` gateway setting: the forwarded Firebase bearer is authenticated by the RPC.
+1. Deploy the compatibility hold build; confirm alias and scheduled callers route to it; wait at least 300 seconds (both push routes declare `maxDuration=300`) while old-deployment invocations and queue claims are inspected read-only.
+2. Replace the v5 edge writer with the queue-only adapter; confirm the serving version; wait at least 400 seconds (hosted worker wall-clock limit) while version logs show no new v5 starts. The adapter returns a bounded 404 until the RPC exists and never falls back to a provider.
+3. Re-run the read-only preflight, then apply the atomic bundle once via the approved migration mechanism, recording its one actual ledger version; read back schema and ledger independently.
+4. Deploy the full candidate with the expense gate absent, so provider delivery stays paused; read back the deployed revision, edge source and held queue state.
+5. Provider activation (`EXPENSE_ACCOUNTING_WRITE_ENABLED=true` for an exact company/provider/environment, guarded recovery of named pre-write rows) and iOS distribution are separate later approvals.
 
-Source gates are `ACCOUNTING_WRITE_ENABLED`, `SAGE_WRITE_ENABLED`, `SAGE_PRODUCTION_WRITE_ENABLED` and the exact Sage sandbox business allowlist. No production values were read or changed here. Authorizing a migration alone does not authorize changing these gates or a real provider transaction.
-
-Read-only production checks completed:
-
-- No mixed-company expense/batch links, no historical expense export evidence, and no nonterminal accounting claims at 22:30:56Z. These are point-in-time counts, not locks or permission to replay data.
-- Payroll readiness MD5 is the expected original `c3e517bcc781f6866601c5966fa0b58d`.
-- P7's three guarded authority/placement MD5s match their captured originals; exact definitions and execution ACLs are in preflight.json.
-- Correction/history/reopen/accounting-request RPCs and the new reimbursement column were absent.
-- UUID expense/company identities, text allocation project IDs, queue acceptance fields, and project status_version were confirmed in live schema.
-
-Before applying, repeat these checks and complete the deployment-specific preflight: compare expense save/recalculation/revision triggers and project status/identity/outbox helpers against captured baselines; check partial installs, constraints, dependencies, grants and authenticated private-schema usage; inspect live worker/edge revisions, running claims and configuration presence without exposing credentials. Provider activation additionally needs exact company/environment/account/employee/project/tax/currency mapping review and explicit canary authorization. These deployment checks were not completed in this read-only reconciliation.
-
-After an authorized release, independently read back schema/functions/grants and deployed commit identities, then perform the authorized phone acceptance flows. Original-phone offline/reconnect/conflict/media custody and real provider tax/reconciliation acceptance remain unproven.
+After step 3, rollback keeps the hold or candidate build and the queue-only adapter and never restores the direct v5 writer; captured events remain in database custody. Existing invoice, customer, payment and supplier delivery is untouched throughout. Day-of procedure: `claude-handoff/cutover-runbook-final.md`. Underlying analysis: `claude-handoff/cutover-analysis.md`. Independent review (`claude-handoff/runbook-review.md`): **approve with required changes**; every custody-critical claim verified against source, no path to a provider write while the gate is off; the six required changes were all to the runbook document (per-stage rollback targets, exact Vercel deploy/promote mechanism without pushing `main`, a read-only legacy-interval query, an explicit production env probe for the gate name, a bound on the hold-to-candidate interval, and an observable edge-drain check) and are folded into the final runbook. Open product decision for Jackson: while delivery is paused, every approved expense at the QuickBooks-connected company raises a persistent "Expense sync needs review" notification that resolves to a truthful PAUSED state; recommended accept for this release and reword at activation, because the text lives inside the proven bundle. Full Vercel build/deploy, no-change deployed probes, original-phone acceptance and a financial canary remain unperformed.
 
 ## Remaining gaps and older ownership
 
@@ -64,5 +79,7 @@ The initial September14 backlog snapshot contained 66 unresolved iOS reports (55
 ## Bug-record evidence updates
 
 Guarded updates added verified local proof to `facfecfe`, `39654ecf` and `c381520d`, and appended current release/proof information to `1995a554` and `96a4a0ad`. All five read back exactly. Replaying both guards changed zero rows. Fixed/resolved timestamps remain null; no report was closed. No customer business record was altered.
+
+On 2026-09-15 (P9-4) guarded appends added the verified preparation state to `96a4a0ad` (expense delivery), `c381520d` (crew correction) and `facfecfe` (archived-job reopen): each update matched exactly one row under its prior note hash, owner, in-progress status and null fix/resolution fields; independent readback matched the new hashes with one marker each; a guard replay changed zero rows; `updated_at` was left untouched as in prior appends. No report was closed. [Readback](bug-readback-p9-4.json).
 
 The original photo report `f5f57917` subsequently received separate local-iOS-verification and production-server-deployment notes. Each independently read back exactly with the original owner and unresolved status preserved; guard replays changed zero rows. [Server deployment metadata proof](photo-attachments-server-bug-readback.json).

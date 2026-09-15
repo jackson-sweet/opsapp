@@ -1,0 +1,15 @@
+[
+  "/Users/jacksonsweet/.nvm/versions/node/v24.19.0/bin/node",
+  "/Users/jacksonsweet/Projects/OPS/.worktrees/ios-bugs-p9-accounting-hold/node_modules/vitest/vitest.mjs",
+  "run",
+  "--maxWorkers=1",
+  "--minWorkers=1",
+  "--no-file-parallelism",
+  "--no-cache",
+  "--reporter=default",
+  "--reporter=json",
+  "--outputFile.json=/private/tmp/ops-ios-bugs-p9-runtime/hold-web-tests.json",
+  "tests/integration/qbo-push-queue-route.test.ts",
+  "tests/integration/sage-push-queue-route.test.ts",
+  "tests/unit/expenses/expense-accounting-compatibility-hold.test.ts"
+]

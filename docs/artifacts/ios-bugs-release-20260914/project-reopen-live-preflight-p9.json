@@ -1,0 +1,11 @@
+{
+  "project_id": "ijeekuhbatykdomumfjx",
+  "mode": "read-only transaction; exact migration preflight DO only",
+  "migration_sha256": "18845d0b67e5b6116ec4e41c165e5a85e4472e22e8f99a60580a462e004b2657",
+  "rows": [
+    {
+      "checked_at_utc": "2026-09-15 03:24:50.560841+00",
+      "result": "project reopening exact guard passed"
+    }
+  ]
+}

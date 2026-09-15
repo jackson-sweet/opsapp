@@ -1,0 +1,14 @@
+PASS: C0 guard on clean baseline: read-only preflight ends ROLLBACK, standalone guard exits 0, payroll baseline md5 matches
+PASS: C1 full atomic install: bundle COMMITs, postconditions pass, blind reapply rejected identically by guard and bundle, S2==S1 byte-for-byte
+PASS: C2 contracts on bundle-installed databases: 123 accounting assertions, 69 correction assertions, 7 real contention checks
+PASS: C3 deliberate late failure: transaction ends ROLLBACK, S1==S0 byte-for-byte, baseline guard passes again, postconditions fail, all 11 relations and reimbursement_amount absent
+PASS: C4a drift rejected before any migration body ran: Expense release source baseline changed: public.tg_place_expense
+PASS: C4b drift rejected before any migration body ran: Expense release source baseline changed: public.place_expense
+PASS: C4c drift rejected before any migration body ran: Expense release source baseline changed: public.early_clear_expense_line
+PASS: C4d drift rejected before any migration body ran: Expense release baseline is already installed or partially changed
+PASS: C4e drift rejected before any migration body ran: Expense release baseline is already installed or partially changed
+PASS: C4f drift rejected before any migration body ran: Expense release baseline is already installed or partially changed
+PASS: C4g drift rejected before any migration body ran: Expense release requires the reviewed postgres migration owner
+PASS: C5a production postconditions on a bundle-installed database: pass line printed, read-only transaction ends ROLLBACK
+PASS: C5b production postconditions reject an uninstalled database: ATOMIC_POSTCONDITION: expected all 11 new relations
+PASS: C5c production postconditions ignore pre-existing non-expense accounting queue rows

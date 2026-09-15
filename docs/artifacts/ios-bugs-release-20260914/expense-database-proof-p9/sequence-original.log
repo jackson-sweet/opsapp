@@ -1,0 +1,3 @@
+false
+psql:/Users/jacksonsweet/Projects/OPS/.worktrees/ios-bugs-p5-accounting/tests/sql/expense-accounting-sequence-runtime.sql:53: NOTICE:  00000: 6 actual role sequence calls checked; owner allocation preserved; repaired=f
+LOCATION:  exec_stmt_raise, pl_exec.c:3911

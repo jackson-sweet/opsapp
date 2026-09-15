@@ -1,0 +1,589 @@
+CREATE FUNCTION
+CREATE FUNCTION
+CREATE TABLE
+CREATE FUNCTION
+INSERT 0 2
+INSERT 0 3
+INSERT 0 2
+INSERT 0 2
+INSERT 0 2
+INSERT 0 5
+ ok 
+----
+ 
+(1 row)
+
+                set_config                 
+-------------------------------------------
+ {"sub":"p5-owner","role":"authenticated"}
+(1 row)
+
+ approve_expense_batch 
+-----------------------
+ 
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+ approve_expense_batch 
+-----------------------
+ 
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+ mark_expense_batch_paid 
+-------------------------
+ 
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+ unmark_expense_batch_paid 
+---------------------------
+ 
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+ approve_expense_batch 
+-----------------------
+ 
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+DO
+                 set_config                  
+---------------------------------------------
+ {"sub":"p5-foreign","role":"authenticated"}
+(1 row)
+
+DO
+                set_config                
+------------------------------------------
+ {"sub":"p5-crew","role":"authenticated"}
+(1 row)
+
+DO
+ set_config 
+------------
+ 
+(1 row)
+
+INSERT 0 1
+                set_config                
+------------------------------------------
+ {"sub":"p5-crew","role":"authenticated"}
+(1 row)
+
+INSERT 0 1
+ ok 
+----
+ 
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+ set_config 
+------------
+ 
+(1 row)
+
+DO
+ ok 
+----
+ 
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+INSERT 0 2
+ save_expense_settings 
+-----------------------
+ 
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+DO
+ ok 
+----
+ 
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+INSERT 0 1
+ save_expense_settings 
+-----------------------
+ 
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+INSERT 0 1
+UPDATE 1
+ ok 
+----
+ 
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+DO
+ ok 
+----
+ 
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+DO
+                set_config                
+------------------------------------------
+ {"sub":"p5-crew","role":"authenticated"}
+(1 row)
+
+DO
+INSERT 0 1
+ ok 
+----
+ 
+(1 row)
+
+ set_config 
+------------
+ 
+(1 row)
+
+UPDATE 1
+ ok 
+----
+ 
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+UPDATE 1
+ ok 
+----
+ 
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+UPDATE 1
+ ok 
+----
+ 
+(1 row)
+
+UPDATE 1
+ ok 
+----
+ 
+(1 row)
+
+INSERT 0 1
+DO
+INSERT 0 1
+DO
+DO
+INSERT 0 1
+DO
+                set_config                
+------------------------------------------
+ {"sub":"p5-crew","role":"authenticated"}
+(1 row)
+
+DO
+ set_config 
+------------
+ 
+(1 row)
+
+UPDATE 1
+ ok 
+----
+ 
+(1 row)
+
+DO
+UPDATE 1
+INSERT 0 2
+UPDATE 1
+UPDATE 1
+                set_config                 
+-------------------------------------------
+ {"sub":"p5-owner","role":"authenticated"}
+(1 row)
+
+  request_expense_accounting_sync  
+-----------------------------------
+ {"queued": 1, "status": "queued"}
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+ set_config 
+------------
+ 
+(1 row)
+
+DO
+UPDATE 1
+ save_expense_settings 
+-----------------------
+ 
+(1 row)
+
+                set_config                 
+-------------------------------------------
+ {"sub":"p5-owner","role":"authenticated"}
+(1 row)
+
+  request_expense_accounting_sync  
+-----------------------------------
+ {"queued": 3, "status": "queued"}
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+  request_expense_accounting_sync  
+-----------------------------------
+ {"queued": 0, "status": "queued"}
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+ set_config 
+------------
+ 
+(1 row)
+
+DO
+ ok 
+----
+ 
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+INSERT 0 2
+                set_config                
+------------------------------------------
+ {"sub":"p5-crew","role":"authenticated"}
+(1 row)
+
+DO
+ set_config 
+------------
+ 
+(1 row)
+
+INSERT 0 1
+DO
+INSERT 0 2
+ save_expense_settings 
+-----------------------
+ 
+(1 row)
+
+UPDATE 1
+DO
+ save_expense_settings 
+-----------------------
+ 
+(1 row)
+
+INSERT 0 1
+UPDATE 1
+ ok 
+----
+ 
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+DO
+ save_expense_settings 
+-----------------------
+ 
+(1 row)
+
+UPDATE 1
+ ok 
+----
+ 
+(1 row)
+
+UPDATE 1
+ ok 
+----
+ 
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+ set_config 
+------------
+ 
+(1 row)
+
+INSERT 0 4
+ save_expense_settings 
+-----------------------
+ 
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+DO
+ ok 
+----
+ 
+(1 row)
+
+UPDATE 1
+INSERT 0 1
+INSERT 0 1
+UPDATE 1
+ ok 
+----
+ 
+(1 row)
+
+ save_expense_settings 
+-----------------------
+ 
+(1 row)
+
+UPDATE 1
+                set_config                 
+-------------------------------------------
+ {"sub":"p5-owner","role":"authenticated"}
+(1 row)
+
+  request_expense_accounting_sync  
+-----------------------------------
+ {"queued": 1, "status": "queued"}
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+ set_config 
+------------
+ 
+(1 row)
+
+UPDATE 1
+                  retry_expense_accounting_before_write                   
+--------------------------------------------------------------------------
+ {"status": "pending", "queueId": "91054ba7-3ee5-4556-bc4a-9fdb5d867a95"}
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+UPDATE 1
+ save_expense_settings 
+-----------------------
+ 
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+DO
+ save_expense_settings 
+-----------------------
+ 
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+ save_expense_settings 
+-----------------------
+ 
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+ save_expense_settings 
+-----------------------
+ 
+(1 row)
+
+UPDATE 1
+ ok 
+----
+ 
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+                     ?column?                     
+--------------------------------------------------
+ 123 expense accounting runtime assertions passed
+(1 row)
+

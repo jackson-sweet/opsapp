@@ -1,0 +1,23 @@
+[33mThe CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.[39m
+
+[1m[7m[36m RUN [39m[27m[22m [36mv2.1.9 [39m[90m/Users/jacksonsweet/Projects/OPS/.worktrees/ios-bugs-p9-accounting-hold[39m
+
+[90mstderr[2m | tests/integration/qbo-push-queue-route.test.ts[2m > [22m[2mPOST /api/cron/accounting/quickbooks/push-queue[2m > [22m[2mstops the batch on a code-only 53300 Supabase read instead of scheduling retry
+[22m[39m[cron/quickbooks-push] QuickBooks accounting_connections lookup failed: database rejected the request
+
+[90mstderr[2m | tests/integration/qbo-push-queue-route.test.ts[2m > [22m[2mPOST /api/cron/accounting/quickbooks/push-queue[2m > [22m[2mstops later provider writes after accepted-write DB finalization pressure
+[22m[39m[cron/quickbooks-push] OPS qb_id writeback failed: database rejected the finalization
+
+ [32m✓[39m tests/integration/qbo-push-queue-route.test.ts [2m([22m[2m36 tests[22m[2m)[22m[90m 207[2mms[22m[39m
+[90mstderr[2m | tests/integration/sage-push-queue-route.test.ts[2m > [22m[2mSage push queue route[2m > [22m[2mstops the batch immediately after uncertain acceptance durability
+[22m[39m[cron/sage-push] acceptance persistence failed
+
+ [32m✓[39m tests/integration/sage-push-queue-route.test.ts [2m([22m[2m7 tests[22m[2m)[22m[90m 7[2mms[22m[39m
+ [32m✓[39m tests/unit/expenses/expense-accounting-compatibility-hold.test.ts [2m([22m[2m13 tests[22m[2m)[22m[90m 5[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m3 passed[39m[22m[90m (3)[39m
+[2m      Tests [22m [1m[32m56 passed[39m[22m[90m (56)[39m
+[2m   Start at [22m 20:40:25
+[2m   Duration [22m 1.55s[2m (transform 121ms, setup 280ms, collect 53ms, tests 219ms, environment 524ms, prepare 71ms)[22m
+
+JSON report written to /private/tmp/ops-ios-bugs-p9-runtime/hold-web-tests.json

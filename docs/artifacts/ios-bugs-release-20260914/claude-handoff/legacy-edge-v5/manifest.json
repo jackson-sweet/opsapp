@@ -1,0 +1,27 @@
+{
+  "slug": "accounting-sync-expense",
+  "deployed_version": 5,
+  "verify_jwt": false,
+  "deployed_bundle_ezbr_sha256": "0135ba82e5fff4165e7eab7ea90d42afa70833c3388b5583859ffaeaa9849048",
+  "captured": {
+    "index.ts": {
+      "bytes": 12975,
+      "sha256": "9e7323d0298b2d359a0b160bdcb5c3d2442792bb1d303717eff25a015cdaadd3"
+    },
+    "functions/_shared/supabase-client.ts": {
+      "bytes": 416,
+      "sha256": "c949b265a29f46eb2667a98070f2c711ed7ce2f554c4c3d69d6b2a667452eb0f"
+    },
+    "functions/_shared/cors.ts": {
+      "bytes": 158,
+      "sha256": "31a38c488b683483fcbd2da30fae0f68bd9caf1b63dd0a2cf6692619b8956b61"
+    }
+  },
+  "management_api_listed_bytes": {
+    "functions/accounting-sync-expense/index.ts": 12970,
+    "functions/_shared/supabase-client.ts": 416,
+    "functions/_shared/cors.ts": 158
+  },
+  "note": "index.ts was captured by Codex on 2026-09-15 via the management API (12975 bytes, two trailing newlines); the API listing reports 12970 bytes and the difference is unresolved here. The two _shared files were captured verbatim on 2026-09-15T04:18Z and match their listed sizes. The deployed bundle hash is of the eszip bundle, not of any single file. Before any v5 redeploy (permitted only before the atomic bundle commits) re-capture all three files with get_edge_function and write them programmatically; treat that capture as authoritative.",
+  "contains_secrets": false
+}

@@ -1,0 +1,43 @@
+psql:/private/tmp/ops-ios-bugs-p9-expense/atomic-fixture/proof.SvDsyT/expense-release-atomic.deliberate-failure.sql:338: NOTICE:  00000: policy "expense_accounting_projects_service" for relation "public.expense_accounting_project_mappings" does not exist, skipping
+LOCATION:  does_not_exist_skipping, dropcmds.c:523
+psql:/private/tmp/ops-ios-bugs-p9-expense/atomic-fixture/proof.SvDsyT/expense-release-atomic.deliberate-failure.sql:353: NOTICE:  00000: policy "expense_accounting_tax_service" for relation "public.expense_accounting_tax_mappings" does not exist, skipping
+LOCATION:  does_not_exist_skipping, dropcmds.c:523
+psql:/private/tmp/ops-ios-bugs-p9-expense/atomic-fixture/proof.SvDsyT/expense-release-atomic.deliberate-failure.sql:421: NOTICE:  00000: policy "expense_accounting_settings_service" for relation "public.expense_accounting_settings" does not exist, skipping
+LOCATION:  does_not_exist_skipping, dropcmds.c:523
+psql:/private/tmp/ops-ios-bugs-p9-expense/atomic-fixture/proof.SvDsyT/expense-release-atomic.deliberate-failure.sql:424: NOTICE:  00000: policy "expense_accounting_payees_service" for relation "public.expense_accounting_payee_mappings" does not exist, skipping
+LOCATION:  does_not_exist_skipping, dropcmds.c:523
+psql:/private/tmp/ops-ios-bugs-p9-expense/atomic-fixture/proof.SvDsyT/expense-release-atomic.deliberate-failure.sql:427: NOTICE:  00000: policy "expense_accounting_categories_service" for relation "public.expense_accounting_category_mappings" does not exist, skipping
+LOCATION:  does_not_exist_skipping, dropcmds.c:523
+psql:/private/tmp/ops-ios-bugs-p9-expense/atomic-fixture/proof.SvDsyT/expense-release-atomic.deliberate-failure.sql:430: NOTICE:  00000: policy "expense_accounting_events_service" for relation "public.expense_accounting_events" does not exist, skipping
+LOCATION:  does_not_exist_skipping, dropcmds.c:523
+psql:/private/tmp/ops-ios-bugs-p9-expense/atomic-fixture/proof.SvDsyT/expense-release-atomic.deliberate-failure.sql:433: NOTICE:  00000: policy "expense_accounting_postings_service" for relation "public.expense_accounting_postings" does not exist, skipping
+LOCATION:  does_not_exist_skipping, dropcmds.c:523
+psql:/private/tmp/ops-ios-bugs-p9-expense/atomic-fixture/proof.SvDsyT/expense-release-atomic.deliberate-failure.sql:452: NOTICE:  00000: trigger "invalidate_expense_accounting_connection_binding" for relation "public.accounting_connections" does not exist, skipping
+LOCATION:  does_not_exist_skipping, dropcmds.c:523
+psql:/private/tmp/ops-ios-bugs-p9-expense/atomic-fixture/proof.SvDsyT/expense-release-atomic.deliberate-failure.sql:522: NOTICE:  00000: trigger "enforce_expense_accounting_authority" for relation "public.expenses" does not exist, skipping
+LOCATION:  does_not_exist_skipping, dropcmds.c:523
+psql:/private/tmp/ops-ios-bugs-p9-expense/atomic-fixture/proof.SvDsyT/expense-release-atomic.deliberate-failure.sql:581: NOTICE:  00000: trigger "enforce_expense_batch_payment_authority" for relation "public.expense_batches" does not exist, skipping
+LOCATION:  does_not_exist_skipping, dropcmds.c:523
+psql:/private/tmp/ops-ios-bugs-p9-expense/atomic-fixture/proof.SvDsyT/expense-release-atomic.deliberate-failure.sql:584: NOTICE:  00000: trigger "enforce_expense_allocation_accounting_authority" for relation "public.expense_project_allocations" does not exist, skipping
+LOCATION:  does_not_exist_skipping, dropcmds.c:523
+psql:/private/tmp/ops-ios-bugs-p9-expense/atomic-fixture/proof.SvDsyT/expense-release-atomic.deliberate-failure.sql:587: NOTICE:  00000: trigger "enforce_expense_accounting_delete_authority" for relation "public.expenses" does not exist, skipping
+LOCATION:  does_not_exist_skipping, dropcmds.c:523
+psql:/private/tmp/ops-ios-bugs-p9-expense/atomic-fixture/proof.SvDsyT/expense-release-atomic.deliberate-failure.sql:838: NOTICE:  00000: trigger "zz_capture_expense_accounting" for relation "public.expenses" does not exist, skipping
+LOCATION:  does_not_exist_skipping, dropcmds.c:523
+psql:/private/tmp/ops-ios-bugs-p9-expense/atomic-fixture/proof.SvDsyT/expense-release-atomic.deliberate-failure.sql:851: NOTICE:  00000: trigger "derive_expense_reimbursement_amount" for relation "public.expense_batches" does not exist, skipping
+LOCATION:  does_not_exist_skipping, dropcmds.c:523
+psql:/private/tmp/ops-ios-bugs-p9-expense/atomic-fixture/proof.SvDsyT/expense-release-atomic.deliberate-failure.sql:872: NOTICE:  00000: trigger "zz_refresh_expense_reimbursement_amount" for relation "public.expenses" does not exist, skipping
+LOCATION:  does_not_exist_skipping, dropcmds.c:523
+psql:/private/tmp/ops-ios-bugs-p9-expense/atomic-fixture/proof.SvDsyT/expense-release-atomic.deliberate-failure.sql:895: NOTICE:  00000: trigger "zz_capture_expense_accounting_allocation" for relation "public.expense_project_allocations" does not exist, skipping
+LOCATION:  does_not_exist_skipping, dropcmds.c:523
+psql:/private/tmp/ops-ios-bugs-p9-expense/atomic-fixture/proof.SvDsyT/expense-release-atomic.deliberate-failure.sql:1015: NOTICE:  00000: function public.save_expense_accounting_settings(uuid,uuid,jsonb,jsonb,jsonb,jsonb) does not exist, skipping
+LOCATION:  does_not_exist_skipping, dropcmds.c:523
+psql:/private/tmp/ops-ios-bugs-p9-expense/atomic-fixture/proof.SvDsyT/expense-release-atomic.deliberate-failure.sql:1016: NOTICE:  00000: function public.save_expense_accounting_settings(uuid,uuid,jsonb,jsonb,jsonb,jsonb,text,text,text) does not exist, skipping
+LOCATION:  does_not_exist_skipping, dropcmds.c:523
+psql:/private/tmp/ops-ios-bugs-p9-expense/atomic-fixture/proof.SvDsyT/expense-release-atomic.deliberate-failure.sql:1227: NOTICE:  00000: trigger "notify_expense_accounting_review" for relation "public.accounting_sync_queue" does not exist, skipping
+LOCATION:  does_not_exist_skipping, dropcmds.c:523
+psql:/private/tmp/ops-ios-bugs-p9-expense/atomic-fixture/proof.SvDsyT/expense-release-atomic.deliberate-failure.sql:2089: NOTICE:  00000: trigger "immutable_expense_correction" for relation "private.expense_correction_requests" does not exist, skipping
+LOCATION:  does_not_exist_skipping, dropcmds.c:523
+psql:/private/tmp/ops-ios-bugs-p9-expense/atomic-fixture/proof.SvDsyT/expense-release-atomic.deliberate-failure.sql:2510: ERROR:  P0001: ATOMIC_FIXTURE: deliberate late failure
+CONTEXT:  PL/pgSQL function inline_code_block line 1 at RAISE
+LOCATION:  exec_stmt_raise, pl_exec.c:3911

@@ -1,0 +1,2 @@
+2509a2510
+> DO $atomic_fixture_failure$ BEGIN RAISE EXCEPTION 'ATOMIC_FIXTURE: deliberate late failure'; END; $atomic_fixture_failure$;

@@ -1,0 +1,287 @@
+diff --git a/src/app/api/cron/accounting/quickbooks/push-queue/route.ts b/src/app/api/cron/accounting/quickbooks/push-queue/route.ts
+--- a/src/app/api/cron/accounting/quickbooks/push-queue/route.ts
++++ b/src/app/api/cron/accounting/quickbooks/push-queue/route.ts
+@@ -1,3 +1,4 @@
++import { holdExpenseAccountingDuringCutover } from "@/lib/api/services/expense-accounting-compatibility-hold";
+ import { randomUUID } from "node:crypto";
+ import type { SupabaseClient } from "@supabase/supabase-js";
+ import { NextResponse } from "next/server";
+@@ -1077,6 +1078,10 @@
+ }): Promise<RowResult> {
+   const { supabase, queue, audit, row, workerId } = input;
+ 
++  if ((row.entityType as string) === "expense") {
++    return holdExpenseAccountingDuringCutover({ row, workerId, queue });
++  }
++
+   if (isSupplierBillQueueEntity(row.entityType as string)) {
+     return processSupplierBillQueueRow({
+       supabase,
+diff --git a/src/app/api/cron/accounting/sage/push-queue/route.ts b/src/app/api/cron/accounting/sage/push-queue/route.ts
+--- a/src/app/api/cron/accounting/sage/push-queue/route.ts
++++ b/src/app/api/cron/accounting/sage/push-queue/route.ts
+@@ -1,3 +1,7 @@
++import {
++  holdExpenseAccountingDuringCutover,
++  type ExpenseCompatibilityHoldResult,
++} from "@/lib/api/services/expense-accounting-compatibility-hold";
+ import { randomUUID } from "node:crypto";
+ 
+ import { NextResponse } from "next/server";
+@@ -42,7 +46,10 @@
+     : "Sage push queue failed.";
+ }
+ 
+-type SagePushQueueResult = SageQueueResult | SupplierBillQueueResult;
++type SagePushQueueResult =
++  | SageQueueResult
++  | SupplierBillQueueResult
++  | ExpenseCompatibilityHoldResult;
+ 
+ function summary(workerId: string, results: SagePushQueueResult[]) {
+   return {
+@@ -95,7 +102,11 @@
+         // claimed together, then every provider mutation runs sequentially.
+         for (const row of rows) {
+           try {
+-            if (isSupplierBillQueueEntity(row.entityType)) {
++            if ((row.entityType as string) === "expense") {
++              results.push(
++                await holdExpenseAccountingDuringCutover({ row, workerId, queue })
++              );
++            } else if (isSupplierBillQueueEntity(row.entityType)) {
+               results.push(
+                 await processSupplierBillQueueRow({
+                   supabase,
+diff --git a/src/lib/api/services/accounting-sync-queue-types.ts b/src/lib/api/services/accounting-sync-queue-types.ts
+--- a/src/lib/api/services/accounting-sync-queue-types.ts
++++ b/src/lib/api/services/accounting-sync-queue-types.ts
+@@ -21,7 +21,8 @@
+ 
+ export type AccountingSyncQueueEntityType =
+   | AccountingSyncEntityType
+-  | SupplierBillSyncEntityType;
++  | SupplierBillSyncEntityType
++  | "expense";
+ 
+ export type AccountingSyncOperation =
+   | "create"
+diff --git a/src/lib/api/services/expense-accounting-compatibility-hold.ts b/src/lib/api/services/expense-accounting-compatibility-hold.ts
+new file mode 100644
+--- /dev/null
++++ b/src/lib/api/services/expense-accounting-compatibility-hold.ts
+@@ -0,0 +1,53 @@
++import "server-only";
++import type { AccountingSyncQueueService } from "./accounting-sync-queue-service";
++import type {
++  AccountingSyncQueueEntityType,
++  AccountingSyncQueueRow,
++} from "./accounting-sync-queue-types";
++
++export interface ExpenseCompatibilityHoldResult {
++  queueId: string;
++  entityType: "expense";
++  entityId: string;
++  status: "blocked" | "needs_review";
++  error: string;
++}
++
++/** Cutover bridge only: always hold expenses, even if an activation flag is set. */
++export async function holdExpenseAccountingDuringCutover(input: {
++  row: AccountingSyncQueueRow<AccountingSyncQueueEntityType>;
++  workerId: string;
++  queue: Pick<AccountingSyncQueueService, "markBlocked" | "markNeedsReview">;
++}): Promise<ExpenseCompatibilityHoldResult> {
++  const { row, workerId, queue } = input;
++  if (
++    row.entityType !== "expense" ||
++    row.sourceTable !== "expense_accounting_events" ||
++    row.operation !== "create" ||
++    row.status !== "claimed" ||
++    row.lockedBy !== workerId
++  ) {
++    throw new Error("Expense queue ownership or source is invalid.");
++  }
++  const evidence = [
++    row.providerAcceptedAt,
++    row.providerRequestId,
++    row.externalId,
++    row.idempotencyExpiresAt,
++  ].some((value) => value != null);
++  const error = evidence
++    ? "This expense has provider evidence. Reconcile its accounting result before retrying."
++    : "Expense accounting sync is paused.";
++  if (evidence) {
++    await queue.markNeedsReview(row.id, error, { workerId });
++  } else {
++    await queue.markBlocked(row.id, error, { workerId });
++  }
++  return {
++    queueId: row.id,
++    entityType: "expense",
++    entityId: row.entityId,
++    status: evidence ? "needs_review" : "blocked",
++    error,
++  };
++}
+diff --git a/tests/unit/expenses/expense-accounting-compatibility-hold.test.ts b/tests/unit/expenses/expense-accounting-compatibility-hold.test.ts
+new file mode 100644
+--- /dev/null
++++ b/tests/unit/expenses/expense-accounting-compatibility-hold.test.ts
+@@ -0,0 +1,55 @@
++import { afterEach, describe, expect, it, vi } from "vitest";
++import { holdExpenseAccountingDuringCutover } from "@/lib/api/services/expense-accounting-compatibility-hold";
++import type { AccountingSyncQueueRow } from "@/lib/api/services/accounting-sync-queue-types";
++
++const row: AccountingSyncQueueRow<"expense"> = {
++  id: "queue", companyId: "company", connectionId: "connection",
++  provider: "quickbooks", entityType: "expense", entityId: "expense",
++  operation: "create", sourceTable: "expense_accounting_events", sourceAction: "insert",
++  sourceUpdatedAt: null, idempotencyKey: "event:connection", status: "claimed",
++  attempts: 1, maxAttempts: 5, runAfter: "2026-09-14T00:00:00Z",
++  lockedAt: "2026-09-14T00:00:00Z", lockedBy: "worker",
++  externalId: null, providerRequestId: null, providerAcceptedAt: null,
++  idempotencyExpiresAt: null, lastError: null,
++  payloadSnapshot: { eventId: "event", providerEnvironment: "production", providerIdentitySnapshot: "identity" },
++  createdAt: "2026-09-14T00:00:00Z", updatedAt: "2026-09-14T00:00:00Z",
++};
++const queue = () => ({ markBlocked: vi.fn(), markNeedsReview: vi.fn() });
++afterEach(() => vi.unstubAllEnvs());
++describe("expense cutover bridge", () => {
++  it.each([undefined, "false", "true"])("always holds when activation is %s", async (value) => {
++    vi.stubEnv("EXPENSE_ACCOUNTING_WRITE_ENABLED", value);
++    for (const provider of ["quickbooks", "sage"] as const) {
++      const custody = queue();
++      const input = { ...row, provider };
++      const original = structuredClone(input);
++      const result = await holdExpenseAccountingDuringCutover({ row: input, workerId: "worker", queue: custody });
++      expect(result.status).toBe("blocked");
++      expect(custody.markBlocked).toHaveBeenCalledWith("queue", "Expense accounting sync is paused.", { workerId: "worker" });
++      expect(custody.markNeedsReview).not.toHaveBeenCalled();
++      expect(input).toEqual(original);
++    }
++  });
++  it.each(["externalId", "providerAcceptedAt", "providerRequestId", "idempotencyExpiresAt"] as const)("keeps %s for reconciliation", async (field) => {
++    const custody = queue();
++    const input = { ...row, [field]: "evidence" };
++    const original = structuredClone(input);
++    expect((await holdExpenseAccountingDuringCutover({ row: input, workerId: "worker", queue: custody })).status).toBe("needs_review");
++    expect(custody.markBlocked).not.toHaveBeenCalled();
++    expect(custody.markNeedsReview).toHaveBeenCalledOnce();
++    expect(input).toEqual(original);
++  });
++  it.each([{ lockedBy: "other" }, { sourceTable: "expenses" }, { status: "blocked" as const }, { operation: "update" as const }])("rejects invalid ownership or source %s", async (invalid) => {
++    const custody = queue();
++    await expect(holdExpenseAccountingDuringCutover({ row: { ...row, ...invalid }, workerId: "worker", queue: custody })).rejects.toThrow(/ownership/i);
++    expect(custody.markBlocked).not.toHaveBeenCalled();
++    expect(custody.markNeedsReview).not.toHaveBeenCalled();
++  });
++  it.each([false, true])("propagates failed guarded persistence with evidence=%s", async (evidence) => {
++    const custody = queue();
++    custody.markBlocked.mockRejectedValue(new Error("hold failed"));
++    custody.markNeedsReview.mockRejectedValue(new Error("hold failed"));
++    await expect(holdExpenseAccountingDuringCutover({ row: { ...row, externalId: evidence ? "accepted" : null }, workerId: "worker", queue: custody })).rejects.toThrow("hold failed");
++    expect(custody.markBlocked.mock.calls.length + custody.markNeedsReview.mock.calls.length).toBe(1);
++  });
++});
+diff --git a/tests/integration/qbo-push-queue-route.test.ts b/tests/integration/qbo-push-queue-route.test.ts
+--- a/tests/integration/qbo-push-queue-route.test.ts
++++ b/tests/integration/qbo-push-queue-route.test.ts
+@@ -1,6 +1,9 @@
+ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+ 
+-import type { AccountingSyncQueueRow } from "@/lib/api/services/accounting-sync-queue-types";
++import type {
++  AccountingSyncQueueEntityType,
++  AccountingSyncQueueRow,
++} from "@/lib/api/services/accounting-sync-queue-types";
+ 
+ const claimDue = vi.fn();
+ const markSucceeded = vi.fn();
+@@ -275,8 +278,8 @@
+ const INVOICE_ID = "d9f024cf-f8b0-4e0c-9930-459e3b49660b";
+ 
+ function queueRow(
+-  overrides: Partial<AccountingSyncQueueRow> = {}
+-): AccountingSyncQueueRow {
++  overrides: Partial<AccountingSyncQueueRow<AccountingSyncQueueEntityType>> = {}
++): AccountingSyncQueueRow<AccountingSyncQueueEntityType> {
+   return {
+     id: "q-1",
+     companyId: COMPANY_ID,
+@@ -415,6 +418,25 @@
+     vi.unstubAllEnvs();
+   });
+ 
++  it("holds expenses while continuing existing customer delivery in the same batch", async () => {
++    process.env.ACCOUNTING_WRITE_ENABLED = "true";
++    vi.stubEnv("EXPENSE_ACCOUNTING_WRITE_ENABLED", undefined);
++    claimDue.mockImplementation(async ({ workerId }: { workerId: string }) => [
++      queueRow({ id: "q-expense", entityType: "expense", sourceTable: "expense_accounting_events", lockedBy: workerId }),
++      queueRow({ id: "q-customer", entityType: "customer", sourceTable: "clients", entityId: CUSTOMER_ID, lockedBy: workerId }),
++    ]);
++    state.clients.push({ id: CUSTOMER_ID, company_id: COMPANY_ID, name: "Maverick Projects", email: "ops@example.com", phone_number: "555-0100", qb_id: null, updated_at: "2026-06-05T10:00:00.000Z" });
++    const POST = await loadPost();
++    const result = await POST(authorizedRequest());
++    expect(result.status).toBe(200);
++    expect(await result.json()).toMatchObject({ processed: 2, blocked: 1, succeeded: 1 });
++    expect(markBlocked).toHaveBeenCalledWith("q-expense", "Expense accounting sync is paused.", { workerId: expect.stringMatching(/^qbo-push-/) });
++    expect(getValidToken).toHaveBeenCalledTimes(1);
++    expect(writeCreate).toHaveBeenCalledTimes(1);
++    expect(writeCreate.mock.calls[0][0]).toBe("Customer");
++    expect(markSucceeded).toHaveBeenCalledWith("q-customer", expect.objectContaining({ externalId: "123" }));
++  });
++
+   it("returns 401 for unauthorized requests and does not claim", async () => {
+     const POST = await loadPost();
+     const res = await POST(
+diff --git a/tests/integration/sage-push-queue-route.test.ts b/tests/integration/sage-push-queue-route.test.ts
+--- a/tests/integration/sage-push-queue-route.test.ts
++++ b/tests/integration/sage-push-queue-route.test.ts
+@@ -7,12 +7,16 @@
+ 
+ const {
+   claimDue,
++  markBlocked,
++  markNeedsReview,
+   processSage,
+   processSupplier,
+   getServiceRoleClient,
+   MockAcceptedWriteDurabilityError,
+ } = vi.hoisted(() => ({
+   claimDue: vi.fn(),
++  markBlocked: vi.fn(),
++  markNeedsReview: vi.fn(),
+   processSage: vi.fn(),
+   processSupplier: vi.fn(),
+   getServiceRoleClient: vi.fn(() => ({ kind: "service-role" })),
+@@ -21,7 +25,7 @@
+ 
+ vi.mock("@/lib/supabase/server-client", () => ({ getServiceRoleClient }));
+ vi.mock("@/lib/api/services/accounting-sync-queue-service", () => ({
+-  AccountingSyncQueueService: vi.fn(() => ({ claimDue })),
++  AccountingSyncQueueService: vi.fn(() => ({ claimDue, markBlocked, markNeedsReview })),
+ }));
+ vi.mock("@/lib/api/services/accounting-sync-audit-service", () => ({
+   AccountingSyncAuditService: vi.fn(() => ({ record: vi.fn() })),
+@@ -217,3 +221,20 @@
+     expect(claimDue).toHaveBeenCalledOnce();
+   });
+ });
++
++
++it("holds expenses without pausing the existing Sage invoice and supplier lanes", async () => {
++  vi.stubEnv("EXPENSE_ACCOUNTING_WRITE_ENABLED", "false");
++  claimDue.mockImplementation(async ({ workerId }: { workerId: string }) => [
++    { ...queueRow("expense-row", "expense"), sourceTable: "expense_accounting_events", lockedBy: workerId },
++    queueRow("invoice-row", "invoice"),
++    queueRow("supplier-row", "supplier"),
++  ]);
++  const response = await POST(request());
++  expect(response.status).toBe(200);
++  expect(await response.json()).toMatchObject({ processed: 3, blocked: 1, succeeded: 2 });
++  expect(markBlocked).toHaveBeenCalledWith("expense-row", "Expense accounting sync is paused.", { workerId: expect.stringMatching(/^sage-push-/) });
++  expect(processSage).toHaveBeenCalledTimes(1);
++  expect(processSupplier).toHaveBeenCalledTimes(1);
++  expect(markNeedsReview).not.toHaveBeenCalled();
++});

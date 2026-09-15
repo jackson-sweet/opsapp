@@ -1,0 +1,37 @@
+{
+  "checked_at_utc": "2026-09-15T03:07:06.954907+00:00",
+  "deployment_id": "dpl_138EdNzoYSP4peM1qg9Yk5H7rWdF",
+  "deployment_url": "ops-j7hzvmh11-jacksons-projects-f76fa6e8.vercel.app",
+  "commit": "b5b0cb59275f0addf923db608b1daeac4afca844",
+  "ready_state": "READY",
+  "aliases": [
+    "app.opsapp.co",
+    "ops-web-opal.vercel.app",
+    "ops-web-jacksons-projects-f76fa6e8.vercel.app",
+    "ops-web-git-main-jacksons-projects-f76fa6e8.vercel.app"
+  ],
+  "env_shape": "list",
+  "env_available": false,
+  "deployment_flag_presence": {
+    "ACCOUNTING_WRITE_ENABLED": true,
+    "SAGE_WRITE_ENABLED": false,
+    "SAGE_PRODUCTION_WRITE_ENABLED": false,
+    "SAGE_ACTIVE_PROFILE": false,
+    "SAGE_SANDBOX_BUSINESS_IDS": false
+  },
+  "current_production_flag_settings": [
+    {
+      "key": "ACCOUNTING_WRITE_ENABLED",
+      "target": [
+        "production"
+      ],
+      "createdAt": 1780731010405,
+      "updatedAt": 1780731010405,
+      "type": "encrypted",
+      "value": "true",
+      "unchanged_since_deployment_created": true
+    }
+  ],
+  "flags": null,
+  "cron_secret_present": true
+}

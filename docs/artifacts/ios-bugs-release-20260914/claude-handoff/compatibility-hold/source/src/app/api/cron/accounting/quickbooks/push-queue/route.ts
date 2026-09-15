@@ -1,0 +1,1338 @@
+import { holdExpenseAccountingDuringCutover } from "@/lib/api/services/expense-accounting-compatibility-hold";
+import { randomUUID } from "node:crypto";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { NextResponse } from "next/server";
+
+import { AccountingSyncAuditService } from "@/lib/api/services/accounting-sync-audit-service";
+import { AccountingSyncQueueService } from "@/lib/api/services/accounting-sync-queue-service";
+import {
+  CronDatabaseOperationError,
+  isDatabasePressureError,
+  runWithCronWorkloadControl,
+} from "@/lib/api/services/cron-workload-control-service";
+import type {
+  AccountingSyncAuditInput,
+  AccountingSyncQueueEntityType,
+  AccountingSyncQueueRow,
+} from "@/lib/api/services/accounting-sync-queue-types";
+import {
+  AccountingTokenService,
+  ReconnectRequiredError,
+} from "@/lib/api/services/accounting-token-service";
+import {
+  mapClientToQboCustomer,
+  mapEstimateToQboEstimate,
+  mapInvoiceToQboInvoice,
+  mapPaymentToQboPayment,
+  type OpsClientForQbo,
+  type OpsContactForQbo,
+  type OpsEstimateForQbo,
+  type OpsInvoiceForQbo,
+  type OpsInvoiceLinkForQbo,
+  type OpsLineItemForQbo,
+  type OpsPaymentForQbo,
+} from "@/lib/api/services/qbo-push-mappers";
+import {
+  resolveQboFallbackServiceItem,
+  resolveQboTaxCodeRefs,
+} from "@/lib/api/services/quickbooks-config";
+import {
+  QuickBooksWriteService,
+  type QboWriteEntity,
+  type QuickBooksWriteResult,
+} from "@/lib/api/services/quickbooks-write-service";
+import { getServiceRoleClient } from "@/lib/supabase/server-client";
+import {
+  isSupplierBillQueueEntity,
+  processSupplierBillQueueRow,
+  type SupplierBillQueueRow,
+} from "@/lib/api/services/supplier-bill-queue-processor";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const maxDuration = 300;
+
+const BATCH_LIMIT = 5;
+const NOTIFICATION_ACTION_URL = "/settings?tab=accounting";
+const NOTIFICATION_ACTION_LABEL = "Review";
+
+type DbRow = Record<string, unknown>;
+type FailureKind = "retry" | "blocked" | "needs_review";
+
+interface PreparedPush {
+  table: "clients" | "invoices" | "estimates" | "payments";
+  qboEntity: QboWriteEntity;
+  payload: Record<string, unknown>;
+  existingQbId: string | null;
+  paymentInvoiceQbId?: string | null;
+  localQbIdMissing: boolean;
+  opsUpdatedAt: string | null;
+  qbUpdatedAt: string | null;
+}
+
+interface RowResult {
+  queueId: string;
+  entityType: AccountingSyncQueueEntityType;
+  entityId: string;
+  status: "succeeded" | FailureKind | "failed";
+  externalId?: string | null;
+  error?: string;
+  notificationCreated?: boolean;
+}
+
+class QueueDecisionError extends Error {
+  readonly kind: FailureKind;
+
+  constructor(kind: FailureKind, message: string) {
+    super(message);
+    this.name = "QueueDecisionError";
+    this.kind = kind;
+  }
+}
+
+function authorized(request: Request): boolean {
+  const secret = process.env.CRON_SECRET;
+  return Boolean(
+    secret && request.headers.get("authorization") === `Bearer ${secret}`
+  );
+}
+
+function cleanString(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  const trimmed = String(value).trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function stringValue(value: unknown): string {
+  return String(value ?? "");
+}
+
+function numberOrString(value: unknown): number | string | null {
+  if (typeof value === "number" || typeof value === "string") return value;
+  return null;
+}
+
+function qboPaymentRawId(qbId: string | null): string | null {
+  if (!qbId) return null;
+  return qbId.split(":")[0] || null;
+}
+
+function qboPaymentCompositeId(
+  paymentQbId: string,
+  invoiceQbId: string | null | undefined
+): string {
+  const invoiceId = cleanString(invoiceQbId);
+  return invoiceId ? `${paymentQbId}:${invoiceId}` : paymentQbId;
+}
+
+function errorMessage(error: unknown): string {
+  if (error instanceof Error && error.message.trim()) return error.message;
+  if (
+    error &&
+    typeof error === "object" &&
+    "message" in error &&
+    typeof error.message === "string" &&
+    error.message.trim()
+  ) {
+    return error.message;
+  }
+  if (typeof error === "string" && error.trim()) return error.trim();
+  return "Unknown QuickBooks push worker error";
+}
+
+async function requireDatabaseOperation<T>(
+  operation: string,
+  execute: () => PromiseLike<T>
+): Promise<T> {
+  try {
+    return await execute();
+  } catch (cause) {
+    if (cause instanceof CronDatabaseOperationError) throw cause;
+    const detail = errorMessage(cause);
+    throw new CronDatabaseOperationError(
+      operation ? `${operation} failed: ${detail}` : detail,
+      { cause }
+    );
+  }
+}
+
+async function requireDatabaseResponse<T extends { error: unknown }>(
+  operation: string,
+  execute: () => PromiseLike<T>
+): Promise<T> {
+  const response = await requireDatabaseOperation(operation, execute);
+  if (response.error) {
+    throw new CronDatabaseOperationError(
+      `${operation} failed: ${errorMessage(response.error)}`,
+      { cause: response.error }
+    );
+  }
+  return response;
+}
+
+function decision(kind: FailureKind, message: string): never {
+  throw new QueueDecisionError(kind, message);
+}
+
+function deterministicBlock(message: string): never {
+  return decision("blocked", message);
+}
+
+function needsReview(message: string): never {
+  return decision("needs_review", message);
+}
+
+function retryable(message: string): never {
+  return decision("retry", message);
+}
+
+function providerStatus(message: string): number | null {
+  const match =
+    /QuickBooks (?:write|fetch) failed: (\d+)/.exec(message) ??
+    /QuickBooks token refresh failed \(HTTP (\d+)\)/.exec(message);
+  return match ? Number(match[1]) : null;
+}
+
+function classifyError(error: unknown): { kind: FailureKind; message: string } {
+  if (error instanceof QueueDecisionError) {
+    return { kind: error.kind, message: error.message };
+  }
+
+  if (error instanceof ReconnectRequiredError) {
+    return { kind: "needs_review", message: "QuickBooks reconnect required" };
+  }
+
+  const message = errorMessage(error);
+  const status = providerStatus(message);
+
+  if (status === 429 || (status !== null && status >= 500)) {
+    return { kind: "retry", message };
+  }
+
+  if (status === 401 || status === 403) {
+    return {
+      kind: "needs_review",
+      message: "QuickBooks authorization failed; reconnect required",
+    };
+  }
+
+  if (status !== null && status >= 400) {
+    return { kind: "needs_review", message };
+  }
+
+  if (message.startsWith("Connection not found:")) {
+    return { kind: "needs_review", message: "QuickBooks connection not found" };
+  }
+
+  if (
+    message === "Invalid QuickBooks id" ||
+    message.startsWith("Invalid QuickBooks ")
+  ) {
+    return { kind: "blocked", message };
+  }
+
+  return { kind: "retry", message };
+}
+
+function qboBody(raw: Record<string, unknown>, entity: QboWriteEntity): DbRow {
+  const body = raw[entity];
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    deterministicBlock(`QuickBooks ${entity} SyncToken required`);
+  }
+  return body as DbRow;
+}
+
+function qboSyncToken(
+  raw: Record<string, unknown>,
+  entity: QboWriteEntity
+): string {
+  const token = cleanString(qboBody(raw, entity).SyncToken);
+  if (!token) deterministicBlock(`QuickBooks ${entity} SyncToken required`);
+  return token;
+}
+
+function qboMetaUpdatedAt(
+  raw: Record<string, unknown>,
+  entity: QboWriteEntity
+): string | null {
+  const meta = qboBody(raw, entity).MetaData;
+  if (!meta || typeof meta !== "object" || Array.isArray(meta)) return null;
+  return cleanString((meta as DbRow).LastUpdatedTime);
+}
+
+async function maybeSingle(
+  supabase: SupabaseClient,
+  table: string,
+  filters: Array<[string, unknown]>
+): Promise<DbRow | null> {
+  let query = supabase.from(table).select("*");
+  for (const [column, value] of filters) {
+    query = value === null ? query.is(column, null) : query.eq(column, value);
+  }
+  const { data } = await requireDatabaseResponse(
+    `QuickBooks ${table} lookup`,
+    () => query.maybeSingle()
+  );
+  return (data as DbRow | null) ?? null;
+}
+
+async function selectRows(
+  supabase: SupabaseClient,
+  table: string,
+  filters: Array<[string, unknown]>,
+  orderColumn?: string
+): Promise<DbRow[]> {
+  let query = supabase.from(table).select("*");
+  for (const [column, value] of filters) {
+    // `.eq(col, null)` renders as `col=eq.null`, which Postgres evaluates as
+    // `col = 'null'::<coltype>` and throws on typed columns (e.g. timestamptz).
+    // NULL filters must use `.is()` — mirror maybeSingle()'s null handling.
+    query = value === null ? query.is(column, null) : query.eq(column, value);
+  }
+  if (orderColumn) {
+    query = query.order(orderColumn, { ascending: true });
+  }
+  const { data } = await requireDatabaseResponse(
+    `QuickBooks ${table} list`,
+    () => query
+  );
+  return ((data ?? []) as DbRow[]) ?? [];
+}
+
+function mapClient(row: DbRow, syncToken?: string | null): OpsClientForQbo {
+  return {
+    id: stringValue(row.id),
+    name: stringValue(row.name),
+    email: cleanString(row.email),
+    phoneNumber: cleanString(row.phone_number),
+    address: cleanString(row.address),
+    qbId: cleanString(row.qb_id),
+    syncToken: syncToken ?? null,
+  };
+}
+
+function mapContact(row: DbRow | null): OpsContactForQbo | null {
+  if (!row) return null;
+  const name = cleanString(row.name);
+  const [firstName, ...rest] = name ? name.split(/\s+/) : [];
+  return {
+    firstName: firstName ?? null,
+    lastName: rest.length > 0 ? rest.join(" ") : null,
+    email: cleanString(row.email),
+    phoneNumber: cleanString(row.phone_number),
+  };
+}
+
+function mapLineItem(row: DbRow): OpsLineItemForQbo {
+  return {
+    id: stringValue(row.id),
+    name: cleanString(row.name),
+    description: cleanString(row.description),
+    quantity: numberOrString(row.quantity),
+    unitPrice: numberOrString(row.unit_price),
+    amount: numberOrString(row.line_total ?? row.amount),
+    qbItemId: cleanString(row.qb_item_id ?? row.qbo_item_id ?? row.qb_item_ref),
+    isTaxable:
+      row.is_taxable === null || row.is_taxable === undefined
+        ? null
+        : row.is_taxable === true,
+  };
+}
+
+function normalizedProviderEnvironment(
+  environment: string | null | undefined
+): "production" | "sandbox" {
+  return cleanString(environment)?.toLowerCase() === "production"
+    ? "production"
+    : "sandbox";
+}
+
+// Fallback service item + tax-code refs are resolved by quickbooks-config, the
+// single source of truth for QuickBooks env resolution. Both are env-STRICT:
+// the connection's provider_environment picks the name set, and a value from
+// the other environment can never bleed across (see quickbooks-config.ts).
+function fallbackServiceItem(environment: string | null | undefined) {
+  return resolveQboFallbackServiceItem(
+    normalizedProviderEnvironment(environment)
+  );
+}
+
+function taxCodeRefs(environment: string | null | undefined) {
+  return resolveQboTaxCodeRefs(normalizedProviderEnvironment(environment));
+}
+
+function invoiceClientId(row: DbRow): string | null {
+  return cleanString(row.client_id) ?? cleanString(row.client_ref);
+}
+
+function estimateClientId(row: DbRow): string | null {
+  return cleanString(row.client_id) ?? cleanString(row.client_ref);
+}
+
+async function currentQboState(
+  writeService: QuickBooksWriteService,
+  entity: QboWriteEntity,
+  qbId: string | null
+): Promise<{ syncToken: string | null; qbUpdatedAt: string | null }> {
+  if (!qbId) return { syncToken: null, qbUpdatedAt: null };
+  const raw = await writeService.fetchCurrent(entity, qbId);
+  return {
+    syncToken: qboSyncToken(raw, entity),
+    qbUpdatedAt: qboMetaUpdatedAt(raw, entity),
+  };
+}
+
+function assertSupportedOperation(row: AccountingSyncQueueRow): void {
+  if (row.operation === "link" || row.operation === "reconcile") {
+    needsReview(
+      `QuickBooks outbound ${row.operation} operation requires operator review`
+    );
+  }
+
+  if (
+    row.operation === "void" &&
+    row.entityType !== "invoice" &&
+    row.entityType !== "payment"
+  ) {
+    needsReview(`QuickBooks ${row.entityType} void requires operator review`);
+  }
+
+  if (row.operation === "delete_soft" && row.entityType !== "customer") {
+    needsReview(
+      `QuickBooks ${row.entityType} delete_soft requires operator review`
+    );
+  }
+
+  if (row.operation === "delete" && row.entityType !== "estimate") {
+    needsReview(`QuickBooks ${row.entityType} delete requires operator review`);
+  }
+}
+
+async function assertConnectionWritable(
+  supabase: SupabaseClient,
+  row: AccountingSyncQueueRow
+): Promise<void> {
+  const connection = await maybeSingle(supabase, "accounting_connections", [
+    ["id", row.connectionId],
+    ["company_id", row.companyId],
+    ["provider", "quickbooks"],
+  ]);
+
+  if (!connection) {
+    needsReview("QuickBooks connection not found");
+  }
+
+  if (connection.is_connected !== true) {
+    needsReview("QuickBooks connection is disconnected");
+  }
+
+  if (connection.sync_enabled === false) {
+    needsReview("QuickBooks connection sync is disabled");
+  }
+
+  if (connection.sync_direction === "pull_only") {
+    needsReview(
+      "QuickBooks connection is pull_only; outbound writes are disabled"
+    );
+  }
+}
+
+async function prepareCustomerPush(
+  supabase: SupabaseClient,
+  row: AccountingSyncQueueRow,
+  writeService: QuickBooksWriteService
+): Promise<PreparedPush> {
+  const client = await maybeSingle(supabase, "clients", [
+    ["id", row.entityId],
+    ["company_id", row.companyId],
+  ]);
+  if (!client) deterministicBlock("OPS customer row not found");
+
+  const contactRows = await selectRows(
+    supabase,
+    "sub_clients",
+    [
+      ["client_id", row.entityId],
+      ["company_id", row.companyId],
+      ["deleted_at", null],
+    ],
+    "created_at"
+  );
+  const entity = "Customer";
+  const localQbId = cleanString(client.qb_id);
+  const existingQbId = localQbId ?? cleanString(row.externalId);
+  const current = await currentQboState(writeService, entity, existingQbId);
+  const payload = mapClientToQboCustomer({
+    client: mapClient({ ...client, qb_id: existingQbId }, current.syncToken),
+    primaryContact: mapContact(contactRows[0] ?? null),
+  });
+
+  if (row.operation === "inactivate" || row.operation === "delete_soft") {
+    payload.Active = false;
+  }
+
+  return {
+    table: "clients",
+    qboEntity: entity,
+    payload,
+    existingQbId,
+    localQbIdMissing: !localQbId,
+    opsUpdatedAt: cleanString(client.updated_at),
+    qbUpdatedAt: current.qbUpdatedAt,
+  };
+}
+
+async function prepareInvoicePush(
+  supabase: SupabaseClient,
+  row: AccountingSyncQueueRow,
+  writeService: QuickBooksWriteService,
+  providerEnvironment: string | null | undefined
+): Promise<PreparedPush> {
+  const invoice = await maybeSingle(supabase, "invoices", [
+    ["id", row.entityId],
+    ["company_id", row.companyId],
+  ]);
+  if (!invoice) deterministicBlock("OPS invoice row not found");
+
+  const entity = "Invoice";
+  const localQbId = cleanString(invoice.qb_id);
+  const existingQbId = localQbId ?? cleanString(row.externalId);
+
+  if (row.operation === "void") {
+    if (!existingQbId) {
+      deterministicBlock(
+        "QuickBooks invoice void requires an existing qb_id or queue external_id"
+      );
+    }
+    const current = await currentQboState(writeService, entity, existingQbId);
+    if (!current.syncToken)
+      deterministicBlock("QuickBooks Invoice SyncToken required");
+    return {
+      table: "invoices",
+      qboEntity: entity,
+      payload: { Id: existingQbId, SyncToken: current.syncToken },
+      existingQbId,
+      localQbIdMissing: !localQbId,
+      opsUpdatedAt: cleanString(invoice.updated_at),
+      qbUpdatedAt: current.qbUpdatedAt,
+    };
+  }
+
+  const clientId = invoiceClientId(invoice);
+  if (!clientId) deterministicBlock("OPS invoice client link missing");
+  const client = await maybeSingle(supabase, "clients", [
+    ["id", clientId],
+    ["company_id", row.companyId],
+  ]);
+  if (!client) deterministicBlock("OPS invoice customer row not found");
+
+  const lineItems = (
+    await selectRows(
+      supabase,
+      "line_items",
+      [
+        ["invoice_id", row.entityId],
+        ["company_id", row.companyId],
+      ],
+      "sort_order"
+    )
+  ).map(mapLineItem);
+
+  const current = await currentQboState(writeService, entity, existingQbId);
+
+  try {
+    return {
+      table: "invoices",
+      qboEntity: entity,
+      payload: mapInvoiceToQboInvoice({
+        invoice: {
+          id: stringValue(invoice.id),
+          qbId: existingQbId,
+          syncToken: current.syncToken,
+          docNumber: cleanString(invoice.invoice_number),
+          total: numberOrString(invoice.total),
+          issueDate: cleanString(invoice.issue_date),
+          dueDate: cleanString(invoice.due_date),
+        } satisfies OpsInvoiceForQbo,
+        client: {
+          id: stringValue(client.id),
+          name: stringValue(client.name),
+          qbId: cleanString(client.qb_id),
+        },
+        lineItems,
+        fallbackServiceItem: fallbackServiceItem(providerEnvironment),
+        taxCodeRefs: taxCodeRefs(providerEnvironment),
+      }),
+      existingQbId,
+      localQbIdMissing: !localQbId,
+      opsUpdatedAt: cleanString(invoice.updated_at),
+      qbUpdatedAt: current.qbUpdatedAt,
+    };
+  } catch (error) {
+    deterministicBlock(errorMessage(error));
+  }
+}
+
+async function prepareEstimatePush(
+  supabase: SupabaseClient,
+  row: AccountingSyncQueueRow,
+  writeService: QuickBooksWriteService,
+  providerEnvironment: string | null | undefined
+): Promise<PreparedPush> {
+  const estimate = await maybeSingle(supabase, "estimates", [
+    ["id", row.entityId],
+    ["company_id", row.companyId],
+  ]);
+  if (!estimate) deterministicBlock("OPS estimate row not found");
+  if (estimate.distribution_hold === true)
+    deterministicBlock("OPS private draft is held from accounting export");
+
+  const entity = "Estimate";
+  const localQbId = cleanString(estimate.qb_id);
+  const existingQbId = localQbId ?? cleanString(row.externalId);
+
+  if (row.operation === "delete") {
+    if (!existingQbId) {
+      deterministicBlock(
+        "QuickBooks estimate delete requires an existing qb_id or queue external_id"
+      );
+    }
+    const current = await currentQboState(writeService, entity, existingQbId);
+    if (!current.syncToken)
+      deterministicBlock("QuickBooks Estimate SyncToken required");
+    return {
+      table: "estimates",
+      qboEntity: entity,
+      payload: { Id: existingQbId, SyncToken: current.syncToken },
+      existingQbId,
+      localQbIdMissing: !localQbId,
+      opsUpdatedAt: cleanString(estimate.deleted_at ?? estimate.updated_at),
+      qbUpdatedAt: current.qbUpdatedAt,
+    };
+  }
+
+  const clientId = estimateClientId(estimate);
+  if (!clientId) deterministicBlock("OPS estimate client link missing");
+  const client = await maybeSingle(supabase, "clients", [
+    ["id", clientId],
+    ["company_id", row.companyId],
+  ]);
+  if (!client) deterministicBlock("OPS estimate customer row not found");
+
+  const lineItems = (
+    await selectRows(
+      supabase,
+      "line_items",
+      [
+        ["estimate_id", row.entityId],
+        ["company_id", row.companyId],
+      ],
+      "sort_order"
+    )
+  ).map(mapLineItem);
+  const current = await currentQboState(writeService, entity, existingQbId);
+
+  try {
+    return {
+      table: "estimates",
+      qboEntity: entity,
+      payload: mapEstimateToQboEstimate({
+        estimate: {
+          id: stringValue(estimate.id),
+          qbId: existingQbId,
+          syncToken: current.syncToken,
+          docNumber: cleanString(estimate.estimate_number),
+          total: numberOrString(estimate.total),
+          issueDate: cleanString(estimate.issue_date),
+          expirationDate: cleanString(estimate.expiration_date),
+        } satisfies OpsEstimateForQbo,
+        client: {
+          id: stringValue(client.id),
+          name: stringValue(client.name),
+          qbId: cleanString(client.qb_id),
+        },
+        lineItems,
+        fallbackServiceItem: fallbackServiceItem(providerEnvironment),
+        taxCodeRefs: taxCodeRefs(providerEnvironment),
+      }),
+      existingQbId,
+      localQbIdMissing: !localQbId,
+      opsUpdatedAt: cleanString(estimate.updated_at),
+      qbUpdatedAt: current.qbUpdatedAt,
+    };
+  } catch (error) {
+    deterministicBlock(errorMessage(error));
+  }
+}
+
+async function preparePaymentPush(
+  supabase: SupabaseClient,
+  row: AccountingSyncQueueRow,
+  writeService: QuickBooksWriteService
+): Promise<PreparedPush> {
+  const payment = await maybeSingle(supabase, "payments", [
+    ["id", row.entityId],
+    ["company_id", row.companyId],
+  ]);
+  if (!payment) deterministicBlock("OPS payment row not found");
+
+  const entity = "Payment";
+  const localQbId = cleanString(payment.qb_id);
+  const localRawQbId = qboPaymentRawId(localQbId);
+  const existingQbId =
+    localRawQbId ?? qboPaymentRawId(cleanString(row.externalId));
+
+  if (row.operation === "void") {
+    if (!existingQbId) {
+      deterministicBlock(
+        "QuickBooks payment void requires an existing qb_id or queue external_id"
+      );
+    }
+    const current = await currentQboState(writeService, entity, existingQbId);
+    if (!current.syncToken)
+      deterministicBlock("QuickBooks Payment SyncToken required");
+    return {
+      table: "payments",
+      qboEntity: entity,
+      payload: { Id: existingQbId, SyncToken: current.syncToken, sparse: true },
+      existingQbId,
+      localQbIdMissing: !localQbId,
+      opsUpdatedAt: cleanString(
+        payment.voided_at ?? payment.updated_at ?? payment.created_at
+      ),
+      qbUpdatedAt: current.qbUpdatedAt,
+    };
+  }
+
+  const clientId = cleanString(payment.client_id);
+  if (!clientId) deterministicBlock("OPS payment customer link missing");
+  const client = await maybeSingle(supabase, "clients", [
+    ["id", clientId],
+    ["company_id", row.companyId],
+  ]);
+  if (!client) deterministicBlock("OPS payment customer row not found");
+
+  let invoiceLink: OpsInvoiceLinkForQbo | null = null;
+  const invoiceId = cleanString(payment.invoice_id);
+  if (invoiceId) {
+    const invoice = await maybeSingle(supabase, "invoices", [
+      ["id", invoiceId],
+      ["company_id", row.companyId],
+    ]);
+    if (!invoice) deterministicBlock("OPS payment invoice row not found");
+    invoiceLink = {
+      id: stringValue(invoice.id),
+      qbId: cleanString(invoice.qb_id),
+      balanceDue: numberOrString(invoice.balance_due),
+    };
+  }
+
+  const current = await currentQboState(writeService, entity, existingQbId);
+
+  try {
+    return {
+      table: "payments",
+      qboEntity: entity,
+      payload: mapPaymentToQboPayment({
+        payment: {
+          id: stringValue(payment.id),
+          qbId: existingQbId,
+          syncToken: current.syncToken,
+          amount: numberOrString(payment.amount) ?? "",
+          paymentDate: cleanString(payment.payment_date),
+          referenceNumber: cleanString(payment.reference_number),
+        } satisfies OpsPaymentForQbo,
+        client: {
+          id: stringValue(client.id),
+          qbId: cleanString(client.qb_id),
+        },
+        invoice: invoiceLink,
+      }),
+      existingQbId,
+      paymentInvoiceQbId: invoiceLink?.qbId ?? null,
+      localQbIdMissing: !localQbId,
+      opsUpdatedAt: cleanString(payment.updated_at ?? payment.created_at),
+      qbUpdatedAt: current.qbUpdatedAt,
+    };
+  } catch (error) {
+    deterministicBlock(errorMessage(error));
+  }
+}
+
+async function preparePush(
+  supabase: SupabaseClient,
+  row: AccountingSyncQueueRow,
+  writeService: QuickBooksWriteService,
+  providerEnvironment: string | null | undefined
+): Promise<PreparedPush> {
+  assertSupportedOperation(row);
+
+  switch (row.entityType) {
+    case "customer":
+      return prepareCustomerPush(supabase, row, writeService);
+    case "invoice":
+      return prepareInvoicePush(
+        supabase,
+        row,
+        writeService,
+        providerEnvironment
+      );
+    case "estimate":
+      return prepareEstimatePush(
+        supabase,
+        row,
+        writeService,
+        providerEnvironment
+      );
+    case "payment":
+      return preparePaymentPush(supabase, row, writeService);
+  }
+}
+
+async function writeQbId(
+  supabase: SupabaseClient,
+  row: AccountingSyncQueueRow,
+  prepared: PreparedPush,
+  qbId: string
+): Promise<void> {
+  const localQbId =
+    row.entityType === "payment"
+      ? qboPaymentCompositeId(qbId, prepared.paymentInvoiceQbId)
+      : qbId;
+  await requireDatabaseResponse("OPS qb_id writeback", () =>
+    supabase
+      .from(prepared.table)
+      .update({ qb_id: localQbId })
+      .eq("id", row.entityId)
+      .eq("company_id", row.companyId)
+  );
+}
+
+async function performProviderWrite(input: {
+  row: AccountingSyncQueueRow;
+  prepared: PreparedPush;
+  writeService: QuickBooksWriteService;
+}): Promise<QuickBooksWriteResult> {
+  const { row, prepared, writeService } = input;
+
+  if (row.operation === "create" && !prepared.existingQbId) {
+    return writeService.create(prepared.qboEntity, prepared.payload);
+  }
+
+  if (!prepared.existingQbId) {
+    deterministicBlock(
+      `QuickBooks ${row.entityType} ${row.operation} requires an existing qb_id or queue external_id`
+    );
+  }
+
+  if (row.operation === "void") {
+    return writeService.void(prepared.qboEntity, prepared.payload);
+  }
+
+  if (row.operation === "delete") {
+    return writeService.deleteEntity(prepared.qboEntity, prepared.payload);
+  }
+
+  return writeService.update(prepared.qboEntity, prepared.payload);
+}
+
+function auditBase(
+  row: AccountingSyncQueueRow
+): Omit<AccountingSyncAuditInput, "status" | "source"> {
+  return {
+    queueId: row.id,
+    companyId: row.companyId,
+    connectionId: row.connectionId,
+    provider: "quickbooks",
+    direction: "ops_to_qb",
+    entityType: row.entityType,
+    entityId: row.entityId,
+    externalId: row.externalId,
+    operation: row.operation,
+    opsUpdatedAt: row.sourceUpdatedAt,
+  };
+}
+
+async function recordSuccess(
+  audit: AccountingSyncAuditService,
+  row: AccountingSyncQueueRow,
+  prepared: PreparedPush,
+  result: QuickBooksWriteResult
+): Promise<void> {
+  await requireDatabaseOperation("", () =>
+    audit.record({
+      ...auditBase(row),
+      externalId: result.qbId,
+      status: "succeeded",
+      source: "worker",
+      decision: "ops_won",
+      opsUpdatedAt: prepared.opsUpdatedAt ?? row.sourceUpdatedAt,
+      qbUpdatedAt: result.metaUpdatedAt,
+      beforeSnapshot: {
+        queueExternalId: row.externalId,
+        operation: row.operation,
+      },
+      afterSnapshot: {
+        qbId: result.qbId,
+        syncToken: result.syncToken,
+        metaUpdatedAt: result.metaUpdatedAt,
+      },
+    })
+  );
+}
+
+async function recordFailure(
+  audit: AccountingSyncAuditService,
+  row: AccountingSyncQueueRow,
+  kind: FailureKind,
+  message: string
+): Promise<void> {
+  await requireDatabaseOperation("", () =>
+    audit.record({
+      ...auditBase(row),
+      status: kind === "retry" ? "failed" : kind,
+      source: "worker",
+      decision: kind === "retry" ? "retry" : kind,
+      error: message,
+      beforeSnapshot: {
+        queueExternalId: row.externalId,
+        operation: row.operation,
+      },
+    })
+  );
+}
+
+async function recordFailureBestEffort(
+  audit: AccountingSyncAuditService,
+  row: AccountingSyncQueueRow,
+  kind: FailureKind,
+  message: string
+): Promise<void> {
+  try {
+    await recordFailure(audit, row, kind, message);
+  } catch (error) {
+    if (isDatabasePressureError(error)) throw error;
+    // Queue state is the durable recovery path; audit cannot block it.
+  }
+}
+
+async function markPostProviderFinalizationFailed(input: {
+  supabase: SupabaseClient;
+  queue: AccountingSyncQueueService;
+  audit: AccountingSyncAuditService;
+  row: AccountingSyncQueueRow;
+  workerId: string;
+  qbId: string;
+  message: string;
+}): Promise<boolean> {
+  const { supabase, queue, audit, row, workerId, qbId, message } = input;
+  const terminalWorkerId = row.lockedBy || workerId;
+
+  let notificationCreated = false;
+  let pressureError: unknown = null;
+  try {
+    await requireDatabaseOperation(
+      "QuickBooks queue needs-review finalization",
+      () =>
+        queue.markNeedsReview(row.id, message, {
+          workerId: terminalWorkerId,
+          externalId: qbId,
+        })
+    );
+    notificationCreated = await createReviewNotification(
+      supabase,
+      row,
+      "needs_review"
+    );
+  } catch (error) {
+    if (isDatabasePressureError(error)) pressureError = error;
+    // Provider write already succeeded. Make one direct, ownership-guarded
+    // terminal-state attempt before returning; stale-claim recovery must not
+    // turn an accepted provider write into a second create/update attempt.
+    try {
+      await requireDatabaseResponse(
+        "QuickBooks direct queue needs-review finalization",
+        () =>
+          supabase
+            .from("accounting_sync_queue")
+            .update({
+              status: "needs_review",
+              external_id: qbId,
+              locked_at: null,
+              locked_by: null,
+              last_error: message,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", row.id)
+            .eq("status", "claimed")
+            .eq("locked_by", terminalWorkerId)
+      );
+    } catch (fallbackError) {
+      if (isDatabasePressureError(fallbackError)) {
+        pressureError = fallbackError;
+      }
+      // Provider write already succeeded. Never schedule retry from this path.
+    }
+  }
+
+  await recordFailureBestEffort(audit, row, "needs_review", message);
+  if (pressureError) throw pressureError;
+
+  return notificationCreated;
+}
+
+function firstAdminId(adminIds: unknown): string | null {
+  if (Array.isArray(adminIds)) {
+    return cleanString(adminIds[0]);
+  }
+
+  const raw = cleanString(adminIds);
+  if (!raw) return null;
+
+  if (raw.startsWith("[")) {
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      if (Array.isArray(parsed)) return cleanString(parsed[0]);
+    } catch {
+      return null;
+    }
+  }
+
+  return cleanString(raw.split(",")[0]);
+}
+
+async function createReviewNotification(
+  supabase: SupabaseClient,
+  row: AccountingSyncQueueRow,
+  kind: "blocked" | "needs_review"
+): Promise<boolean> {
+  try {
+    const company = await maybeSingle(supabase, "companies", [
+      ["id", row.companyId],
+    ]);
+    const userId = firstAdminId(company?.admin_ids);
+    if (!userId) return false;
+
+    await requireDatabaseResponse("QuickBooks review notification insert", () =>
+      supabase.from("notifications").insert({
+        user_id: userId,
+        company_id: row.companyId,
+        type: "accounting_sync",
+        title:
+          kind === "blocked"
+            ? "QuickBooks sync blocked"
+            : "QuickBooks sync needs review",
+        body: "Open accounting settings to review the record.",
+        is_read: false,
+        persistent: true,
+        action_url: NOTIFICATION_ACTION_URL,
+        action_label: NOTIFICATION_ACTION_LABEL,
+        dedupe_key: `qbo-sync:${row.companyId}:${row.entityType}:${row.entityId}:${kind}`,
+        resolved_at: null,
+      })
+    );
+
+    return true;
+  } catch (error) {
+    if (isDatabasePressureError(error)) throw error;
+    return false;
+  }
+}
+
+async function resolveReviewNotifications(
+  supabase: SupabaseClient,
+  row: AccountingSyncQueueRow
+): Promise<void> {
+  const now = new Date().toISOString();
+  const keys = [
+    `qbo-sync:${row.companyId}:${row.entityType}:${row.entityId}:blocked`,
+    `qbo-sync:${row.companyId}:${row.entityType}:${row.entityId}:needs_review`,
+  ];
+
+  for (const dedupeKey of keys) {
+    try {
+      await requireDatabaseResponse(
+        "QuickBooks review notification resolve",
+        () =>
+          supabase
+            .from("notifications")
+            .update({ is_read: true, resolved_at: now })
+            .eq("company_id", row.companyId)
+            .eq("dedupe_key", dedupeKey)
+            .eq("is_read", false)
+            .is("resolved_at", null)
+      );
+    } catch (error) {
+      if (isDatabasePressureError(error)) throw error;
+      console.error("[qbo-push] review notification resolve failed:", error);
+    }
+  }
+}
+
+async function processQueueRow(input: {
+  supabase: SupabaseClient;
+  queue: AccountingSyncQueueService;
+  audit: AccountingSyncAuditService;
+  row: AccountingSyncQueueRow;
+  workerId: string;
+}): Promise<RowResult> {
+  const { supabase, queue, audit, row, workerId } = input;
+
+  if ((row.entityType as string) === "expense") {
+    return holdExpenseAccountingDuringCutover({ row, workerId, queue });
+  }
+
+  if (isSupplierBillQueueEntity(row.entityType as string)) {
+    return processSupplierBillQueueRow({
+      supabase,
+      queue,
+      audit,
+      row: row as unknown as SupplierBillQueueRow,
+      workerId,
+    });
+  }
+
+  try {
+    assertSupportedOperation(row);
+    await assertConnectionWritable(supabase, row);
+    const { accessToken, realmId, providerEnvironment } =
+      await AccountingTokenService.getValidToken(supabase, row.connectionId);
+    if (!cleanString(accessToken))
+      needsReview("QuickBooks access token missing");
+    if (!cleanString(realmId)) needsReview("QuickBooks realm id missing");
+
+    const writeService = new QuickBooksWriteService({
+      realmId: stringValue(realmId),
+      accessToken: stringValue(accessToken),
+      environment: providerEnvironment,
+    });
+    const prepared = await preparePush(
+      supabase,
+      row,
+      writeService,
+      providerEnvironment
+    );
+    const result = await performProviderWrite({ row, prepared, writeService });
+
+    try {
+      if (
+        cleanString(result.qbId) &&
+        (prepared.localQbIdMissing ||
+          (row.entityType === "payment" && row.operation !== "void"))
+      ) {
+        await writeQbId(supabase, row, prepared, result.qbId);
+      }
+
+      await recordSuccess(audit, row, prepared, result);
+      await requireDatabaseOperation("", () =>
+        queue.markSucceeded(row.id, { externalId: result.qbId, workerId })
+      );
+      await resolveReviewNotifications(supabase, row);
+    } catch (finalizationError) {
+      const message = `QuickBooks write succeeded but worker finalization failed: ${errorMessage(finalizationError)}`;
+      const notificationCreated = await markPostProviderFinalizationFailed({
+        supabase,
+        queue,
+        audit,
+        row,
+        workerId,
+        qbId: result.qbId,
+        message,
+      });
+
+      if (isDatabasePressureError(finalizationError)) {
+        throw finalizationError;
+      }
+
+      return {
+        queueId: row.id,
+        entityType: row.entityType,
+        entityId: row.entityId,
+        status: "needs_review",
+        externalId: result.qbId,
+        error: message,
+        notificationCreated,
+      };
+    }
+
+    return {
+      queueId: row.id,
+      entityType: row.entityType,
+      entityId: row.entityId,
+      status: "succeeded",
+      externalId: result.qbId,
+    };
+  } catch (error) {
+    if (isDatabasePressureError(error)) throw error;
+    const classified = classifyError(error);
+    await recordFailureBestEffort(
+      audit,
+      row,
+      classified.kind,
+      classified.message
+    );
+
+    if (classified.kind === "retry") {
+      await requireDatabaseOperation("QuickBooks queue retry scheduling", () =>
+        queue.scheduleRetry(row, classified.message, { workerId })
+      );
+      return {
+        queueId: row.id,
+        entityType: row.entityType,
+        entityId: row.entityId,
+        status: "retry",
+        error: classified.message,
+      };
+    }
+
+    if (classified.kind === "blocked") {
+      await requireDatabaseOperation(
+        "QuickBooks queue blocked finalization",
+        () => queue.markBlocked(row.id, classified.message, { workerId })
+      );
+    } else {
+      await requireDatabaseOperation(
+        "QuickBooks queue needs-review finalization",
+        () => queue.markNeedsReview(row.id, classified.message, { workerId })
+      );
+    }
+
+    const notificationCreated = await createReviewNotification(
+      supabase,
+      row,
+      classified.kind
+    );
+    return {
+      queueId: row.id,
+      entityType: row.entityType,
+      entityId: row.entityId,
+      status: classified.kind,
+      error: classified.message,
+      notificationCreated,
+    };
+  }
+}
+
+function summarize(workerId: string, results: RowResult[]) {
+  const succeeded = results.filter(
+    (result) => result.status === "succeeded"
+  ).length;
+  const retry = results.filter((result) => result.status === "retry").length;
+  const blocked = results.filter(
+    (result) => result.status === "blocked"
+  ).length;
+  const needsReview = results.filter(
+    (result) => result.status === "needs_review"
+  ).length;
+  const failed = results.filter(
+    (result) => result.status !== "succeeded"
+  ).length;
+  const notificationsCreated = results.filter(
+    (result) => result.notificationCreated
+  ).length;
+
+  return {
+    ok: true,
+    workerId,
+    claimed: results.length,
+    processed: results.length,
+    succeeded,
+    retry,
+    blocked,
+    needsReview,
+    failed,
+    notificationsCreated,
+    results,
+  };
+}
+
+export async function POST(request: Request) {
+  if (!authorized(request)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  if (process.env.ACCOUNTING_WRITE_ENABLED !== "true") {
+    return NextResponse.json(
+      {
+        code: "ACCOUNTING_WRITE_DISABLED",
+        error: "Accounting writes are disabled",
+      },
+      { status: 409 }
+    );
+  }
+
+  const supabase = getServiceRoleClient();
+  try {
+    const controlled = await runWithCronWorkloadControl({
+      supabase,
+      workloadKey: "quickbooks-push",
+      leaseSeconds: 360,
+      work: async () => {
+        const queue = new AccountingSyncQueueService(supabase);
+        const audit = new AccountingSyncAuditService(supabase);
+        const workerId = `qbo-push-${Date.now()}-${randomUUID()}`;
+        const rows = await requireDatabaseOperation(
+          "QuickBooks queue claim",
+          () =>
+            queue.claimDue({
+              provider: "quickbooks",
+              limit: BATCH_LIMIT,
+              workerId,
+            })
+        );
+        const results: RowResult[] = [];
+
+        for (const row of rows) {
+          try {
+            results.push(
+              await processQueueRow({
+                supabase,
+                queue,
+                audit,
+                row,
+                workerId,
+              })
+            );
+          } catch (error) {
+            if (isDatabasePressureError(error)) throw error;
+            results.push({
+              queueId: row.id,
+              entityType: row.entityType,
+              entityId: row.entityId,
+              status: "failed",
+              error: errorMessage(error),
+            });
+          }
+        }
+
+        return NextResponse.json(summarize(workerId, results));
+      },
+    });
+
+    if (controlled.status === "skipped") {
+      const alreadyRunning = controlled.reason === "lease_held";
+      return NextResponse.json(
+        {
+          ok: alreadyRunning,
+          ran: false,
+          reason: alreadyRunning ? "already_running" : controlled.reason,
+        },
+        { status: alreadyRunning ? 200 : 503 }
+      );
+    }
+
+    return controlled.value;
+  } catch (error) {
+    const message = errorMessage(error);
+    console.error("[cron/quickbooks-push]", message);
+    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+  }
+}
+
+// Vercel Cron invokes a scheduled endpoint with a GET request, so the schedule
+// registered in vercel.json must reach a GET handler — a POST-only route is
+// silently answered with 405 and the queue never drains. Delegate to the POST
+// implementation; manual operators and the test harness still call POST.
+export async function GET(request: Request) {
+  return POST(request);
+}

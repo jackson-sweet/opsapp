@@ -1,0 +1,29 @@
+Expense release regression logs: /private/tmp/ops-ios-bugs-p9-expense/proof.B1XFhQ
+PASS vulnerable auth_id withdrawal during actor wait returned
+PASS vulnerable firebase_uid withdrawal during actor wait returned
+PASS vulnerable auth_id reassignment during actor wait returned
+PASS vulnerable company removal during company wait denied with no effects
+PASS vulnerable unchanged company after company wait returned
+PASS vulnerable approval cannot stamp the previous login owner returned
+PASS vulnerable accounting request reauthorizes login ownership returned
+PASS vulnerable new correction retains existing trigger defense denied with no effects
+PASS vulnerable exact correction replay reauthorizes login ownership returned
+9 real identity-lock checks passed: vulnerable
+PASS repaired auth_id withdrawal during actor wait denied with no effects
+PASS repaired firebase_uid withdrawal during actor wait denied with no effects
+PASS repaired auth_id reassignment during actor wait denied with no effects
+PASS repaired company removal during company wait denied with no effects
+PASS repaired unchanged company after company wait returned
+PASS repaired approval cannot stamp the previous login owner denied with no effects
+PASS repaired accounting request reauthorizes login ownership denied with no effects
+PASS repaired new correction retains existing trigger defense denied with no effects
+PASS repaired exact correction replay reauthorizes login ownership denied with no effects
+9 real identity-lock checks passed: repaired
+PASS: 9 original identity observations; fixed expectation rejects original code
+PASS: 9 repaired identity observations with unchanged financial state on denial
+PASS: 6 original role sequence calls allowed; 6 repaired calls denied; owner allocation preserved
+PASS: 69 correction assertions and 7 existing correction contention checks
+PASS: 123 existing P5 accounting assertions with P7 installed
+PASS: 2 existing P7 migration guard rejections
+PASS: existing payroll contract and 17 reimbursement projection assertions
+Verification logs retained: /private/tmp/ops-ios-bugs-p9-expense/proof.B1XFhQ

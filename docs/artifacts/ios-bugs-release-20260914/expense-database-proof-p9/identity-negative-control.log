@@ -1,0 +1,6 @@
+Traceback (most recent call last):
+  File "/Users/jacksonsweet/Projects/OPS/.worktrees/ios-bugs-p5-accounting/tests/runtime/expense-identity-lock-concurrency.py", line 174, in <module>
+    race("auth_id withdrawal during actor wait", change="detach")
+  File "/Users/jacksonsweet/Projects/OPS/.worktrees/ios-bugs-p5-accounting/tests/runtime/expense-identity-lock-concurrency.py", line 154, in race
+    assert waiter.returncode != 0 and "42501" in err, (label, out, err)
+AssertionError: ('auth_id withdrawal during actor wait', '{"sub": "expense-identity-e41b5fd5-b5c1-4946-a624-bb8c3525b099", "role": "authenticated"}\n{"actor_id":"e41b5fd5-b5c1-4946-a624-bb8c3525b099","company_id":"e28a549b-7ea0-4b84-9f3d-8399aaebe7d0"}\n', '')

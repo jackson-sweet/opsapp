@@ -1,0 +1,10 @@
+PASS repaired auth_id withdrawal during actor wait denied with no effects
+PASS repaired firebase_uid withdrawal during actor wait denied with no effects
+PASS repaired auth_id reassignment during actor wait denied with no effects
+PASS repaired company removal during company wait denied with no effects
+PASS repaired unchanged company after company wait returned
+PASS repaired approval cannot stamp the previous login owner denied with no effects
+PASS repaired accounting request reauthorizes login ownership denied with no effects
+PASS repaired new correction retains existing trigger defense denied with no effects
+PASS repaired exact correction replay reauthorizes login ownership denied with no effects
+9 real identity-lock checks passed: repaired

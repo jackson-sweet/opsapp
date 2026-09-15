@@ -1,0 +1,1912 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import type {
+  AccountingSyncQueueEntityType,
+  AccountingSyncQueueRow,
+} from "@/lib/api/services/accounting-sync-queue-types";
+
+const claimDue = vi.fn();
+const markSucceeded = vi.fn();
+const scheduleRetry = vi.fn();
+const markBlocked = vi.fn();
+const markNeedsReview = vi.fn();
+const record = vi.fn();
+const getValidToken = vi.fn();
+const writeCreate = vi.fn();
+const writeUpdate = vi.fn();
+const writeVoid = vi.fn();
+const writeDelete = vi.fn();
+const writeFetchCurrent = vi.fn();
+
+vi.mock(
+  "@/lib/api/services/cron-workload-control-service",
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import("@/lib/api/services/cron-workload-control-service")
+      >();
+    return {
+      ...actual,
+      runWithCronWorkloadControl: vi.fn(
+        async ({ work }: { work: () => Promise<unknown> }) => ({
+          status: "completed",
+          value: await work(),
+        })
+      ),
+    };
+  }
+);
+
+vi.mock("@/lib/api/services/accounting-sync-queue-service", () => ({
+  AccountingSyncQueueService: vi.fn(() => ({
+    claimDue,
+    markSucceeded,
+    scheduleRetry,
+    markBlocked,
+    markNeedsReview,
+  })),
+}));
+
+vi.mock("@/lib/api/services/accounting-sync-audit-service", () => ({
+  AccountingSyncAuditService: vi.fn(() => ({ record })),
+}));
+
+class MockReconnectRequiredError extends Error {
+  readonly code = "reconnect_required" as const;
+}
+
+vi.mock("@/lib/api/services/accounting-token-service", () => ({
+  AccountingTokenService: { getValidToken },
+  ReconnectRequiredError: MockReconnectRequiredError,
+}));
+
+vi.mock("@/lib/api/services/quickbooks-write-service", () => ({
+  QuickBooksWriteService: vi.fn(() => ({
+    create: writeCreate,
+    update: writeUpdate,
+    void: writeVoid,
+    deleteEntity: writeDelete,
+    fetchCurrent: writeFetchCurrent,
+  })),
+}));
+
+type Row = Record<string, unknown>;
+type MockDatabaseError = {
+  code?: string;
+  message: string;
+  status?: number;
+};
+
+interface MockState {
+  accounting_connections: Row[];
+  clients: Row[];
+  sub_clients: Row[];
+  invoices: Row[];
+  estimates: Row[];
+  payments: Row[];
+  line_items: Row[];
+  companies: Row[];
+  notifications: Row[];
+  accounting_sync_queue: Row[];
+  selectErrors: Record<string, MockDatabaseError>;
+  updateErrors: Record<string, string | MockDatabaseError>;
+  calls: Array<{ table?: string; method: string; args: unknown[] }>;
+}
+
+let state: MockState;
+
+function makeState(overrides: Partial<MockState> = {}): MockState {
+  return {
+    accounting_connections: [
+      {
+        id: CONNECTION_ID,
+        company_id: COMPANY_ID,
+        provider: "quickbooks",
+        is_connected: true,
+        sync_enabled: true,
+        sync_direction: "bidirectional",
+      },
+    ],
+    clients: [],
+    sub_clients: [],
+    invoices: [],
+    estimates: [],
+    payments: [],
+    line_items: [],
+    companies: [{ id: COMPANY_ID, admin_ids: [ADMIN_ID] }],
+    notifications: [],
+    accounting_sync_queue: [],
+    selectErrors: {},
+    updateErrors: {},
+    calls: [],
+    ...overrides,
+  };
+}
+
+function rowsFor(table: string): Row[] {
+  const key = table as keyof MockState;
+  const rows = state[key];
+  if (Array.isArray(rows)) return rows as Row[];
+  return [];
+}
+
+function matchesFilters(row: Row, filters: Array<[string, unknown]>): boolean {
+  return filters.every(([column, value]) => row[column] === value);
+}
+
+function makeBuilder(table: string) {
+  const filters: Array<[string, unknown]> = [];
+  const orders: Array<{ column: string; ascending: boolean }> = [];
+  let mode: "select" | "update" | null = null;
+  let patch: Row | null = null;
+  const selectResult = () => {
+    const rows = rowsFor(table).filter((row) => matchesFilters(row, filters));
+    return rows.sort((a, b) => {
+      for (const order of orders) {
+        const aValue = a[order.column];
+        const bValue = b[order.column];
+        if (aValue === bValue) continue;
+        if (aValue === null || aValue === undefined)
+          return order.ascending ? 1 : -1;
+        if (bValue === null || bValue === undefined)
+          return order.ascending ? -1 : 1;
+        return (
+          String(aValue).localeCompare(String(bValue)) *
+          (order.ascending ? 1 : -1)
+        );
+      }
+      return 0;
+    });
+  };
+  const builder = {
+    select: (...args: unknown[]) => {
+      state.calls.push({ table, method: "select", args });
+      mode = "select";
+      return builder;
+    },
+    update: (values: Row) => {
+      state.calls.push({ table, method: "update", args: [values] });
+      mode = "update";
+      patch = values;
+      return builder;
+    },
+    insert: (values: Row | Row[]) => {
+      state.calls.push({ table, method: "insert", args: [values] });
+      const inserts = Array.isArray(values) ? values : [values];
+      rowsFor(table).push(...inserts);
+      return Promise.resolve({ data: values, error: null });
+    },
+    eq: (column: string, value: unknown) => {
+      state.calls.push({ table, method: "eq", args: [column, value] });
+      if (value === null) {
+        // Faithful to PostgREST + Postgres: `.eq(col, null)` renders as
+        // `col=eq.null` → `col = 'null'::<coltype>` and throws on typed columns
+        // (e.g. timestamptz). NULL comparisons MUST use `.is(col, null)`.
+        throw new Error(
+          `invalid input syntax: ${table}.${column} eq(null) must use is(null)`
+        );
+      }
+      filters.push([column, value]);
+      return builder;
+    },
+    is: (column: string, value: unknown) => {
+      state.calls.push({ table, method: "is", args: [column, value] });
+      filters.push([column, value]);
+      return builder;
+    },
+    order: (column: string, options?: { ascending?: boolean }) => {
+      const args: unknown[] = [column, options];
+      state.calls.push({ table, method: "order", args });
+      orders.push({ column, ascending: options?.ascending !== false });
+      return builder;
+    },
+    limit: (...args: unknown[]) => {
+      state.calls.push({ table, method: "limit", args });
+      return builder;
+    },
+    maybeSingle: async () => {
+      state.calls.push({ table, method: "maybeSingle", args: [] });
+      const selectError = state.selectErrors[table];
+      if (selectError) return { data: null, error: selectError };
+      const matched = selectResult()[0] ?? null;
+      return { data: matched, error: null };
+    },
+    single: async () => {
+      state.calls.push({ table, method: "single", args: [] });
+      const matched = selectResult()[0] ?? null;
+      return matched
+        ? { data: matched, error: null }
+        : { data: null, error: { message: "not found" } };
+    },
+    then: (
+      resolve: (value: unknown) => unknown,
+      reject?: (reason: unknown) => unknown
+    ) => {
+      const result = (() => {
+        if (mode === "update" && patch) {
+          const updateError = state.updateErrors[table];
+          if (updateError) {
+            return {
+              data: null,
+              error:
+                typeof updateError === "string"
+                  ? { message: updateError }
+                  : updateError,
+            };
+          }
+
+          for (const row of rowsFor(table)) {
+            if (matchesFilters(row, filters)) Object.assign(row, patch);
+          }
+          return { data: null, error: null };
+        }
+        return { data: selectResult(), error: null };
+      })();
+      return Promise.resolve(result).then(resolve, reject);
+    },
+  };
+  return builder;
+}
+
+function makeSupabase() {
+  return {
+    from: (table: string) => makeBuilder(table),
+    rpc: vi.fn((name: string, args: Row) => {
+      state.calls.push({ method: `rpc:${name}`, args: [args] });
+      if (
+        name === "suppress_accounting_sync" &&
+        state.accounting_connections[0].force_suppress_error
+      ) {
+        return Promise.resolve({
+          data: null,
+          error: { message: "suppress failed" },
+        });
+      }
+      return Promise.resolve({ data: null, error: null });
+    }),
+  };
+}
+
+vi.mock("@/lib/supabase/server-client", () => ({
+  getServiceRoleClient: () => makeSupabase(),
+}));
+
+const COMPANY_ID = "7a88c7d6-d4e3-49be-9d21-0a989e0f3222";
+const CONNECTION_ID = "91d98e28-36ec-4060-b047-3cb5cc342a12";
+const ADMIN_ID = "operator-1";
+const CUSTOMER_ID = "2873266e-8d86-47e4-819b-7e570084f06f";
+const INVOICE_ID = "d9f024cf-f8b0-4e0c-9930-459e3b49660b";
+
+function queueRow(
+  overrides: Partial<AccountingSyncQueueRow<AccountingSyncQueueEntityType>> = {}
+): AccountingSyncQueueRow<AccountingSyncQueueEntityType> {
+  return {
+    id: "q-1",
+    companyId: COMPANY_ID,
+    connectionId: CONNECTION_ID,
+    provider: "quickbooks",
+    entityType: "invoice",
+    entityId: INVOICE_ID,
+    externalId: null,
+    operation: "create",
+    sourceTable: "invoices",
+    sourceAction: "insert",
+    sourceUpdatedAt: "2026-06-05T10:00:00.000Z",
+    idempotencyKey: `invoice:${INVOICE_ID}`,
+    status: "claimed",
+    attempts: 1,
+    maxAttempts: 5,
+    runAfter: "2026-06-05T10:00:00.000Z",
+    lockedAt: "2026-06-05T10:00:01.000Z",
+    lockedBy: "worker-1",
+    providerRequestId: null,
+    providerAcceptedAt: null,
+    idempotencyExpiresAt: null,
+    lastError: null,
+    payloadSnapshot: {},
+    createdAt: "2026-06-05T09:59:00.000Z",
+    updatedAt: "2026-06-05T10:00:01.000Z",
+    ...overrides,
+  };
+}
+
+function authorizedRequest(secret = "cron-secret") {
+  return new Request(
+    "http://localhost/api/cron/accounting/quickbooks/push-queue",
+    {
+      method: "POST",
+      headers: { authorization: `Bearer ${secret}` },
+    }
+  ) as never;
+}
+
+async function loadPost() {
+  return (await import("@/app/api/cron/accounting/quickbooks/push-queue/route"))
+    .POST;
+}
+
+async function loadGet() {
+  return (await import("@/app/api/cron/accounting/quickbooks/push-queue/route"))
+    .GET;
+}
+
+function authorizedGetRequest(secret = "cron-secret") {
+  return new Request(
+    "http://localhost/api/cron/accounting/quickbooks/push-queue",
+    {
+      method: "GET",
+      headers: { authorization: `Bearer ${secret}` },
+    }
+  ) as never;
+}
+
+describe("POST /api/cron/accounting/quickbooks/push-queue", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    for (const mock of [
+      claimDue,
+      markSucceeded,
+      scheduleRetry,
+      markBlocked,
+      markNeedsReview,
+      record,
+      getValidToken,
+      writeCreate,
+      writeUpdate,
+      writeVoid,
+      writeDelete,
+      writeFetchCurrent,
+    ]) {
+      mock.mockReset();
+    }
+    state = makeState();
+    process.env.CRON_SECRET = "cron-secret";
+    process.env.ACCOUNTING_WRITE_ENABLED = "false";
+    process.env.QB_ENVIRONMENT = "sandbox";
+    delete process.env.QBO_FALLBACK_SERVICE_ITEM_ID;
+    delete process.env.QBO_FALLBACK_SERVICE_ITEM_NAME;
+    delete process.env.QB_FALLBACK_SERVICE_ITEM_ID;
+    delete process.env.QB_FALLBACK_SERVICE_ITEM_NAME;
+    delete process.env.QBO_SANDBOX_FALLBACK_SERVICE_ITEM_ID;
+    delete process.env.QBO_SANDBOX_FALLBACK_SERVICE_ITEM_NAME;
+    delete process.env.QB_SANDBOX_FALLBACK_SERVICE_ITEM_ID;
+    delete process.env.QB_SANDBOX_FALLBACK_SERVICE_ITEM_NAME;
+    delete process.env.QBO_PRODUCTION_FALLBACK_SERVICE_ITEM_ID;
+    delete process.env.QBO_PRODUCTION_FALLBACK_SERVICE_ITEM_NAME;
+    delete process.env.QB_PRODUCTION_FALLBACK_SERVICE_ITEM_ID;
+    delete process.env.QB_PRODUCTION_FALLBACK_SERVICE_ITEM_NAME;
+    claimDue.mockResolvedValue([]);
+    getValidToken.mockResolvedValue({
+      accessToken: "access-token",
+      realmId: "462081636529",
+    });
+    writeCreate.mockResolvedValue({
+      qbId: "123",
+      syncToken: "0",
+      metaUpdatedAt: "2026-06-05T10:01:00Z",
+    });
+    writeUpdate.mockResolvedValue({
+      qbId: "90",
+      syncToken: "6",
+      metaUpdatedAt: "2026-06-05T10:02:00Z",
+    });
+    writeVoid.mockResolvedValue({
+      qbId: "90",
+      syncToken: "6",
+      metaUpdatedAt: "2026-06-05T10:02:00Z",
+    });
+    writeDelete.mockResolvedValue({
+      qbId: "99",
+      syncToken: "4",
+      metaUpdatedAt: "2026-06-05T10:02:00Z",
+    });
+    writeFetchCurrent.mockResolvedValue({
+      Invoice: {
+        Id: "90",
+        SyncToken: "5",
+        MetaData: { LastUpdatedTime: "2026-06-05T10:00:00Z" },
+      },
+    });
+    markSucceeded.mockResolvedValue(undefined);
+    scheduleRetry.mockResolvedValue(null);
+    markBlocked.mockResolvedValue(undefined);
+    markNeedsReview.mockResolvedValue(undefined);
+    record.mockResolvedValue("evt-1");
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("holds expenses while continuing existing customer delivery in the same batch", async () => {
+    process.env.ACCOUNTING_WRITE_ENABLED = "true";
+    vi.stubEnv("EXPENSE_ACCOUNTING_WRITE_ENABLED", undefined);
+    claimDue.mockImplementation(async ({ workerId }: { workerId: string }) => [
+      queueRow({ id: "q-expense", entityType: "expense", sourceTable: "expense_accounting_events", lockedBy: workerId }),
+      queueRow({ id: "q-customer", entityType: "customer", sourceTable: "clients", entityId: CUSTOMER_ID, lockedBy: workerId }),
+    ]);
+    state.clients.push({ id: CUSTOMER_ID, company_id: COMPANY_ID, name: "Maverick Projects", email: "ops@example.com", phone_number: "555-0100", qb_id: null, updated_at: "2026-06-05T10:00:00.000Z" });
+    const POST = await loadPost();
+    const result = await POST(authorizedRequest());
+    expect(result.status).toBe(200);
+    expect(await result.json()).toMatchObject({ processed: 2, blocked: 1, succeeded: 1 });
+    expect(markBlocked).toHaveBeenCalledWith("q-expense", "Expense accounting sync is paused.", { workerId: expect.stringMatching(/^qbo-push-/) });
+    expect(getValidToken).toHaveBeenCalledTimes(1);
+    expect(writeCreate).toHaveBeenCalledTimes(1);
+    expect(writeCreate.mock.calls[0][0]).toBe("Customer");
+    expect(markSucceeded).toHaveBeenCalledWith("q-customer", expect.objectContaining({ externalId: "123" }));
+  });
+
+  it("returns 401 for unauthorized requests and does not claim", async () => {
+    const POST = await loadPost();
+    const res = await POST(
+      new Request(
+        "http://localhost/api/cron/accounting/quickbooks/push-queue",
+        { method: "POST" }
+      ) as never
+    );
+
+    expect(res.status).toBe(401);
+    expect(claimDue).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when CRON_SECRET is missing", async () => {
+    delete process.env.CRON_SECRET;
+    const POST = await loadPost();
+    const res = await POST(authorizedRequest());
+
+    expect(res.status).toBe(401);
+    expect(claimDue).not.toHaveBeenCalled();
+  });
+
+  it("returns ACCOUNTING_WRITE_DISABLED when the write gate is not true and does not claim", async () => {
+    const POST = await loadPost();
+    const res = await POST(authorizedRequest());
+
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual(
+      expect.objectContaining({ code: "ACCOUNTING_WRITE_DISABLED" })
+    );
+    expect(claimDue).not.toHaveBeenCalled();
+  });
+
+  it("claims a bounded five-row QuickBooks batch when the write gate is true", async () => {
+    process.env.ACCOUNTING_WRITE_ENABLED = "true";
+
+    const POST = await loadPost();
+    const res = await POST(authorizedRequest());
+
+    expect(res.status).toBe(200);
+    expect(claimDue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: "quickbooks",
+        limit: 5,
+        workerId: expect.stringMatching(/^qbo-push-/),
+      })
+    );
+  });
+
+  it("returns an empty bounded-batch summary when no rows are due", async () => {
+    process.env.ACCOUNTING_WRITE_ENABLED = "true";
+
+    const POST = await loadPost();
+    const res = await POST(authorizedRequest());
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual(
+      expect.objectContaining({ processed: 0, failed: 0, succeeded: 0 })
+    );
+  });
+
+  it("pushes a customer and fetches active contacts via is(deleted_at,null) [regression: selectRows null filter]", async () => {
+    process.env.ACCOUNTING_WRITE_ENABLED = "true";
+    claimDue.mockResolvedValue([
+      queueRow({
+        id: "q-cust",
+        entityType: "customer",
+        entityId: CUSTOMER_ID,
+        operation: "create",
+        sourceTable: "clients",
+        sourceAction: "insert",
+        idempotencyKey: `customer:${CUSTOMER_ID}`,
+      }),
+    ]);
+    state.clients.push({
+      id: CUSTOMER_ID,
+      company_id: COMPANY_ID,
+      name: "Maverick Projects",
+      email: "ops@example.com",
+      phone_number: "555-0100",
+      qb_id: null,
+      updated_at: "2026-06-05T10:00:00.000Z",
+    });
+    // One active contact + one soft-deleted contact (must be excluded by the filter).
+    state.sub_clients.push(
+      {
+        id: "sc-active",
+        client_id: CUSTOMER_ID,
+        company_id: COMPANY_ID,
+        name: "Active Contact",
+        email: "c@example.com",
+        phone_number: "555-0101",
+        deleted_at: null,
+        created_at: "2026-06-05T09:00:00.000Z",
+      },
+      {
+        id: "sc-deleted",
+        client_id: CUSTOMER_ID,
+        company_id: COMPANY_ID,
+        name: "Old Contact",
+        deleted_at: "2026-06-01T00:00:00.000Z",
+        created_at: "2026-06-04T09:00:00.000Z",
+      }
+    );
+    writeCreate.mockResolvedValue({
+      qbId: "777",
+      syncToken: "0",
+      metaUpdatedAt: "2026-06-05T10:01:00Z",
+    });
+
+    const POST = await loadPost();
+    const res = await POST(authorizedRequest());
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body).toEqual(
+      expect.objectContaining({ succeeded: 1, failed: 0, needsReview: 0 })
+    );
+    expect(writeCreate).toHaveBeenCalledTimes(1);
+
+    // The contact fetch MUST use is(deleted_at,null); eq(deleted_at,null) is a Postgres error.
+    const subClientCalls = state.calls.filter((c) => c.table === "sub_clients");
+    expect(subClientCalls).toContainEqual(
+      expect.objectContaining({ method: "is", args: ["deleted_at", null] })
+    );
+    expect(subClientCalls).not.toContainEqual(
+      expect.objectContaining({ method: "eq", args: ["deleted_at", null] })
+    );
+
+    // qb_id written back to the OPS client; queue marked succeeded.
+    expect(state.clients[0].qb_id).toBe("777");
+    expect(markSucceeded).toHaveBeenCalledWith(
+      "q-cust",
+      expect.objectContaining({ externalId: "777" })
+    );
+  });
+
+  it("blocks an invoice row when the linked customer has no QuickBooks id", async () => {
+    process.env.ACCOUNTING_WRITE_ENABLED = "true";
+    claimDue.mockResolvedValue([queueRow()]);
+    state.invoices.push({
+      id: INVOICE_ID,
+      company_id: COMPANY_ID,
+      client_id: CUSTOMER_ID,
+      invoice_number: "INV-1001",
+      total: 125,
+      issue_date: "2026-06-05",
+      due_date: "2026-06-20",
+      qb_id: null,
+      updated_at: "2026-06-05T10:00:00.000Z",
+    });
+    state.clients.push({
+      id: CUSTOMER_ID,
+      company_id: COMPANY_ID,
+      name: "Maverick Projects",
+      qb_id: null,
+    });
+
+    const POST = await loadPost();
+    const res = await POST(authorizedRequest());
+
+    expect(res.status).toBe(200);
+    expect(writeCreate).not.toHaveBeenCalled();
+    expect(record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "blocked",
+        decision: "blocked",
+        error: "QuickBooks customer link required",
+      })
+    );
+    expect(markBlocked).toHaveBeenCalledWith(
+      "q-1",
+      "QuickBooks customer link required",
+      expect.anything()
+    );
+    expectConnectionWasChecked();
+    expect(state.notifications).toEqual([
+      expect.objectContaining({
+        company_id: COMPANY_ID,
+        user_id: ADMIN_ID,
+        persistent: true,
+        action_url: "/settings?tab=accounting",
+      }),
+    ]);
+  });
+
+  it("blocks an update row without any durable QuickBooks id and never creates a QBO record", async () => {
+    process.env.ACCOUNTING_WRITE_ENABLED = "true";
+    process.env.QBO_FALLBACK_SERVICE_ITEM_ID = "1";
+    claimDue.mockResolvedValue([
+      queueRow({
+        operation: "update",
+        externalId: null,
+      }),
+    ]);
+    state.invoices.push({
+      id: INVOICE_ID,
+      company_id: COMPANY_ID,
+      client_id: CUSTOMER_ID,
+      invoice_number: "INV-1001",
+      total: 125,
+      issue_date: "2026-06-05",
+      due_date: "2026-06-20",
+      qb_id: null,
+      updated_at: "2026-06-05T10:00:00.000Z",
+    });
+    state.clients.push({
+      id: CUSTOMER_ID,
+      company_id: COMPANY_ID,
+      name: "Maverick Projects",
+      qb_id: "44",
+    });
+    state.line_items.push({
+      id: "line-1",
+      company_id: COMPANY_ID,
+      invoice_id: INVOICE_ID,
+      name: "Field work",
+      quantity: 2,
+      unit_price: 62.5,
+      line_total: 125,
+    });
+
+    const POST = await loadPost();
+    const res = await POST(authorizedRequest());
+
+    expect(res.status).toBe(200);
+    expect(writeCreate).not.toHaveBeenCalled();
+    expect(writeUpdate).not.toHaveBeenCalled();
+    expect(markBlocked).toHaveBeenCalledWith(
+      "q-1",
+      "QuickBooks invoice update requires an existing qb_id or queue external_id",
+      expect.anything()
+    );
+    expect(scheduleRetry).not.toHaveBeenCalled();
+  });
+
+  it("writes a returned customer qb_id without creating a broad sync suppression", async () => {
+    process.env.ACCOUNTING_WRITE_ENABLED = "true";
+    claimDue.mockResolvedValue([
+      queueRow({
+        entityType: "customer",
+        entityId: CUSTOMER_ID,
+        operation: "create",
+        sourceTable: "clients",
+        idempotencyKey: `customer:${CUSTOMER_ID}`,
+      }),
+    ]);
+    state.clients.push({
+      id: CUSTOMER_ID,
+      company_id: COMPANY_ID,
+      name: "Maverick Projects",
+      email: "office@maverick.test",
+      phone_number: "778-555-0100",
+      address: "12 Yard Rd",
+      qb_id: null,
+      updated_at: "2026-06-05T10:00:00.000Z",
+    });
+
+    const POST = await loadPost();
+    const res = await POST(authorizedRequest());
+
+    expect(res.status).toBe(200);
+    expect(writeCreate).toHaveBeenCalledWith(
+      "Customer",
+      expect.objectContaining({ DisplayName: "Maverick Projects" })
+    );
+    const suppressIndex = state.calls.findIndex(
+      (call) => call.method === "rpc:suppress_accounting_sync"
+    );
+    const updateIndex = state.calls.findIndex(
+      (call) => call.table === "clients" && call.method === "update"
+    );
+    expect(suppressIndex).toBe(-1);
+    expect(updateIndex).toBeGreaterThanOrEqual(0);
+    expect(state.clients[0].qb_id).toBe("123");
+    expect(markSucceeded).toHaveBeenCalledWith("q-1", {
+      externalId: "123",
+      workerId: expect.any(String),
+    });
+    expect(record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "succeeded",
+        decision: "ops_won",
+        externalId: "123",
+      })
+    );
+  });
+
+  it("uses the queued external id to update a re-entered customer create without local qb_id", async () => {
+    process.env.ACCOUNTING_WRITE_ENABLED = "true";
+    claimDue.mockResolvedValue([
+      queueRow({
+        entityType: "customer",
+        entityId: CUSTOMER_ID,
+        operation: "create",
+        externalId: "123",
+        sourceTable: "clients",
+        idempotencyKey: `customer:${CUSTOMER_ID}`,
+      }),
+    ]);
+    writeFetchCurrent.mockResolvedValueOnce({
+      Customer: {
+        Id: "123",
+        SyncToken: "4",
+        MetaData: { LastUpdatedTime: "2026-06-05T10:00:00Z" },
+      },
+    });
+    writeUpdate.mockResolvedValueOnce({
+      qbId: "123",
+      syncToken: "5",
+      metaUpdatedAt: "2026-06-05T10:02:00Z",
+    });
+    let suppressCalledAtMarkSucceeded = false;
+    let clientLinkedAtMarkSucceeded = false;
+    markSucceeded.mockImplementationOnce(async () => {
+      const suppressIndex = state.calls.findIndex(
+        (call) => call.method === "rpc:suppress_accounting_sync"
+      );
+
+      suppressCalledAtMarkSucceeded = suppressIndex >= 0;
+      clientLinkedAtMarkSucceeded = state.clients[0].qb_id === "123";
+    });
+    state.clients.push({
+      id: CUSTOMER_ID,
+      company_id: COMPANY_ID,
+      name: "Maverick Projects",
+      email: "office@maverick.test",
+      phone_number: "778-555-0100",
+      qb_id: null,
+      updated_at: "2026-06-05T10:00:00.000Z",
+    });
+
+    const POST = await loadPost();
+    const res = await POST(authorizedRequest());
+
+    expect(res.status).toBe(200);
+    expect(writeFetchCurrent).toHaveBeenCalledWith("Customer", "123");
+    expect(writeUpdate).toHaveBeenCalledWith(
+      "Customer",
+      expect.objectContaining({
+        Id: "123",
+        SyncToken: "4",
+        DisplayName: "Maverick Projects",
+      })
+    );
+    expect(writeCreate).not.toHaveBeenCalled();
+    expect(state.clients[0].qb_id).toBe("123");
+    expect(suppressCalledAtMarkSucceeded).toBe(false);
+    expect(clientLinkedAtMarkSucceeded).toBe(true);
+    expect(markSucceeded).toHaveBeenCalledWith("q-1", {
+      externalId: "123",
+      workerId: expect.any(String),
+    });
+  });
+
+  it("uses the earliest sub-client as the customer primary contact", async () => {
+    process.env.ACCOUNTING_WRITE_ENABLED = "true";
+    claimDue.mockResolvedValue([
+      queueRow({
+        entityType: "customer",
+        entityId: CUSTOMER_ID,
+        operation: "create",
+        sourceTable: "clients",
+        idempotencyKey: `customer:${CUSTOMER_ID}`,
+      }),
+    ]);
+    state.clients.push({
+      id: CUSTOMER_ID,
+      company_id: COMPANY_ID,
+      name: "Maverick Projects",
+      email: "office@maverick.test",
+      phone_number: "778-555-0100",
+      qb_id: null,
+      updated_at: "2026-06-05T10:00:00.000Z",
+    });
+    state.sub_clients.push({
+      id: "contact-late",
+      company_id: COMPANY_ID,
+      client_id: CUSTOMER_ID,
+      name: "Late Contact",
+      email: "late@maverick.test",
+      phone_number: "778-555-0999",
+      created_at: "2026-06-05T11:00:00.000Z",
+      deleted_at: null,
+    });
+    state.sub_clients.push({
+      id: "contact-early",
+      company_id: COMPANY_ID,
+      client_id: CUSTOMER_ID,
+      name: "Early Contact",
+      email: "early@maverick.test",
+      phone_number: "778-555-0111",
+      created_at: "2026-06-05T09:00:00.000Z",
+      deleted_at: null,
+    });
+
+    const POST = await loadPost();
+    const res = await POST(authorizedRequest());
+
+    expect(res.status).toBe(200);
+    expect(writeCreate).toHaveBeenCalledWith(
+      "Customer",
+      expect.objectContaining({
+        PrimaryEmailAddr: { Address: "early@maverick.test" },
+        PrimaryPhone: { FreeFormNumber: "778-555-0111" },
+      })
+    );
+    expect(state.calls).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          table: "sub_clients",
+          method: "order",
+          args: ["created_at", { ascending: true }],
+        }),
+      ])
+    );
+  });
+
+  it("ignores soft-deleted sub-clients when choosing the customer primary contact", async () => {
+    process.env.ACCOUNTING_WRITE_ENABLED = "true";
+    claimDue.mockResolvedValue([
+      queueRow({
+        entityType: "customer",
+        entityId: CUSTOMER_ID,
+        operation: "update",
+        externalId: "123",
+        sourceTable: "sub_clients",
+        idempotencyKey: `customer:${CUSTOMER_ID}`,
+      }),
+    ]);
+    writeFetchCurrent.mockResolvedValueOnce({
+      Customer: {
+        Id: "123",
+        SyncToken: "4",
+        MetaData: { LastUpdatedTime: "2026-06-05T10:00:00Z" },
+      },
+    });
+    state.clients.push({
+      id: CUSTOMER_ID,
+      company_id: COMPANY_ID,
+      name: "Maverick Projects",
+      email: "office@maverick.test",
+      phone_number: "778-555-0100",
+      qb_id: "123",
+      updated_at: "2026-06-05T10:00:00.000Z",
+    });
+    state.sub_clients.push({
+      id: "contact-deleted",
+      company_id: COMPANY_ID,
+      client_id: CUSTOMER_ID,
+      name: "Deleted Contact",
+      email: "deleted@maverick.test",
+      phone_number: "778-555-0000",
+      created_at: "2026-06-05T08:00:00.000Z",
+      deleted_at: "2026-06-05T09:00:00.000Z",
+    });
+    state.sub_clients.push({
+      id: "contact-active",
+      company_id: COMPANY_ID,
+      client_id: CUSTOMER_ID,
+      name: "Active Contact",
+      email: "active@maverick.test",
+      phone_number: "778-555-0111",
+      created_at: "2026-06-05T10:00:00.000Z",
+      deleted_at: null,
+    });
+
+    const POST = await loadPost();
+    const res = await POST(authorizedRequest());
+
+    expect(res.status).toBe(200);
+    expect(writeUpdate).toHaveBeenCalledWith(
+      "Customer",
+      expect.objectContaining({
+        Id: "123",
+        SyncToken: "4",
+        PrimaryEmailAddr: { Address: "active@maverick.test" },
+        PrimaryPhone: { FreeFormNumber: "778-555-0111" },
+      })
+    );
+    expect(writeUpdate).not.toHaveBeenCalledWith(
+      "Customer",
+      expect.objectContaining({
+        PrimaryEmailAddr: { Address: "deleted@maverick.test" },
+      })
+    );
+  });
+
+  it("does not schedule retry when success audit fails after QBO create succeeds", async () => {
+    process.env.ACCOUNTING_WRITE_ENABLED = "true";
+    claimDue.mockResolvedValue([
+      queueRow({
+        entityType: "customer",
+        entityId: CUSTOMER_ID,
+        operation: "create",
+        sourceTable: "clients",
+        idempotencyKey: `customer:${CUSTOMER_ID}`,
+      }),
+    ]);
+    record.mockRejectedValueOnce(new Error("audit insert failed"));
+    state.clients.push({
+      id: CUSTOMER_ID,
+      company_id: COMPANY_ID,
+      name: "Maverick Projects",
+      qb_id: null,
+      updated_at: "2026-06-05T10:00:00.000Z",
+    });
+
+    const POST = await loadPost();
+    const res = await POST(authorizedRequest());
+
+    expect(res.status).toBe(200);
+    expect(writeCreate).toHaveBeenCalledTimes(1);
+    expect(scheduleRetry).not.toHaveBeenCalled();
+    expect(markNeedsReview).toHaveBeenCalledWith(
+      "q-1",
+      "QuickBooks write succeeded but worker finalization failed: audit insert failed",
+      expect.objectContaining({ externalId: "123" })
+    );
+  });
+
+  it("does not schedule retry when markSucceeded fails after QBO create succeeds", async () => {
+    process.env.ACCOUNTING_WRITE_ENABLED = "true";
+    claimDue.mockResolvedValue([
+      queueRow({
+        entityType: "customer",
+        entityId: CUSTOMER_ID,
+        operation: "create",
+        sourceTable: "clients",
+        idempotencyKey: `customer:${CUSTOMER_ID}`,
+      }),
+    ]);
+    markSucceeded.mockRejectedValueOnce(new Error("claim owner lost"));
+    state.clients.push({
+      id: CUSTOMER_ID,
+      company_id: COMPANY_ID,
+      name: "Maverick Projects",
+      qb_id: null,
+      updated_at: "2026-06-05T10:00:00.000Z",
+    });
+
+    const POST = await loadPost();
+    const res = await POST(authorizedRequest());
+
+    expect(res.status).toBe(200);
+    expect(writeCreate).toHaveBeenCalledTimes(1);
+    expect(scheduleRetry).not.toHaveBeenCalled();
+    expect(markNeedsReview).toHaveBeenCalledWith(
+      "q-1",
+      "QuickBooks write succeeded but worker finalization failed: claim owner lost",
+      expect.objectContaining({ externalId: "123" })
+    );
+  });
+
+  it("makes a direct terminal queue update when markNeedsReview also fails after QBO create succeeds", async () => {
+    process.env.ACCOUNTING_WRITE_ENABLED = "true";
+    const row = queueRow({
+      entityType: "customer",
+      entityId: CUSTOMER_ID,
+      operation: "create",
+      sourceTable: "clients",
+      idempotencyKey: `customer:${CUSTOMER_ID}`,
+      lockedBy: "worker-1",
+    });
+    claimDue.mockResolvedValue([row]);
+    markSucceeded.mockRejectedValueOnce(new Error("claim owner lost"));
+    markNeedsReview.mockRejectedValueOnce(
+      new Error("needs review update failed")
+    );
+    state.accounting_sync_queue.push({
+      id: row.id,
+      status: "claimed",
+      locked_by: row.lockedBy,
+      external_id: null,
+      last_error: null,
+    });
+    state.clients.push({
+      id: CUSTOMER_ID,
+      company_id: COMPANY_ID,
+      name: "Maverick Projects",
+      qb_id: null,
+      updated_at: "2026-06-05T10:00:00.000Z",
+    });
+
+    const POST = await loadPost();
+    const res = await POST(authorizedRequest());
+
+    expect(res.status).toBe(200);
+    expect(writeCreate).toHaveBeenCalledTimes(1);
+    expect(scheduleRetry).not.toHaveBeenCalled();
+    expect(state.accounting_sync_queue[0]).toEqual(
+      expect.objectContaining({
+        status: "needs_review",
+        external_id: "123",
+        locked_at: null,
+        locked_by: null,
+        last_error:
+          "QuickBooks write succeeded but worker finalization failed: claim owner lost",
+      })
+    );
+  });
+
+  it("does not schedule retry when qb_id writeback update fails after QBO create succeeds", async () => {
+    process.env.ACCOUNTING_WRITE_ENABLED = "true";
+    claimDue.mockResolvedValue([
+      queueRow({
+        entityType: "customer",
+        entityId: CUSTOMER_ID,
+        operation: "create",
+        sourceTable: "clients",
+        idempotencyKey: `customer:${CUSTOMER_ID}`,
+      }),
+    ]);
+    state.clients.push({
+      id: CUSTOMER_ID,
+      company_id: COMPANY_ID,
+      name: "Maverick Projects",
+      qb_id: null,
+      updated_at: "2026-06-05T10:00:00.000Z",
+    });
+    state.updateErrors.clients = "client qb_id update failed";
+
+    const POST = await loadPost();
+    const res = await POST(authorizedRequest());
+
+    expect(res.status).toBe(200);
+    expect(writeCreate).toHaveBeenCalledTimes(1);
+    expect(state.clients[0].qb_id).toBeNull();
+    expect(scheduleRetry).not.toHaveBeenCalled();
+    expect(markNeedsReview).toHaveBeenCalledWith(
+      "q-1",
+      "QuickBooks write succeeded but worker finalization failed: OPS qb_id writeback failed: client qb_id update failed",
+      expect.objectContaining({ externalId: "123" })
+    );
+  });
+
+  it("stops the batch on a code-only 53300 Supabase read instead of scheduling retry", async () => {
+    process.env.ACCOUNTING_WRITE_ENABLED = "true";
+    claimDue.mockResolvedValue([
+      queueRow({ id: "q-pressure-1" }),
+      queueRow({ id: "q-pressure-2" }),
+    ]);
+    state.selectErrors.accounting_connections = {
+      code: "53300",
+      message: "database rejected the request",
+    };
+
+    const POST = await loadPost();
+    const res = await POST(authorizedRequest());
+
+    expect(res.status).toBe(500);
+    expect(getValidToken).not.toHaveBeenCalled();
+    expect(writeCreate).not.toHaveBeenCalled();
+    expect(scheduleRetry).not.toHaveBeenCalled();
+  });
+
+  it("keeps an external QuickBooks 504 on the ordinary retry path", async () => {
+    process.env.ACCOUNTING_WRITE_ENABLED = "true";
+    claimDue.mockResolvedValue([
+      queueRow({
+        entityType: "customer",
+        entityId: CUSTOMER_ID,
+        operation: "create",
+        sourceTable: "clients",
+        idempotencyKey: `customer:${CUSTOMER_ID}`,
+      }),
+    ]);
+    state.clients.push({
+      id: CUSTOMER_ID,
+      company_id: COMPANY_ID,
+      name: "Maverick Projects",
+      qb_id: null,
+      updated_at: "2026-06-05T10:00:00.000Z",
+    });
+    writeCreate.mockRejectedValue(
+      Object.assign(new Error("QuickBooks write failed: 504"), { status: 504 })
+    );
+
+    const POST = await loadPost();
+    const res = await POST(authorizedRequest());
+
+    expect(res.status).toBe(200);
+    expect(writeCreate).toHaveBeenCalledOnce();
+    expect(scheduleRetry).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "q-1" }),
+      "QuickBooks write failed: 504",
+      expect.anything()
+    );
+  });
+
+  it("stops later provider writes after accepted-write DB finalization pressure", async () => {
+    process.env.ACCOUNTING_WRITE_ENABLED = "true";
+    const secondCustomerId = "9873266e-8d86-47e4-819b-7e570084f06f";
+    claimDue.mockResolvedValue([
+      queueRow({
+        id: "q-finalize-pressure-1",
+        entityType: "customer",
+        entityId: CUSTOMER_ID,
+        operation: "create",
+        sourceTable: "clients",
+        idempotencyKey: `customer:${CUSTOMER_ID}`,
+      }),
+      queueRow({
+        id: "q-finalize-pressure-2",
+        entityType: "customer",
+        entityId: secondCustomerId,
+        operation: "create",
+        sourceTable: "clients",
+        idempotencyKey: `customer:${secondCustomerId}`,
+      }),
+    ]);
+    state.clients.push(
+      {
+        id: CUSTOMER_ID,
+        company_id: COMPANY_ID,
+        name: "Maverick Projects",
+        qb_id: null,
+        updated_at: "2026-06-05T10:00:00.000Z",
+      },
+      {
+        id: secondCustomerId,
+        company_id: COMPANY_ID,
+        name: "Second Company",
+        qb_id: null,
+        updated_at: "2026-06-05T10:00:00.000Z",
+      }
+    );
+    state.updateErrors.clients = {
+      code: "53300",
+      message: "database rejected the finalization",
+    };
+
+    const POST = await loadPost();
+    const res = await POST(authorizedRequest());
+
+    expect(res.status).toBe(500);
+    expect(writeCreate).toHaveBeenCalledOnce();
+    expect(scheduleRetry).not.toHaveBeenCalled();
+    expect(markNeedsReview).toHaveBeenCalledWith(
+      "q-finalize-pressure-1",
+      expect.stringContaining(
+        "QuickBooks write succeeded but worker finalization failed"
+      ),
+      expect.objectContaining({ externalId: "123" })
+    );
+  });
+
+  it("schedules retry and records retry audit for retryable QuickBooks write statuses", async () => {
+    process.env.ACCOUNTING_WRITE_ENABLED = "true";
+    process.env.QBO_FALLBACK_SERVICE_ITEM_ID = "1";
+    claimDue.mockResolvedValue([queueRow()]);
+    writeCreate.mockRejectedValue(new Error("QuickBooks write failed: 429"));
+    state.invoices.push({
+      id: INVOICE_ID,
+      company_id: COMPANY_ID,
+      client_id: CUSTOMER_ID,
+      invoice_number: "INV-1001",
+      total: 125,
+      issue_date: "2026-06-05",
+      due_date: "2026-06-20",
+      qb_id: null,
+      updated_at: "2026-06-05T10:00:00.000Z",
+    });
+    state.clients.push({
+      id: CUSTOMER_ID,
+      company_id: COMPANY_ID,
+      name: "Maverick Projects",
+      qb_id: "44",
+    });
+    state.line_items.push({
+      id: "line-1",
+      company_id: COMPANY_ID,
+      invoice_id: INVOICE_ID,
+      name: "Field work",
+      quantity: 2,
+      unit_price: 62.5,
+      line_total: 125,
+    });
+
+    const POST = await loadPost();
+    const res = await POST(authorizedRequest());
+
+    expect(res.status).toBe(200);
+    expect(scheduleRetry).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "q-1" }),
+      "QuickBooks write failed: 429",
+      expect.anything()
+    );
+    expect(record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "failed",
+        decision: "retry",
+        error: "QuickBooks write failed: 429",
+      })
+    );
+  });
+
+  it("does not retrieve a token or call QBO for pull-only connections", async () => {
+    process.env.ACCOUNTING_WRITE_ENABLED = "true";
+    claimDue.mockResolvedValue([queueRow()]);
+    state.accounting_connections[0].sync_direction = "pull_only";
+
+    const POST = await loadPost();
+    const res = await POST(authorizedRequest());
+
+    expect(res.status).toBe(200);
+    expectConnectionWasChecked();
+    expect(getValidToken).not.toHaveBeenCalled();
+    expect(writeCreate).not.toHaveBeenCalled();
+    expect(writeUpdate).not.toHaveBeenCalled();
+    expect(markNeedsReview).toHaveBeenCalledWith(
+      "q-1",
+      "QuickBooks connection is pull_only; outbound writes are disabled",
+      expect.anything()
+    );
+  });
+
+  it("does not retrieve a token or call QBO for disconnected connections", async () => {
+    process.env.ACCOUNTING_WRITE_ENABLED = "true";
+    claimDue.mockResolvedValue([queueRow()]);
+    state.accounting_connections[0].is_connected = false;
+
+    const POST = await loadPost();
+    const res = await POST(authorizedRequest());
+
+    expect(res.status).toBe(200);
+    expectConnectionWasChecked();
+    expect(getValidToken).not.toHaveBeenCalled();
+    expect(writeCreate).not.toHaveBeenCalled();
+    expect(writeUpdate).not.toHaveBeenCalled();
+    expect(markNeedsReview).toHaveBeenCalledWith(
+      "q-1",
+      "QuickBooks connection is disconnected",
+      expect.anything()
+    );
+  });
+
+  it("does not retrieve a token or call QBO for sync-disabled connections", async () => {
+    process.env.ACCOUNTING_WRITE_ENABLED = "true";
+    claimDue.mockResolvedValue([queueRow()]);
+    state.accounting_connections[0].sync_enabled = false;
+
+    const POST = await loadPost();
+    const res = await POST(authorizedRequest());
+
+    expect(res.status).toBe(200);
+    expectConnectionWasChecked();
+    expect(getValidToken).not.toHaveBeenCalled();
+    expect(writeCreate).not.toHaveBeenCalled();
+    expect(writeUpdate).not.toHaveBeenCalled();
+    expect(markNeedsReview).toHaveBeenCalledWith(
+      "q-1",
+      "QuickBooks connection sync is disabled",
+      expect.anything()
+    );
+  });
+
+  it("treats invalid local QuickBooks ids as deterministic and does not schedule retry", async () => {
+    process.env.ACCOUNTING_WRITE_ENABLED = "true";
+    process.env.QBO_FALLBACK_SERVICE_ITEM_ID = "1";
+    writeFetchCurrent.mockRejectedValueOnce(new Error("Invalid QuickBooks id"));
+    claimDue.mockResolvedValue([
+      queueRow({
+        operation: "update",
+        externalId: null,
+      }),
+    ]);
+    state.invoices.push({
+      id: INVOICE_ID,
+      company_id: COMPANY_ID,
+      client_id: CUSTOMER_ID,
+      invoice_number: "INV-1001",
+      total: 125,
+      issue_date: "2026-06-05",
+      due_date: "2026-06-20",
+      qb_id: "abc-90",
+      updated_at: "2026-06-05T10:00:00.000Z",
+    });
+    state.clients.push({
+      id: CUSTOMER_ID,
+      company_id: COMPANY_ID,
+      name: "Maverick Projects",
+      qb_id: "44",
+    });
+
+    const POST = await loadPost();
+    const res = await POST(authorizedRequest());
+
+    expect(res.status).toBe(200);
+    expect(writeFetchCurrent).toHaveBeenCalledWith("Invoice", "abc-90");
+    expect(writeCreate).not.toHaveBeenCalled();
+    expect(writeUpdate).not.toHaveBeenCalled();
+    expect(scheduleRetry).not.toHaveBeenCalled();
+    expect(markBlocked).toHaveBeenCalledWith(
+      "q-1",
+      "Invalid QuickBooks id",
+      expect.anything()
+    );
+  });
+
+  it("fetches current SyncToken and uses the update payload path for linked invoices", async () => {
+    process.env.ACCOUNTING_WRITE_ENABLED = "true";
+    process.env.QBO_FALLBACK_SERVICE_ITEM_ID = "1";
+    claimDue.mockResolvedValue([
+      queueRow({
+        operation: "update",
+        externalId: "90",
+      }),
+    ]);
+    state.invoices.push({
+      id: INVOICE_ID,
+      company_id: COMPANY_ID,
+      client_id: CUSTOMER_ID,
+      invoice_number: "INV-1001",
+      total: 125,
+      issue_date: "2026-06-05",
+      due_date: "2026-06-20",
+      qb_id: "90",
+      updated_at: "2026-06-05T10:00:00.000Z",
+    });
+    state.clients.push({
+      id: CUSTOMER_ID,
+      company_id: COMPANY_ID,
+      name: "Maverick Projects",
+      qb_id: "44",
+    });
+    state.line_items.push({
+      id: "line-1",
+      company_id: COMPANY_ID,
+      invoice_id: INVOICE_ID,
+      name: "Field work",
+      quantity: 2,
+      unit_price: 62.5,
+      line_total: 125,
+    });
+    state.line_items.push({
+      id: "line-0",
+      company_id: COMPANY_ID,
+      invoice_id: INVOICE_ID,
+      name: "Site prep",
+      quantity: 1,
+      unit_price: 25,
+      line_total: 25,
+      sort_order: 0,
+    });
+    state.line_items[0].sort_order = 1;
+
+    const POST = await loadPost();
+    const res = await POST(authorizedRequest());
+
+    expect(res.status).toBe(200);
+    expect(writeFetchCurrent).toHaveBeenCalledWith("Invoice", "90");
+    expect(writeUpdate).toHaveBeenCalledWith(
+      "Invoice",
+      expect.objectContaining({
+        Id: "90",
+        SyncToken: "5",
+        CustomerRef: { value: "44" },
+        Line: [
+          expect.objectContaining({ Description: "Site prep" }),
+          expect.objectContaining({ Description: "Field work" }),
+        ],
+      })
+    );
+    expect(writeCreate).not.toHaveBeenCalled();
+    expect(markSucceeded).toHaveBeenCalledWith("q-1", {
+      externalId: "90",
+      workerId: expect.any(String),
+    });
+  });
+
+  it("resolves stale QuickBooks review notifications after a later successful write for the same entity", async () => {
+    process.env.ACCOUNTING_WRITE_ENABLED = "true";
+    process.env.QBO_FALLBACK_SERVICE_ITEM_ID = "1";
+    claimDue.mockResolvedValue([
+      queueRow({
+        operation: "update",
+        externalId: "90",
+      }),
+    ]);
+    state.notifications.push(
+      {
+        id: "n-blocked",
+        company_id: COMPANY_ID,
+        is_read: false,
+        resolved_at: null,
+        dedupe_key: `qbo-sync:${COMPANY_ID}:invoice:${INVOICE_ID}:blocked`,
+      },
+      {
+        id: "n-review",
+        company_id: COMPANY_ID,
+        is_read: false,
+        resolved_at: null,
+        dedupe_key: `qbo-sync:${COMPANY_ID}:invoice:${INVOICE_ID}:needs_review`,
+      },
+      {
+        id: "n-other",
+        company_id: COMPANY_ID,
+        is_read: false,
+        resolved_at: null,
+        dedupe_key: `qbo-sync:${COMPANY_ID}:payment:payment-1:needs_review`,
+      }
+    );
+    state.invoices.push({
+      id: INVOICE_ID,
+      company_id: COMPANY_ID,
+      client_id: CUSTOMER_ID,
+      invoice_number: "INV-1001",
+      total: 125,
+      issue_date: "2026-06-05",
+      due_date: "2026-06-20",
+      qb_id: "90",
+      updated_at: "2026-06-05T10:00:00.000Z",
+    });
+    state.clients.push({
+      id: CUSTOMER_ID,
+      company_id: COMPANY_ID,
+      name: "Maverick Projects",
+      qb_id: "44",
+    });
+    state.line_items.push({
+      id: "line-1",
+      company_id: COMPANY_ID,
+      invoice_id: INVOICE_ID,
+      name: "Field work",
+      quantity: 2,
+      unit_price: 62.5,
+      line_total: 125,
+    });
+
+    const POST = await loadPost();
+    const res = await POST(authorizedRequest());
+
+    expect(res.status).toBe(200);
+    expect(state.notifications.find((row) => row.id === "n-blocked")).toEqual(
+      expect.objectContaining({
+        is_read: true,
+        resolved_at: expect.any(String),
+      })
+    );
+    expect(state.notifications.find((row) => row.id === "n-review")).toEqual(
+      expect.objectContaining({
+        is_read: true,
+        resolved_at: expect.any(String),
+      })
+    );
+    expect(state.notifications.find((row) => row.id === "n-other")).toEqual(
+      expect.objectContaining({ is_read: false, resolved_at: null })
+    );
+  });
+
+  it("uses the sandbox fallback service item for sandbox invoice creates", async () => {
+    process.env.ACCOUNTING_WRITE_ENABLED = "true";
+    process.env.QBO_FALLBACK_SERVICE_ITEM_ID = "1";
+    process.env.QBO_SANDBOX_FALLBACK_SERVICE_ITEM_ID = "18";
+    process.env.QBO_SANDBOX_FALLBACK_SERVICE_ITEM_NAME =
+      "General services:Venue Rental";
+    getValidToken.mockResolvedValueOnce({
+      accessToken: "access-token",
+      realmId: "462081636529",
+      providerEnvironment: "sandbox",
+    });
+    claimDue.mockResolvedValue([queueRow()]);
+    state.invoices.push({
+      id: INVOICE_ID,
+      company_id: COMPANY_ID,
+      client_id: CUSTOMER_ID,
+      invoice_number: "INV-1001",
+      total: 125,
+      issue_date: "2026-06-05",
+      due_date: "2026-06-20",
+      qb_id: null,
+      updated_at: "2026-06-05T10:00:00.000Z",
+    });
+    state.clients.push({
+      id: CUSTOMER_ID,
+      company_id: COMPANY_ID,
+      name: "Maverick Projects",
+      qb_id: "44",
+    });
+    state.line_items.push({
+      id: "line-1",
+      company_id: COMPANY_ID,
+      invoice_id: INVOICE_ID,
+      name: "Field work",
+      quantity: 2,
+      unit_price: 62.5,
+      line_total: 125,
+    });
+
+    const POST = await loadPost();
+    const res = await POST(authorizedRequest());
+
+    expect(res.status).toBe(200);
+    expect(writeCreate).toHaveBeenCalledWith(
+      "Invoice",
+      expect.objectContaining({
+        Line: [
+          expect.objectContaining({
+            SalesItemLineDetail: expect.objectContaining({
+              ItemRef: { value: "18", name: "General services:Venue Rental" },
+            }),
+          }),
+        ],
+      })
+    );
+    expect(markSucceeded).toHaveBeenCalledWith("q-1", {
+      externalId: "123",
+      workerId: expect.any(String),
+    });
+  });
+
+  it("voids linked invoices with the current SyncToken and does not require customer or line data", async () => {
+    process.env.ACCOUNTING_WRITE_ENABLED = "true";
+    claimDue.mockResolvedValue([
+      queueRow({
+        operation: "void",
+        externalId: "90",
+      }),
+    ]);
+    state.invoices.push({
+      id: INVOICE_ID,
+      company_id: COMPANY_ID,
+      invoice_number: "INV-1001",
+      qb_id: "90",
+      updated_at: "2026-06-05T10:00:00.000Z",
+    });
+
+    const POST = await loadPost();
+    const res = await POST(authorizedRequest());
+
+    expect(res.status).toBe(200);
+    expect(writeFetchCurrent).toHaveBeenCalledWith("Invoice", "90");
+    expect(writeVoid).toHaveBeenCalledWith("Invoice", {
+      Id: "90",
+      SyncToken: "5",
+    });
+    expect(writeCreate).not.toHaveBeenCalled();
+    expect(writeUpdate).not.toHaveBeenCalled();
+    expect(markSucceeded).toHaveBeenCalledWith("q-1", {
+      externalId: "90",
+      workerId: expect.any(String),
+    });
+  });
+
+  it("creates linked payments and stores the canonical payment:invoice QuickBooks id", async () => {
+    process.env.ACCOUNTING_WRITE_ENABLED = "true";
+    claimDue.mockResolvedValue([
+      queueRow({
+        entityType: "payment",
+        entityId: "payment-1",
+        operation: "create",
+        sourceTable: "payments",
+        idempotencyKey: "payment:payment-1",
+      }),
+    ]);
+    writeCreate.mockResolvedValueOnce({
+      qbId: "77",
+      syncToken: "0",
+      metaUpdatedAt: "2026-06-05T10:02:00Z",
+    });
+    state.clients.push({
+      id: CUSTOMER_ID,
+      company_id: COMPANY_ID,
+      name: "Maverick Projects",
+      qb_id: "44",
+    });
+    state.invoices.push({
+      id: INVOICE_ID,
+      company_id: COMPANY_ID,
+      client_id: CUSTOMER_ID,
+      invoice_number: "INV-1001",
+      total: 125,
+      balance_due: 100,
+      qb_id: "90",
+    });
+    state.payments.push({
+      id: "payment-1",
+      company_id: COMPANY_ID,
+      client_id: CUSTOMER_ID,
+      invoice_id: INVOICE_ID,
+      amount: 25,
+      qb_id: null,
+      payment_date: "2026-06-05",
+      reference_number: "CHK-77",
+      created_at: "2026-06-05T09:00:00.000Z",
+    });
+
+    const POST = await loadPost();
+    const res = await POST(authorizedRequest());
+
+    expect(res.status).toBe(200);
+    expect(writeCreate).toHaveBeenCalledWith(
+      "Payment",
+      expect.objectContaining({
+        CustomerRef: { value: "44" },
+        TotalAmt: 25,
+        PaymentRefNum: "CHK-77",
+        Line: [
+          expect.objectContaining({
+            Amount: 25,
+            LinkedTxn: [{ TxnId: "90", TxnType: "Invoice" }],
+          }),
+        ],
+      })
+    );
+    expect(state.payments[0].qb_id).toBe("77:90");
+    expect(markSucceeded).toHaveBeenCalledWith("q-1", {
+      externalId: "77",
+      workerId: expect.any(String),
+    });
+  });
+
+  it("updates linked payments and rewrites the canonical payment:invoice QuickBooks id when the invoice link changes", async () => {
+    process.env.ACCOUNTING_WRITE_ENABLED = "true";
+    claimDue.mockResolvedValue([
+      queueRow({
+        entityType: "payment",
+        entityId: "payment-1",
+        operation: "update",
+        sourceTable: "payments",
+        idempotencyKey: "payment:payment-1:update",
+        externalId: "77",
+      }),
+    ]);
+    writeFetchCurrent.mockResolvedValueOnce({
+      Payment: {
+        Id: "77",
+        SyncToken: "1",
+        MetaData: { LastUpdatedTime: "2026-06-05T10:00:00Z" },
+      },
+    });
+    writeUpdate.mockResolvedValueOnce({
+      qbId: "77",
+      syncToken: "2",
+      metaUpdatedAt: "2026-06-05T10:02:00Z",
+    });
+    state.clients.push({
+      id: CUSTOMER_ID,
+      company_id: COMPANY_ID,
+      name: "Maverick Projects",
+      qb_id: "44",
+    });
+    state.invoices.push({
+      id: INVOICE_ID,
+      company_id: COMPANY_ID,
+      client_id: CUSTOMER_ID,
+      invoice_number: "INV-1002",
+      total: 125,
+      balance_due: 100,
+      qb_id: "91",
+    });
+    state.payments.push({
+      id: "payment-1",
+      company_id: COMPANY_ID,
+      client_id: CUSTOMER_ID,
+      invoice_id: INVOICE_ID,
+      amount: 25,
+      qb_id: "77:90",
+      payment_date: "2026-06-05",
+      reference_number: "CHK-77",
+      created_at: "2026-06-05T09:00:00.000Z",
+      updated_at: "2026-06-05T10:00:00.000Z",
+    });
+
+    const POST = await loadPost();
+    const res = await POST(authorizedRequest());
+
+    expect(res.status).toBe(200);
+    expect(writeFetchCurrent).toHaveBeenCalledWith("Payment", "77");
+    expect(writeUpdate).toHaveBeenCalledWith(
+      "Payment",
+      expect.objectContaining({
+        Id: "77",
+        SyncToken: "1",
+        CustomerRef: { value: "44" },
+        TotalAmt: 25,
+        Line: [
+          expect.objectContaining({
+            Amount: 25,
+            LinkedTxn: [{ TxnId: "91", TxnType: "Invoice" }],
+          }),
+        ],
+      })
+    );
+    expect(state.payments[0].qb_id).toBe("77:91");
+    expect(markSucceeded).toHaveBeenCalledWith("q-1", {
+      externalId: "77",
+      workerId: expect.any(String),
+    });
+  });
+
+  it("voids linked payments as sparse QuickBooks void updates", async () => {
+    process.env.ACCOUNTING_WRITE_ENABLED = "true";
+    claimDue.mockResolvedValue([
+      queueRow({
+        entityType: "payment",
+        entityId: "payment-1",
+        operation: "void",
+        sourceTable: "payments",
+        idempotencyKey: "payment:payment-1:void",
+        externalId: "77",
+      }),
+    ]);
+    writeFetchCurrent.mockResolvedValueOnce({
+      Payment: {
+        Id: "77",
+        SyncToken: "1",
+        MetaData: { LastUpdatedTime: "2026-06-05T10:00:00Z" },
+      },
+    });
+    writeVoid.mockResolvedValueOnce({
+      qbId: "77",
+      syncToken: "2",
+      metaUpdatedAt: "2026-06-05T10:02:00Z",
+    });
+    state.payments.push({
+      id: "payment-1",
+      company_id: COMPANY_ID,
+      amount: 25,
+      qb_id: "77:90",
+      voided_at: "2026-06-05T10:00:00.000Z",
+      created_at: "2026-06-05T09:00:00.000Z",
+    });
+
+    const POST = await loadPost();
+    const res = await POST(authorizedRequest());
+
+    expect(res.status).toBe(200);
+    expect(writeFetchCurrent).toHaveBeenCalledWith("Payment", "77");
+    expect(writeVoid).toHaveBeenCalledWith("Payment", {
+      Id: "77",
+      SyncToken: "1",
+      sparse: true,
+    });
+    expect(writeCreate).not.toHaveBeenCalled();
+    expect(writeUpdate).not.toHaveBeenCalled();
+    expect(markSucceeded).toHaveBeenCalledWith("q-1", {
+      externalId: "77",
+      workerId: expect.any(String),
+    });
+  });
+
+  it("keeps unsupported QuickBooks estimate voids in operator review", async () => {
+    process.env.ACCOUNTING_WRITE_ENABLED = "true";
+    claimDue.mockResolvedValue([
+      queueRow({
+        entityType: "estimate",
+        entityId: "estimate-1",
+        operation: "void",
+        sourceTable: "estimates",
+        idempotencyKey: "estimate:estimate-1:void",
+      }),
+    ]);
+
+    const POST = await loadPost();
+    const res = await POST(authorizedRequest());
+
+    expect(res.status).toBe(200);
+    expect(getValidToken).not.toHaveBeenCalled();
+    expect(writeVoid).not.toHaveBeenCalled();
+    expect(markNeedsReview).toHaveBeenCalledWith(
+      "q-1",
+      "QuickBooks estimate void requires operator review",
+      expect.anything()
+    );
+  });
+
+  // Vercel Cron invokes a scheduled endpoint with GET. A POST-only route is
+  // answered 405 and the queue silently never drains, so the GET handler must
+  // reach the same worker as POST. [regression: cron worker never ran]
+  it("GET (the Vercel cron invocation) reaches the worker and claims rows when the write gate is true", async () => {
+    process.env.ACCOUNTING_WRITE_ENABLED = "true";
+    const GET = await loadGet();
+    const res = await GET(authorizedGetRequest());
+
+    expect(res.status).toBe(200);
+    expect(claimDue).toHaveBeenCalledWith(
+      expect.objectContaining({ provider: "quickbooks", limit: 5 })
+    );
+  });
+
+  it("GET returns 401 for unauthorized requests and does not claim", async () => {
+    const GET = await loadGet();
+    const res = await GET(
+      new Request(
+        "http://localhost/api/cron/accounting/quickbooks/push-queue",
+        {
+          method: "GET",
+        }
+      ) as never
+    );
+
+    expect(res.status).toBe(401);
+    expect(claimDue).not.toHaveBeenCalled();
+  });
+
+  it("deletes linked estimates in QuickBooks with the current SyncToken", async () => {
+    process.env.ACCOUNTING_WRITE_ENABLED = "true";
+    claimDue.mockResolvedValue([
+      queueRow({
+        entityType: "estimate",
+        entityId: "estimate-1",
+        operation: "delete" as never,
+        sourceTable: "estimates",
+        sourceAction: "soft_delete",
+        idempotencyKey: "estimate:estimate-1:delete",
+        externalId: "99",
+      }),
+    ]);
+    writeFetchCurrent.mockResolvedValueOnce({
+      Estimate: {
+        Id: "99",
+        SyncToken: "3",
+        MetaData: { LastUpdatedTime: "2026-06-05T10:00:00Z" },
+      },
+    });
+    state.estimates.push({
+      id: "estimate-1",
+      company_id: COMPANY_ID,
+      client_id: CUSTOMER_ID,
+      estimate_number: "EST-1001",
+      total: 125,
+      qb_id: "99",
+      deleted_at: "2026-06-05T10:00:00.000Z",
+      updated_at: "2026-06-05T10:00:00.000Z",
+    });
+    state.clients.push({
+      id: CUSTOMER_ID,
+      company_id: COMPANY_ID,
+      name: "Maverick Projects",
+      qb_id: "44",
+    });
+
+    const POST = await loadPost();
+    const res = await POST(authorizedRequest());
+
+    expect(res.status).toBe(200);
+    expect(writeFetchCurrent).toHaveBeenCalledWith("Estimate", "99");
+    expect(writeDelete).toHaveBeenCalledWith("Estimate", {
+      Id: "99",
+      SyncToken: "3",
+    });
+    expect(writeVoid).not.toHaveBeenCalled();
+    expect(writeUpdate).not.toHaveBeenCalled();
+    expect(markSucceeded).toHaveBeenCalledWith("q-1", {
+      externalId: "99",
+      workerId: expect.any(String),
+    });
+  });
+});
+
+function expectConnectionWasChecked() {
+  expect(state.calls).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        table: "accounting_connections",
+        method: "eq",
+        args: ["id", CONNECTION_ID],
+      }),
+      expect.objectContaining({
+        table: "accounting_connections",
+        method: "eq",
+        args: ["company_id", COMPANY_ID],
+      }),
+      expect.objectContaining({
+        table: "accounting_connections",
+        method: "eq",
+        args: ["provider", "quickbooks"],
+      }),
+    ])
+  );
+}

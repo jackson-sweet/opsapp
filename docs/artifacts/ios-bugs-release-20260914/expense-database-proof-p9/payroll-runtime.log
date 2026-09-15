@@ -1,0 +1,30 @@
+psql:/Users/jacksonsweet/Projects/OPS/.worktrees/ios-bugs-p9-expense-release/supabase/migrations/20260901190000_agent_payroll_readiness.sql:377: NOTICE:  00000: trigger "expense_settings_agent_payroll_source_revision_v1" for relation "public.expense_settings" does not exist, skipping
+LOCATION:  does_not_exist_skipping, dropcmds.c:523
+psql:/Users/jacksonsweet/Projects/OPS/.worktrees/ios-bugs-p9-expense-release/supabase/migrations/20260901190000_agent_payroll_readiness.sql:385: NOTICE:  00000: trigger "recurring_expenses_agent_payroll_source_revision_v1" for relation "public.recurring_expenses" does not exist, skipping
+LOCATION:  does_not_exist_skipping, dropcmds.c:523
+psql:/Users/jacksonsweet/Projects/OPS/.worktrees/ios-bugs-p9-expense-release/supabase/migrations/20260901190000_agent_payroll_readiness.sql:393: NOTICE:  00000: trigger "expense_batches_agent_payroll_source_revision_v1" for relation "public.expense_batches" does not exist, skipping
+LOCATION:  does_not_exist_skipping, dropcmds.c:523
+psql:/Users/jacksonsweet/Projects/OPS/.worktrees/ios-bugs-p9-expense-release/supabase/migrations/20260901190000_agent_payroll_readiness.sql:401: NOTICE:  00000: trigger "expenses_agent_payroll_source_revision_v1" for relation "public.expenses" does not exist, skipping
+LOCATION:  does_not_exist_skipping, dropcmds.c:523
+psql:/Users/jacksonsweet/Projects/OPS/.worktrees/ios-bugs-p9-expense-release/supabase/migrations/20260901190000_agent_payroll_readiness.sql:409: NOTICE:  00000: trigger "invoices_agent_payroll_source_revision_v1" for relation "public.invoices" does not exist, skipping
+LOCATION:  does_not_exist_skipping, dropcmds.c:523
+psql:/Users/jacksonsweet/Projects/OPS/.worktrees/ios-bugs-p9-expense-release/supabase/migrations/20260901190000_agent_payroll_readiness.sql:417: NOTICE:  00000: trigger "payments_agent_payroll_source_revision_v1" for relation "public.payments" does not exist, skipping
+LOCATION:  does_not_exist_skipping, dropcmds.c:523
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+17 payroll reimbursement projection assertions passed

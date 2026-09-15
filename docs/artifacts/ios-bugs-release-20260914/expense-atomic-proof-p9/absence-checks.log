@@ -1,0 +1,8 @@
+C3 after rollback target-relations/reimbursement_amount present = 0/0
+C4 c4a after rejection target-relations/reimbursement_amount present = 0/0
+C4 c4b after rejection target-relations/reimbursement_amount present = 0/0
+C4 c4c after rejection target-relations/reimbursement_amount present = 0/0
+C4 c4d after rejection target-relations/reimbursement_amount present = 1/0
+C4 c4e after rejection target-relations/reimbursement_amount present = 0/0
+C4 c4f after rejection target-relations/reimbursement_amount present = 0/1
+C4 c4g after rejection target-relations/reimbursement_amount present = 0/0

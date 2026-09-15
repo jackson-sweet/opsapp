@@ -1,0 +1,535 @@
+CREATE FUNCTION
+CREATE TABLE
+CREATE FUNCTION
+CREATE FUNCTION
+INSERT 0 2
+INSERT 0 5
+INSERT 0 5
+INSERT 0 3
+INSERT 0 3
+INSERT 0 1
+INSERT 0 3
+INSERT 0 41
+INSERT 0 41
+CREATE FUNCTION
+CREATE TABLE
+INSERT 0 1
+                  set_config                  
+----------------------------------------------
+ {"sub":"p7-reviewer","role":"authenticated"}
+(1 row)
+
+SELECT 1
+ ok 
+----
+ 
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+ fail 
+------
+ 
+(1 row)
+
+ fail 
+------
+ 
+(1 row)
+
+ fail 
+------
+ 
+(1 row)
+
+ fail 
+------
+ 
+(1 row)
+
+ fail 
+------
+ 
+(1 row)
+
+ fail 
+------
+ 
+(1 row)
+
+ fail 
+------
+ 
+(1 row)
+
+ fail 
+------
+ 
+(1 row)
+
+ fail 
+------
+ 
+(1 row)
+
+ fail 
+------
+ 
+(1 row)
+
+ fail 
+------
+ 
+(1 row)
+
+ fail 
+------
+ 
+(1 row)
+
+ fail 
+------
+ 
+(1 row)
+
+ fail 
+------
+ 
+(1 row)
+
+ set_config 
+------------
+ 
+(1 row)
+
+UPDATE 1
+                  set_config                  
+----------------------------------------------
+ {"sub":"p7-reviewer","role":"authenticated"}
+(1 row)
+
+ fail 
+------
+ 
+(1 row)
+
+ fail 
+------
+ 
+(1 row)
+
+ set_config 
+------------
+ 
+(1 row)
+
+UPDATE 1
+                set_config                
+------------------------------------------
+ {"sub":"p7-crew","role":"authenticated"}
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+ fail 
+------
+ 
+(1 row)
+
+UPDATE 1
+                  set_config                  
+----------------------------------------------
+ {"sub":"p7-reviewer","role":"authenticated"}
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+DO
+                set_config                
+------------------------------------------
+ {"sub":"p7-peer","role":"authenticated"}
+(1 row)
+
+DO
+                 set_config                  
+---------------------------------------------
+ {"sub":"p7-foreign","role":"authenticated"}
+(1 row)
+
+ fail 
+------
+ 
+(1 row)
+
+DO
+ set_config 
+------------
+ 
+(1 row)
+
+UPDATE 1
+UPDATE 1
+UPDATE 1
+UPDATE 1
+UPDATE 1
+UPDATE 1
+UPDATE 1
+UPDATE 1
+UPDATE 1
+UPDATE 1
+                  set_config                  
+----------------------------------------------
+ {"sub":"p7-reviewer","role":"authenticated"}
+(1 row)
+
+ fail 
+------
+ 
+(1 row)
+
+ fail 
+------
+ 
+(1 row)
+
+ fail 
+------
+ 
+(1 row)
+
+ fail 
+------
+ 
+(1 row)
+
+ fail 
+------
+ 
+(1 row)
+
+ fail 
+------
+ 
+(1 row)
+
+ fail 
+------
+ 
+(1 row)
+
+ fail 
+------
+ 
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+SET
+DO
+RESET
+ ok 
+----
+ 
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+                  set_config                  
+----------------------------------------------
+ {"sub":"p7-reviewer","role":"authenticated"}
+(1 row)
+
+                                                                                                                                                                                                                                                                                                                                                                                                              set_config                                                                                                                                                                                                                                                                                                                                                                                                              
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ {"amount": 105, "actor_id": "77000000-0000-4000-8000-000000000010", "currency": "CAD", "company_id": "77000000-0000-4000-8000-000000000001", "expense_id": "77000000-0000-4000-8000-000000000210", "request_id": "77000000-0000-4000-8000-000000000510", "tax_amount": 5, "allocations": [{"amount": null, "percentage": 100, "project_id": "77000000-0000-4000-8000-000000000032"}], "category_id": "77000000-0000-4000-8000-000000000042", "description": "Original description", "expense_date": "2026-09-15", "submitted_by": "77000000-0000-4000-8000-000000000011", "merchant_name": "Original merchant", "payment_method": "personal_card", "correction_note": "  ", "expected_status": "submitted", "expected_updated_at": "2026-09-15T04:02:17.833915+00:00", "project_missing_note": null, "project_missing_reason": null}
+(1 row)
+
+SET
+ authenticated_result 
+----------------------
+ false
+(1 row)
+
+ authenticated_history_count 
+-----------------------------
+                           1
+(1 row)
+
+RESET
+ ok 
+----
+ 
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+CREATE FUNCTION
+                set_config                
+------------------------------------------
+ {"sub":"p7-crew","role":"authenticated"}
+(1 row)
+
+ resubmitted_status 
+--------------------
+ submitted
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+                  set_config                  
+----------------------------------------------
+ {"sub":"p7-reviewer","role":"authenticated"}
+(1 row)
+
+ ?column? 
+----------
+ false
+(1 row)
+
+UPDATE 1
+                set_config                
+------------------------------------------
+ {"sub":"p7-crew","role":"authenticated"}
+(1 row)
+
+ ?column?  
+-----------
+ submitted
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+ set_config 
+------------
+ 
+(1 row)
+
+ALTER TABLE
+UPDATE 1
+ALTER TABLE
+UPDATE 1
+                  set_config                  
+----------------------------------------------
+ {"sub":"p7-reviewer","role":"authenticated"}
+(1 row)
+
+ ?column? 
+----------
+ false
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+ set_config 
+------------
+ 
+(1 row)
+
+ place_expense 
+---------------
+ 
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+                set_config                
+------------------------------------------
+ {"sub":"p7-crew","role":"authenticated"}
+(1 row)
+
+ ?column? 
+----------
+ approved
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+ set_config 
+------------
+ 
+(1 row)
+
+UPDATE 1
+UPDATE 1
+                  set_config                  
+----------------------------------------------
+ {"sub":"p7-reviewer","role":"authenticated"}
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+ set_config 
+------------
+ 
+(1 row)
+
+CREATE FUNCTION
+CREATE TRIGGER
+                  set_config                  
+----------------------------------------------
+ {"sub":"p7-reviewer","role":"authenticated"}
+(1 row)
+
+ fail 
+------
+ 
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+ ok 
+----
+ 
+(1 row)
+
+ set_config 
+------------
+ 
+(1 row)
+
+DROP TRIGGER
+DROP FUNCTION
+                 result                  
+-----------------------------------------
+ 69 expense correction assertions passed
+(1 row)
+

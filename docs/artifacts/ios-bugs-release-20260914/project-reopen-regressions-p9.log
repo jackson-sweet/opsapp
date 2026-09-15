@@ -1,0 +1,62 @@
+PASS: untouched migration installs and rolls back completely
+PASS: migration rejects mutable-identity-helper-drift with55000 and leaves no installation
+PASS: migration rejects scope-helper-owner-drift with55000 and leaves no installation
+PASS: migration rejects missing-company-lock with55000 and leaves no installation
+PASS: migration rejects disabled-status-revision with55000 and leaves no installation
+PASS: migration rejects disabled-lifecycle-outbox with55000 and leaves no installation
+PASS: migration rejects disabled-project-identity-lock with55000 and leaves no installation
+PASS: migration rejects disabled-generic-timestamp with55000 and leaves no installation
+PASS: migration rejects changed-revision-trigger-order with55000 and leaves no installation
+PASS: migration rejects nullable-status-version with55000 and leaves no installation
+PASS: migration rejects wrong-status-version-type with55000 and leaves no installation
+PASS: migration rejects partial-receipt-table with55000 and leaves no installation
+PASS: migration rejects partial-competing-overload with55000 and leaves no installation
+PASS: migration rejects unexpected-public-function-default-grant with55000 and leaves no installation
+PASS: migration rejects unexpected-private-table-default-grant with55000 and leaves no installation
+14 migration preflight cases passed
+psql:/Users/jacksonsweet/Projects/OPS/.worktrees/ios-bugs-p6-project-server/tests/sql/project-task-reopen-runtime.sql:3: NOTICE:  PASS: unrelated status denied [22023]
+psql:/Users/jacksonsweet/Projects/OPS/.worktrees/ios-bugs-p6-project-server/tests/sql/project-task-reopen-runtime.sql:4: NOTICE:  PASS: truncated revision denied [P0001]
+psql:/Users/jacksonsweet/Projects/OPS/.worktrees/ios-bugs-p6-project-server/tests/sql/project-task-reopen-runtime.sql:5: NOTICE:  PASS: foreign project denied [42501]
+psql:/Users/jacksonsweet/Projects/OPS/.worktrees/ios-bugs-p6-project-server/tests/sql/project-task-reopen-runtime.sql:7: NOTICE:  PASS: unassigned scoped actor denied [42501]
+psql:/Users/jacksonsweet/Projects/OPS/.worktrees/ios-bugs-p6-project-server/tests/sql/project-task-reopen-runtime.sql:9: NOTICE:  PASS: assigned actor can reopen assigned project
+psql:/Users/jacksonsweet/Projects/OPS/.worktrees/ios-bugs-p6-project-server/tests/sql/project-task-reopen-runtime.sql:12: NOTICE:  PASS: first call supplies exact committed receipt
+psql:/Users/jacksonsweet/Projects/OPS/.worktrees/ios-bugs-p6-project-server/tests/sql/project-task-reopen-runtime.sql:13: NOTICE:  PASS: archive reopened once with one status version
+psql:/Users/jacksonsweet/Projects/OPS/.worktrees/ios-bugs-p6-project-server/tests/sql/project-task-reopen-runtime.sql:14: NOTICE:  PASS: existing actor-attributed outbox preserved
+psql:/Users/jacksonsweet/Projects/OPS/.worktrees/ios-bugs-p6-project-server/tests/sql/project-task-reopen-runtime.sql:15: NOTICE:  PASS: response-loss retry replays receipt
+psql:/Users/jacksonsweet/Projects/OPS/.worktrees/ios-bugs-p6-project-server/tests/sql/project-task-reopen-runtime.sql:18: NOTICE:  PASS: receipt retains original result after newer archive
+psql:/Users/jacksonsweet/Projects/OPS/.worktrees/ios-bugs-p6-project-server/tests/sql/project-task-reopen-runtime.sql:19: NOTICE:  PASS: replay never undoes newer archive
+psql:/Users/jacksonsweet/Projects/OPS/.worktrees/ios-bugs-p6-project-server/tests/sql/project-task-reopen-runtime.sql:20: NOTICE:  PASS: replay produces no extra lifecycle event
+psql:/Users/jacksonsweet/Projects/OPS/.worktrees/ios-bugs-p6-project-server/tests/sql/project-task-reopen-runtime.sql:21: NOTICE:  PASS: new command cannot reuse old archive revision [P0001]
+psql:/Users/jacksonsweet/Projects/OPS/.worktrees/ios-bugs-p6-project-server/tests/sql/project-task-reopen-runtime.sql:22: NOTICE:  PASS: command id cannot change target [22023]
+psql:/Users/jacksonsweet/Projects/OPS/.worktrees/ios-bugs-p6-project-server/tests/sql/project-task-reopen-runtime.sql:23: NOTICE:  PASS: command id cannot change project [22023]
+psql:/Users/jacksonsweet/Projects/OPS/.worktrees/ios-bugs-p6-project-server/tests/sql/project-task-reopen-runtime.sql:26: NOTICE:  PASS: different authorized actor cannot replay another command [22023]
+psql:/Users/jacksonsweet/Projects/OPS/.worktrees/ios-bugs-p6-project-server/tests/sql/project-task-reopen-runtime.sql:29: NOTICE:  PASS: company change blocks replay [42501]
+psql:/Users/jacksonsweet/Projects/OPS/.worktrees/ios-bugs-p6-project-server/tests/sql/project-task-reopen-runtime.sql:32: NOTICE:  PASS: revoked permission blocks replay [42501]
+psql:/Users/jacksonsweet/Projects/OPS/.worktrees/ios-bugs-p6-project-server/tests/sql/project-task-reopen-runtime.sql:35: NOTICE:  PASS: inactive actor blocks replay [42501]
+psql:/Users/jacksonsweet/Projects/OPS/.worktrees/ios-bugs-p6-project-server/tests/sql/project-task-reopen-runtime.sql:38: NOTICE:  PASS: deleted project blocks replay [42501]
+psql:/Users/jacksonsweet/Projects/OPS/.worktrees/ios-bugs-p6-project-server/tests/sql/project-task-reopen-runtime.sql:40: NOTICE:  PASS: missing actor denied [42501]
+psql:/Users/jacksonsweet/Projects/OPS/.worktrees/ios-bugs-p6-project-server/tests/sql/project-task-reopen-runtime.sql:43: NOTICE:  PASS: service callers have no operator write route [42501]
+psql:/Users/jacksonsweet/Projects/OPS/.worktrees/ios-bugs-p6-project-server/tests/sql/project-task-reopen-runtime.sql:44: NOTICE:  PASS: receipt rows inaccessible to clients
+psql:/Users/jacksonsweet/Projects/OPS/.worktrees/ios-bugs-p6-project-server/tests/sql/project-task-reopen-runtime.sql:45: NOTICE:  PASS: receipt rows inaccessible to service role
+psql:/Users/jacksonsweet/Projects/OPS/.worktrees/ios-bugs-p6-project-server/tests/sql/project-task-reopen-runtime.sql:46: NOTICE:  PASS: authenticated operator RPC granted
+psql:/Users/jacksonsweet/Projects/OPS/.worktrees/ios-bugs-p6-project-server/tests/sql/project-task-reopen-runtime.sql:49: NOTICE:  PASS: Firebase bridge role still requires exact operator receipt
+psql:/Users/jacksonsweet/Projects/OPS/.worktrees/ios-bugs-p6-project-server/tests/sql/project-task-reopen-runtime.sql:51: NOTICE:  PASS: actual anon database role can execute signed-actor receipt route
+psql:/Users/jacksonsweet/Projects/OPS/.worktrees/ios-bugs-p6-project-server/tests/sql/project-task-reopen-runtime.sql:55: NOTICE:  PASS: actual authenticated role can execute receipt route
+NOTICE:  PASS: concurrent duplicates commit one receipt
+ fixture_assert 
+----------------
+ 
+(1 row)
+
+NOTICE:  PASS: concurrent duplicates emit one status event
+ fixture_assert 
+----------------
+ 
+(1 row)
+
+PASS: identity unlink while waiting rejects first-write-auth_id; state unchanged; relink recovers
+PASS: identity unlink while waiting rejects first-write-firebase_uid; state unchanged; relink recovers
+PASS: identity unlink while waiting rejects replay-auth_id; state unchanged; relink recovers
+PASS: identity unlink while waiting rejects replay-firebase_uid; state unchanged; relink recovers
+{"identity_race_cases": 4, "cases": ["first-write-auth_id", "first-write-firebase_uid", "replay-auth_id", "replay-firebase_uid"]}
+Verification logs: /private/tmp/ops-project-reopen-proof.N4FY1S

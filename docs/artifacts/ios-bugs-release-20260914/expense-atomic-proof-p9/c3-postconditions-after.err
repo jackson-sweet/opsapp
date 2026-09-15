@@ -1,0 +1,3 @@
+psql:/private/tmp/ops-ios-bugs-p9-expense/atomic-fixture/postconditions.sql:49: ERROR:  P0001: ATOMIC_POSTCONDITION: expected all 11 new relations
+CONTEXT:  PL/pgSQL function inline_code_block line 9 at RAISE
+LOCATION:  exec_stmt_raise, pl_exec.c:3911

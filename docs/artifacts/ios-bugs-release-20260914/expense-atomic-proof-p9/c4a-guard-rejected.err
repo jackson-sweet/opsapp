@@ -1,0 +1,3 @@
+psql:/Users/jacksonsweet/Projects/OPS/ops-ios/docs/artifacts/ios-bugs-release-20260914/claude-handoff/atomic-install/baseline-guard.sql:50: ERROR:  P0001: Expense release source baseline changed: public.tg_place_expense
+CONTEXT:  PL/pgSQL function inline_code_block line 35 at RAISE
+LOCATION:  exec_stmt_raise, pl_exec.c:3911

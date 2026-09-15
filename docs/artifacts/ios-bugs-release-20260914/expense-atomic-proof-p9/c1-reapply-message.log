@@ -1,0 +1,3 @@
+C1 standalone-guard reapply rejection: Expense release source baseline changed: private.enforce_expense_edit_authority
+C1 frozen-bundle reapply rejection:   Expense release source baseline changed: private.enforce_expense_edit_authority
+C1 rejection class: source-baseline-changed

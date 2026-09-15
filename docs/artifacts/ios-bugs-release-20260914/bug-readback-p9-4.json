@@ -1,0 +1,12 @@
+{
+  "checked_at_utc": "2026-09-15 04:17:12.648058+00",
+  "operation": "guarded fix_notes append (P9-4 preparation notes); guards: id, status='in_progress', exact assigned_to, fixed_at is null, resolved_at is null, exact prior md5(fix_notes); updated_at untouched by design, matching prior appends",
+  "replay_checked_at_utc": "2026-09-15 04:17:09.710566+00",
+  "rows": [
+    {"id": "96a4a0ad-af24-47ea-9f40-3107713d8dd7", "assigned_to": "codex-ios-bugs-20260910-p1-2", "status": "in_progress", "fix_commit": "ce4a6e243b401a0eae286f0417ceb8fa830c408e", "fixed_at": null, "resolved_at": null, "updated_at": "2026-09-10 03:15:49.576+00", "prior_fix_notes_md5": "a3f480321fafd0db2eada4d3deaf0dc5", "prior_len": 2365, "fix_notes_md5": "5416faaa1570ddd5fff177cd70fa08f6", "fix_notes_len": 3411, "marker_occurrences": 1, "guard_replay_updated_count": 0},
+    {"id": "c381520d-84fa-40ea-ba66-67de14c717ce", "assigned_to": "codex-ios-bugs-20260914-p7", "status": "in_progress", "fix_commit": "ops-ios@3353ecce; ops-web@134be2424", "fixed_at": null, "resolved_at": null, "updated_at": "2026-09-03 00:51:02.437+00", "prior_fix_notes_md5": "9ae1af69d7cf437bc2cfcfa8aedf2c1d", "prior_len": 986, "fix_notes_md5": "384d33008ad62ab1330178b21fb25fec", "fix_notes_len": 1841, "marker_occurrences": 1, "guard_replay_updated_count": 0},
+    {"id": "facfecfe-6e28-4a1e-b332-2aa406cc00c6", "assigned_to": "codex-ios-bugs-20260914-p6", "status": "in_progress", "fix_commit": "ops-ios@5d0e6da1; ops-web@2a7f6ff3d", "fixed_at": null, "resolved_at": null, "updated_at": "2026-09-12 19:54:24.863+00", "prior_fix_notes_md5": "2315a588b07a4af1fe11cda92d74cf05", "prior_len": 753, "fix_notes_md5": "4854e651b49ca82b7bdad5af4131d0c0", "fix_notes_len": 1559, "marker_occurrences": 1, "guard_replay_updated_count": 0}
+  ],
+  "no_report_closed": true,
+  "no_customer_record_altered": true
+}

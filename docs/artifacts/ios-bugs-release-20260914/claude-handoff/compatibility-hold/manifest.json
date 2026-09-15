@@ -1,0 +1,44 @@
+{
+  "prepareOnly": true,
+  "productionBase": "b5b0cb59275f0addf923db608b1daeac4afca844",
+  "files": [
+    {
+      "path": "src/app/api/cron/accounting/quickbooks/push-queue/route.ts",
+      "baseSha256": "141a4cd952ae8581bdabd38ef83c3ac40e4df0e501c56eac33c589638b5e058d",
+      "preparedSha256": "7f13e808fe397570502d6f87999691501c456a9a16678988c2957ed52f7f1d33"
+    },
+    {
+      "path": "src/app/api/cron/accounting/sage/push-queue/route.ts",
+      "baseSha256": "7d53d904dc3a883792f83696a333f90d3fcdb060e969aeec01d307c9c97a7fa8",
+      "preparedSha256": "31f63ba32d2033f491dc1ec5257fd044e1d10f523d7afbe3c55e3b5e8dc4ddf2"
+    },
+    {
+      "path": "src/lib/api/services/accounting-sync-queue-types.ts",
+      "baseSha256": "5ba5c459c440616b05e8a1f81ac18edabd9912b0253f9095ba44ff076db8b453",
+      "preparedSha256": "3ba6bcd9b209a2880148bd48844612a717397cefae9d4657d6785bfc32391526"
+    },
+    {
+      "path": "src/lib/api/services/expense-accounting-compatibility-hold.ts",
+      "baseSha256": null,
+      "preparedSha256": "0856cd5b1e78c37b6070a7368a5c0b256ac6919a85fac48445709df22d8f6084"
+    },
+    {
+      "path": "tests/unit/expenses/expense-accounting-compatibility-hold.test.ts",
+      "baseSha256": null,
+      "preparedSha256": "c9fe3c1453b5e1d20247022a1277f58322b4621ac8cc3d34299fddaafc4d3bb2"
+    },
+    {
+      "path": "tests/integration/qbo-push-queue-route.test.ts",
+      "baseSha256": "6d9fc47451133beb4ccff3d78451c3237cea802e8c5f9695c44c627995085ade",
+      "preparedSha256": "5a9faa151fcf49b0092cff1027aac7279287583ad6de627717cc857e0871fa54"
+    },
+    {
+      "path": "tests/integration/sage-push-queue-route.test.ts",
+      "baseSha256": "da3160244047057ffb0d8ea3c003f523e74570fa1419068762bd5d92946ee857",
+      "preparedSha256": "68f085eafaa137f1e21045eda8a92485b2419e85ec23abf11c4756c0b777c1fc"
+    }
+  ],
+  "executedTests": false,
+  "deployed": false,
+  "patchSha256": "e18e8be02c710f173ff791491ed0bb1d3ffa949d39c3475b833d70f2bf372a80"
+}

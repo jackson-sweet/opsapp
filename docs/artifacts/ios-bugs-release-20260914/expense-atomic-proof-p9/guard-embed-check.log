@@ -1,0 +1,14 @@
+# brief-stated range 3,51 (expected empty)
+49a50
+> $expense_release_baseline$;
+RANGE 3,51 DIFFERS (exit 1)
+
+# actual guard range 3,52 (closing dollar-quote is bundle line 52)
+RANGE 3,52 IDENTICAL
+
+# bundle line 1/2 and final statement
+-- PREPARE ONLY. Requires separate migration authorization.
+BEGIN;
+line 2510: COMMIT;
+bundle line count: 2510
+guard file line count: 50

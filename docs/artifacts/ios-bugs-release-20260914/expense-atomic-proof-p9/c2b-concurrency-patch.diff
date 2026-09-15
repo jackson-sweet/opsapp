@@ -1,0 +1,4 @@
+8c8
+< base = [psql, '-h', socket, '-p', '55494', '-U', 'postgres', '-d', 'postgres', '-X', '-q', '-t', '-A', '-v', 'ON_ERROR_STOP=1', '-v', 'VERBOSITY=verbose']
+---
+> base = [psql, '-h', socket, '-p', '55495', '-U', 'postgres', '-d', sys.argv[3], '-X', '-q', '-t', '-A', '-v', 'ON_ERROR_STOP=1', '-v', 'VERBOSITY=verbose']

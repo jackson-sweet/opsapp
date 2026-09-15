@@ -1,0 +1,17 @@
+# Expense queue compatibility hold — prepare only
+
+Base: `b5b0cb59275f0addf923db608b1daeac4afca844` (the parent-verified current production web revision). Patch: `production-compatibility-hold.patch`; SHA256 `e18e8be02c710f173ff791491ed0bb1d3ffa949d39c3475b833d70f2bf372a80`. `manifest.json` lists all seven source paths and before/after hashes. `source/` contains complete prepared files; `base-check/` contains exact production originals. No branch, deployment, configuration or production data was changed.
+
+The two existing provider dispatchers recognize an expense before any normal connection/token/payload work and call a small bridge that can only save guarded `blocked` or `needs_review` custody. This bridge unconditionally holds expenses, even if an expense activation environment value is accidentally set. It imports only server-only and existing queue types, needs no new table/function, creates no provider client, and accepts no token/provider callback. Existing AR/AP dispatch, auth, global/Sage gates, workload controls, batching, limits and claim API remain unchanged. One expense union member is the only type expansion.
+
+Only `claimed` rows owned by this worker with expense/accounting-event/create source may be held. Any stored provider evidence keeps `needs_review`; ordinary work gets `Expense accounting sync is paused.` The guarded queue service clears locks but preserves snapshots/evidence. Failed status saves throw; they never become success, automatic retry, or provider delivery. The route's existing batch failure behavior remains intact.
+
+Do not cherry-pick this bootstrap into the final expense candidate: the final candidate dispatches to the full expense worker with its strict default-off gate. This is a separately reviewed temporary deployment on exact production, used only before schema capture is installed. Read back its deployed source and confirm the production alias and scheduled callers now target that deployment. Record the confirmation timestamp; both production push routes declare maxDuration=300. Before event capture, allow at least 300 seconds from confirmed routing and check old-version invocation logs and queue claim/lease state read-only. Do not trigger cron/provider writes as a probe or clear active claim/acceptance evidence. The later edge drain of at least 400 seconds also covers this bound only when the edge confirmation follows hold confirmation and no old scheduled target/new invocation remains. Retain it until the old edge writer is retired and drained and the atomic schema install succeeds.
+
+Static proof performed: `git apply --check` succeeded against the copied exact-production originals. The parent separately reports 56/56 tests passing on the exact production checkout plus this patch; its type/lint checks are separate. Tests/build/typecheck have not been run by the preparing agent. Parent-only fake-provider verification on the complete production checkout plus this patch:
+
+```sh
+npm test -- --run tests/unit/expenses/expense-accounting-compatibility-hold.test.ts tests/integration/qbo-push-queue-route.test.ts tests/integration/sage-push-queue-route.test.ts
+```
+
+The two mixed-batch tests assert QBO customer and Sage invoice/supplier delivery remain active while an expense blocks. The 13 helper cases cover both providers, absent/false/true activation values, all four provider evidence fields, invalid ownership/source/operation and failed persistence. No test invokes a real provider.

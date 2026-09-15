@@ -1,0 +1,11 @@
+Loading /Users/jacksonsweet/Projects/OPS/.worktrees/ios-bugs-p9-expense-release/tests/sql/expense-decision-authority-baseline.sql
+Loading /Users/jacksonsweet/Projects/OPS/.worktrees/ios-bugs-p9-expense-release/tests/sql/expense-accounting-fixture.sql
+Loading /Users/jacksonsweet/Projects/OPS/.worktrees/ios-bugs-p9-expense-release/tests/sql/expense-correction-fixture.sql
+Loading /Users/jacksonsweet/Projects/OPS/.worktrees/ios-bugs-p9-expense-release/supabase/migrations/20260720024121_expense_atomic_save.sql
+psql:/Users/jacksonsweet/Projects/OPS/.worktrees/ios-bugs-p9-expense-release/supabase/migrations/20260720024121_expense_atomic_save.sql:96: NOTICE:  00000: trigger "trg_touch_expense_from_allocation" for relation "public.expense_project_allocations" does not exist, skipping
+LOCATION:  does_not_exist_skipping, dropcmds.c:523
+Loading /Users/jacksonsweet/Projects/OPS/.worktrees/ios-bugs-p9-expense-release/supabase/migrations/20260720024623_fix_expense_batch_recalculation_alias.sql
+Loading /Users/jacksonsweet/Projects/OPS/.worktrees/ios-bugs-p9-expense-release/tests/sql/expense-payroll-projection-live-baseline.sql
+Loading /Users/jacksonsweet/Projects/OPS/.worktrees/ios-bugs-p9-expense-release/tests/sql/expense-correction-baseline.sql
+{"sub":"baseline-admin","role":"authenticated"}
+Baseline reproduced: no correction command; ordinary admin edit denied

@@ -1,0 +1,875 @@
+2026-09-14 21:02:14.445 PDT [88245] LOG:  starting PostgreSQL 17.11 (Homebrew) on aarch64-apple-darwin25.6.0, compiled by Apple clang version 21.0.0 (clang-2100.1.1.101), 64-bit
+2026-09-14 21:02:14.445 PDT [88245] LOG:  listening on Unix socket "/private/tmp/ops-ios-bugs-p9-expense/pg.3dgAxG/socket/.s.PGSQL.55495"
+2026-09-14 21:02:14.448 PDT [88248] LOG:  database system was shut down at 2026-09-14 21:02:14 PDT
+2026-09-14 21:02:14.451 PDT [88245] LOG:  database system is ready to accept connections
+2026-09-14 21:02:15.443 PDT [88337] ERROR:  Expense release source baseline changed: private.enforce_expense_edit_authority
+2026-09-14 21:02:15.443 PDT [88337] CONTEXT:  PL/pgSQL function inline_code_block line 35 at RAISE
+2026-09-14 21:02:15.443 PDT [88337] STATEMENT:  DO $expense_release_baseline$
+	DECLARE
+	  mismatch text;
+	BEGIN
+	  IF current_user <> 'postgres' THEN
+	    RAISE EXCEPTION 'Expense release requires the reviewed postgres migration owner';
+	  END IF;
+	  WITH expected(schema_name,function_name,identity_arguments,expected_md5) AS (VALUES
+	    ('private', 'get_current_user_id', '', '127ffd06387933500d95f96aba24b605'),
+	    ('private', 'get_user_company_id', '', '3de642ffe4b81ee8827c1cc6507f85c4'),
+	    ('private', 'current_user_is_admin', '', '71fedd6dc3d8226af0b506dcfce72dd8'),
+	    ('private', 'current_user_scope_for', 'p_permission text', '2ac60f997a0ac6de618bef5ff7aa5592'),
+	    ('private', 'current_user_has_permission', 'p_permission text, p_min_scope text', '43eb70a695fbf7b8efb38fd40f9c57c3'),
+	    ('public', 'has_permission', 'p_user_id uuid, p_permission text, p_required_scope text', '2a04ca2eb341948215285025249f48f9'),
+	    ('private', 'enforce_expense_edit_authority', '', 'a489f4f6506516e5934ff08f8fba69ad'),
+	    ('public', 'save_expense_atomic', 'p_command jsonb', 'aebfc5e480082b8160de4c6cc4b6fbb3'),
+	    ('public', 'approve_expense_batch', 'p_batch_id uuid', '87bc087970d0c1fb3f36313836869d66'),
+	    ('public', 'early_clear_expense_line', 'p_expense_id uuid', '9b271925be5fe9e9ab8c6ca67cf1115c'),
+	    ('public', 'mark_expense_batch_paid', 'p_batch_id uuid', '0ca6d6ae5d05d8283bcc3bb67b8436b5'),
+	    ('public', 'unmark_expense_batch_paid', 'p_batch_id uuid', '981f644ded66f43707d800d7400ef6ce'),
+	    ('public', 'recalculate_expense_batch_total', 'p_batch_id uuid', '8781e28a7a0485dc02b1d06eefcc8a22'),
+	    ('public', 'place_expense', 'p_expense_id uuid', '69ae7eaa26297db59646c704ea454712'),
+	    ('public', 'tg_place_expense', '', '2a9d3575dd23507040a31cb49dc69825')
+	  )
+	  SELECT e.schema_name || '.' || e.function_name INTO mismatch
+	  FROM expected e
+	  LEFT JOIN pg_catalog.pg_namespace n ON n.nspname=e.schema_name
+	  LEFT JOIN pg_catalog.pg_proc p ON p.pronamespace=n.oid AND p.proname=e.function_name
+	    AND pg_catalog.pg_get_function_identity_arguments(p.oid)=e.identity_arguments
+	  WHERE p.oid IS NULL
+	    OR pg_catalog.md5(pg_catalog.pg_get_functiondef(p.oid)) IS DISTINCT FROM e.expected_md5
+	    OR pg_catalog.pg_get_userbyid(p.proowner) IS DISTINCT FROM 'postgres'
+	  LIMIT 1;
+	  IF mismatch IS NOT NULL THEN
+	    RAISE EXCEPTION 'Expense release source baseline changed: %', mismatch;
+	  END IF;
+	  IF EXISTS (SELECT 1 FROM unnest(ARRAY['public.expense_accounting_settings','public.expense_accounting_payee_mappings','public.expense_accounting_tax_mappings','public.expense_accounting_category_mappings','public.expense_accounting_project_mappings','public.expense_accounting_events','public.expense_accounting_postings','private.expense_accounting_state','private.expense_correction_requests','private.expense_correction_pending','private.expense_correction_scope']) AS target(name)
+	    WHERE pg_catalog.to_regclass(target.name) IS NOT NULL)
+	  OR EXISTS (SELECT 1 FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace
+	    WHERE n.nspname || '.' || p.proname = ANY(ARRAY['private.lock_expense_approver_context','private.lock_expense_batch_for_approval','private.execute_expense_decision','public.request_expense_accounting_sync','public.retry_expense_accounting_before_write','public.correct_expense_for_review','public.list_expense_corrections','private.derive_expense_reimbursement_amount','private.refresh_expense_reimbursement_amount','private.invalidate_expense_accounting_connection_binding','private.enforce_expense_accounting_authority','private.enforce_expense_accounting_related_authority','private.expense_queue_cancelled_before_write','private.cancel_unwritten_expense_reversals','private.queue_expense_accounting_event','private.append_expense_accounting_event','private.capture_expense_accounting_state','private.capture_expense_accounting_change','private.capture_expense_accounting_allocation','public.prepare_expense_accounting_write','public.finalize_expense_accounting_sync','public.save_expense_accounting_settings','private.notify_expense_accounting_review','private.expense_correction_content','private.expense_correction_snapshot','private.immutable_expense_correction','private.correct_expense_for_review','private.list_expense_corrections']))
+	  OR EXISTS (SELECT 1 FROM pg_catalog.pg_attribute a
+	    WHERE a.attrelid='public.expense_batches'::regclass
+	      AND a.attname='reimbursement_amount' AND NOT a.attisdropped) THEN
+	    RAISE EXCEPTION 'Expense release baseline is already installed or partially changed';
+	  END IF;
+	END;
+	$expense_release_baseline$;
+2026-09-14 21:02:15.467 PDT [88347] ERROR:  Expense release source baseline changed: private.enforce_expense_edit_authority
+2026-09-14 21:02:15.467 PDT [88347] CONTEXT:  PL/pgSQL function inline_code_block line 35 at RAISE
+2026-09-14 21:02:15.467 PDT [88347] STATEMENT:  DO $expense_release_baseline$
+	DECLARE
+	  mismatch text;
+	BEGIN
+	  IF current_user <> 'postgres' THEN
+	    RAISE EXCEPTION 'Expense release requires the reviewed postgres migration owner';
+	  END IF;
+	  WITH expected(schema_name,function_name,identity_arguments,expected_md5) AS (VALUES
+	    ('private', 'get_current_user_id', '', '127ffd06387933500d95f96aba24b605'),
+	    ('private', 'get_user_company_id', '', '3de642ffe4b81ee8827c1cc6507f85c4'),
+	    ('private', 'current_user_is_admin', '', '71fedd6dc3d8226af0b506dcfce72dd8'),
+	    ('private', 'current_user_scope_for', 'p_permission text', '2ac60f997a0ac6de618bef5ff7aa5592'),
+	    ('private', 'current_user_has_permission', 'p_permission text, p_min_scope text', '43eb70a695fbf7b8efb38fd40f9c57c3'),
+	    ('public', 'has_permission', 'p_user_id uuid, p_permission text, p_required_scope text', '2a04ca2eb341948215285025249f48f9'),
+	    ('private', 'enforce_expense_edit_authority', '', 'a489f4f6506516e5934ff08f8fba69ad'),
+	    ('public', 'save_expense_atomic', 'p_command jsonb', 'aebfc5e480082b8160de4c6cc4b6fbb3'),
+	    ('public', 'approve_expense_batch', 'p_batch_id uuid', '87bc087970d0c1fb3f36313836869d66'),
+	    ('public', 'early_clear_expense_line', 'p_expense_id uuid', '9b271925be5fe9e9ab8c6ca67cf1115c'),
+	    ('public', 'mark_expense_batch_paid', 'p_batch_id uuid', '0ca6d6ae5d05d8283bcc3bb67b8436b5'),
+	    ('public', 'unmark_expense_batch_paid', 'p_batch_id uuid', '981f644ded66f43707d800d7400ef6ce'),
+	    ('public', 'recalculate_expense_batch_total', 'p_batch_id uuid', '8781e28a7a0485dc02b1d06eefcc8a22'),
+	    ('public', 'place_expense', 'p_expense_id uuid', '69ae7eaa26297db59646c704ea454712'),
+	    ('public', 'tg_place_expense', '', '2a9d3575dd23507040a31cb49dc69825')
+	  )
+	  SELECT e.schema_name || '.' || e.function_name INTO mismatch
+	  FROM expected e
+	  LEFT JOIN pg_catalog.pg_namespace n ON n.nspname=e.schema_name
+	  LEFT JOIN pg_catalog.pg_proc p ON p.pronamespace=n.oid AND p.proname=e.function_name
+	    AND pg_catalog.pg_get_function_identity_arguments(p.oid)=e.identity_arguments
+	  WHERE p.oid IS NULL
+	    OR pg_catalog.md5(pg_catalog.pg_get_functiondef(p.oid)) IS DISTINCT FROM e.expected_md5
+	    OR pg_catalog.pg_get_userbyid(p.proowner) IS DISTINCT FROM 'postgres'
+	  LIMIT 1;
+	  IF mismatch IS NOT NULL THEN
+	    RAISE EXCEPTION 'Expense release source baseline changed: %', mismatch;
+	  END IF;
+	  IF EXISTS (SELECT 1 FROM unnest(ARRAY['public.expense_accounting_settings','public.expense_accounting_payee_mappings','public.expense_accounting_tax_mappings','public.expense_accounting_category_mappings','public.expense_accounting_project_mappings','public.expense_accounting_events','public.expense_accounting_postings','private.expense_accounting_state','private.expense_correction_requests','private.expense_correction_pending','private.expense_correction_scope']) AS target(name)
+	    WHERE pg_catalog.to_regclass(target.name) IS NOT NULL)
+	  OR EXISTS (SELECT 1 FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace
+	    WHERE n.nspname || '.' || p.proname = ANY(ARRAY['private.lock_expense_approver_context','private.lock_expense_batch_for_approval','private.execute_expense_decision','public.request_expense_accounting_sync','public.retry_expense_accounting_before_write','public.correct_expense_for_review','public.list_expense_corrections','private.derive_expense_reimbursement_amount','private.refresh_expense_reimbursement_amount','private.invalidate_expense_accounting_connection_binding','private.enforce_expense_accounting_authority','private.enforce_expense_accounting_related_authority','private.expense_queue_cancelled_before_write','private.cancel_unwritten_expense_reversals','private.queue_expense_accounting_event','private.append_expense_accounting_event','private.capture_expense_accounting_state','private.capture_expense_accounting_change','private.capture_expense_accounting_allocation','public.prepare_expense_accounting_write','public.finalize_expense_accounting_sync','public.save_expense_accounting_settings','private.notify_expense_accounting_review','private.expense_correction_content','private.expense_correction_snapshot','private.immutable_expense_correction','private.correct_expense_for_review','private.list_expense_corrections']))
+	  OR EXISTS (SELECT 1 FROM pg_catalog.pg_attribute a
+	    WHERE a.attrelid='public.expense_batches'::regclass
+	      AND a.attname='reimbursement_amount' AND NOT a.attisdropped) THEN
+	    RAISE EXCEPTION 'Expense release baseline is already installed or partially changed';
+	  END IF;
+	END;
+	$expense_release_baseline$;
+2026-09-14 21:02:19.237 PDT [88445] ERROR:  Expense is busy; retry this correction
+2026-09-14 21:02:19.237 PDT [88445] CONTEXT:  PL/pgSQL function private.correct_expense_for_review(jsonb) line 236 at RAISE
+	SQL function "correct_expense_for_review" statement 1
+2026-09-14 21:02:19.237 PDT [88445] STATEMENT:  select public.correct_expense_for_review('{"amount": 108, "actor_id": "77000000-0000-4000-8000-000000000010", "currency": "CAD", "company_id": "77000000-0000-4000-8000-000000000001", "expense_id": "77000000-0000-4000-8000-000000000220", "request_id": "77000000-0000-4000-8000-000000000520", "tax_amount": 5, "allocations": [{"amount": null, "percentage": 100, "project_id": "77000000-0000-4000-8000-000000000032"}], "category_id": "77000000-0000-4000-8000-000000000041", "description": "Original description", "expense_date": "2026-09-15", "submitted_by": "77000000-0000-4000-8000-000000000011", "merchant_name": "Original merchant", "payment_method": "personal_card", "correction_note": "", "expected_status": "submitted", "expected_updated_at": "2026-09-15T04:02:17.837424+00:00", "project_missing_note": null, "project_missing_reason": null}'::jsonb);
+2026-09-14 21:02:19.783 PDT [88457] ERROR:  Expense is busy; retry this correction
+2026-09-14 21:02:19.783 PDT [88457] CONTEXT:  PL/pgSQL function private.correct_expense_for_review(jsonb) line 236 at RAISE
+	SQL function "correct_expense_for_review" statement 1
+2026-09-14 21:02:19.783 PDT [88457] STATEMENT:  select public.correct_expense_for_review('{"amount": 108, "actor_id": "77000000-0000-4000-8000-000000000010", "currency": "CAD", "company_id": "77000000-0000-4000-8000-000000000001", "expense_id": "77000000-0000-4000-8000-000000000221", "request_id": "77000000-0000-4000-8000-000000000521", "tax_amount": 5, "allocations": [{"amount": null, "percentage": 100, "project_id": "77000000-0000-4000-8000-000000000032"}], "category_id": "77000000-0000-4000-8000-000000000041", "description": "Original description", "expense_date": "2026-09-15", "submitted_by": "77000000-0000-4000-8000-000000000011", "merchant_name": "Original merchant", "payment_method": "personal_card", "correction_note": "", "expected_status": "submitted", "expected_updated_at": "2026-09-15T04:02:17.837971+00:00", "project_missing_note": null, "project_missing_reason": null}'::jsonb);
+2026-09-14 21:02:20.485 PDT [88459] ERROR:  Expense changed; reload it before returning a correction
+2026-09-14 21:02:20.485 PDT [88459] CONTEXT:  PL/pgSQL function private.correct_expense_for_review(jsonb) line 88 at RAISE
+	SQL function "correct_expense_for_review" statement 1
+2026-09-14 21:02:20.485 PDT [88459] STATEMENT:  select public.correct_expense_for_review('{"amount": 108, "actor_id": "77000000-0000-4000-8000-000000000010", "currency": "CAD", "company_id": "77000000-0000-4000-8000-000000000001", "expense_id": "77000000-0000-4000-8000-000000000221", "request_id": "77000000-0000-4000-8000-000000000521", "tax_amount": 5, "allocations": [{"amount": null, "percentage": 100, "project_id": "77000000-0000-4000-8000-000000000032"}], "category_id": "77000000-0000-4000-8000-000000000041", "description": "Original description", "expense_date": "2026-09-15", "submitted_by": "77000000-0000-4000-8000-000000000011", "merchant_name": "Original merchant", "payment_method": "personal_card", "correction_note": "", "expected_status": "submitted", "expected_updated_at": "2026-09-15T04:02:17.837971+00:00", "project_missing_note": null, "project_missing_reason": null}'::jsonb);
+2026-09-14 21:02:20.676 PDT [88467] ERROR:  You do not have permission to approve expenses.
+2026-09-14 21:02:20.676 PDT [88467] CONTEXT:  PL/pgSQL function private.lock_expense_approver_context() line 23 at RAISE
+	SQL statement "select *                from private.lock_expense_approver_context()"
+	PL/pgSQL function private.correct_expense_for_review(jsonb) line 48 at SQL statement
+	SQL function "correct_expense_for_review" statement 1
+2026-09-14 21:02:20.676 PDT [88467] STATEMENT:  select public.correct_expense_for_review('{"amount": 108, "actor_id": "77000000-0000-4000-8000-000000000010", "currency": "CAD", "company_id": "77000000-0000-4000-8000-000000000001", "expense_id": "77000000-0000-4000-8000-000000000222", "request_id": "77000000-0000-4000-8000-000000000522", "tax_amount": 5, "allocations": [{"amount": null, "percentage": 100, "project_id": "77000000-0000-4000-8000-000000000032"}], "category_id": "77000000-0000-4000-8000-000000000041", "description": "Original description", "expense_date": "2026-09-15", "submitted_by": "77000000-0000-4000-8000-000000000011", "merchant_name": "Original merchant", "payment_method": "personal_card", "correction_note": "", "expected_status": "submitted", "expected_updated_at": "2026-09-15T04:02:17.838328+00:00", "project_missing_note": null, "project_missing_reason": null}'::jsonb);
+2026-09-14 21:02:20.864 PDT [88475] ERROR:  Expense correction access denied
+2026-09-14 21:02:20.864 PDT [88475] CONTEXT:  PL/pgSQL function private.correct_expense_for_review(jsonb) line 56 at RAISE
+	SQL function "correct_expense_for_review" statement 1
+2026-09-14 21:02:20.864 PDT [88475] STATEMENT:  select public.correct_expense_for_review('{"amount": 108, "actor_id": "77000000-0000-4000-8000-000000000010", "currency": "CAD", "company_id": "77000000-0000-4000-8000-000000000001", "expense_id": "77000000-0000-4000-8000-000000000222", "request_id": "77000000-0000-4000-8000-000000000522", "tax_amount": 5, "allocations": [{"amount": null, "percentage": 100, "project_id": "77000000-0000-4000-8000-000000000032"}], "category_id": "77000000-0000-4000-8000-000000000041", "description": "Original description", "expense_date": "2026-09-15", "submitted_by": "77000000-0000-4000-8000-000000000011", "merchant_name": "Original merchant", "payment_method": "personal_card", "correction_note": "", "expected_status": "submitted", "expected_updated_at": "2026-09-15T04:02:17.838328+00:00", "project_missing_note": null, "project_missing_reason": null}'::jsonb);
+2026-09-14 21:02:21.037 PDT [88506] ERROR:  canceling statement due to lock timeout
+2026-09-14 21:02:21.037 PDT [88506] CONTEXT:  while updating tuple (0,9) in relation "users"
+2026-09-14 21:02:21.037 PDT [88506] STATEMENT:  update users set is_active=false where id='77000000-0000-4000-8000-000000000010';
+2026-09-14 21:02:21.104 PDT [88508] ERROR:  canceling statement due to lock timeout
+2026-09-14 21:02:21.104 PDT [88508] CONTEXT:  while updating tuple (0,11) in relation "users"
+2026-09-14 21:02:21.104 PDT [88508] STATEMENT:  update users set is_active=false where id='77000000-0000-4000-8000-000000000011';
+2026-09-14 21:02:21.174 PDT [88510] ERROR:  canceling statement due to lock timeout
+2026-09-14 21:02:21.174 PDT [88510] CONTEXT:  while updating tuple (0,2) in relation "companies"
+2026-09-14 21:02:21.174 PDT [88510] STATEMENT:  update companies set deleted_at=now() where id='77000000-0000-4000-8000-000000000001';
+2026-09-14 21:02:22.473 PDT [88552] ERROR:  ATOMIC_FIXTURE: deliberate late failure
+2026-09-14 21:02:22.473 PDT [88552] CONTEXT:  PL/pgSQL function inline_code_block line 1 at RAISE
+2026-09-14 21:02:22.473 PDT [88552] STATEMENT:  DO $atomic_fixture_failure$ BEGIN RAISE EXCEPTION 'ATOMIC_FIXTURE: deliberate late failure'; END; $atomic_fixture_failure$;
+2026-09-14 21:02:22.558 PDT [88569] ERROR:  ATOMIC_POSTCONDITION: expected all 11 new relations
+2026-09-14 21:02:22.558 PDT [88569] CONTEXT:  PL/pgSQL function inline_code_block line 9 at RAISE
+2026-09-14 21:02:22.558 PDT [88569] STATEMENT:  do $atomic_postconditions$
+	declare v_count integer; v_role text; v_sequence regclass;
+	begin
+	 select count(*) into v_count from unnest(array[
+	 'public.expense_accounting_settings','public.expense_accounting_payee_mappings','public.expense_accounting_tax_mappings',
+	 'public.expense_accounting_category_mappings','public.expense_accounting_project_mappings','public.expense_accounting_events',
+	 'public.expense_accounting_postings','private.expense_accounting_state','private.expense_correction_requests',
+	 'private.expense_correction_pending','private.expense_correction_scope']) r(name) where to_regclass(r.name) is not null;
+	 if v_count<>11 then raise exception 'ATOMIC_POSTCONDITION: expected all 11 new relations'; end if;
+	 if not exists(select 1 from public.expense_batches where id='79000000-0000-4000-8000-000000000100'
+	   and reimbursement_amount=100 and total_amount=165 and approved_amount=140 and paid_at is null and paid_by is null) then
+	   raise exception 'ATOMIC_POSTCONDITION: crew-only projection or payment markers changed';
+	 end if;
+	 if exists(select 1 from public.expense_accounting_events) or exists(select 1 from private.expense_accounting_state)
+	   or exists(select 1 from public.accounting_sync_queue) or exists(select 1 from private.expense_correction_requests) then
+	   raise exception 'ATOMIC_POSTCONDITION: installation generated financial/correction work';
+	 end if;
+	 if md5(pg_get_functiondef('public.read_agent_payroll_readiness_as_system(uuid,uuid,uuid,uuid,text,text[],text,text,text,text,text,timestamp with time zone,date,integer,integer,integer,integer)'::regprocedure))
+	   <> 'f2e32a360886d5fed5040c5eb99b76c6' then raise exception 'ATOMIC_POSTCONDITION: payroll replacement missing'; end if;
+	 if md5(pg_get_functiondef('private.enforce_expense_edit_authority()'::regprocedure))<>'d342596cd9e55adf458239a7025dfeaa'
+	   or md5(pg_get_functiondef('public.tg_place_expense()'::regprocedure))<>'258dc02efee98372f6205e731ac0251f'
+	   or md5(pg_get_functiondef('public.place_expense(uuid)'::regprocedure))<>'5d3a1254421fc4378f9b9a32d4cc3bd5' then
+	   raise exception 'ATOMIC_POSTCONDITION: correction authority/placement replacement missing';
+	 end if;
+	 if to_regprocedure('public.request_expense_accounting_sync(uuid,uuid)') is null
+	   or to_regprocedure('public.retry_expense_accounting_before_write(uuid,uuid)') is null
+	   or to_regprocedure('private.lock_expense_approver_context()') is null then
+	   raise exception 'ATOMIC_POSTCONDITION: earlier migration functions missing';
+	 end if;
+	 if not has_function_privilege('authenticated','public.correct_expense_for_review(jsonb)','EXECUTE')
+	   or not has_function_privilege('authenticated','private.correct_expense_for_review(jsonb)','EXECUTE')
+	   or not has_function_privilege('authenticated','public.list_expense_corrections(uuid,uuid)','EXECUTE') then
+	   raise exception 'ATOMIC_POSTCONDITION: authenticated correction access missing';
+	 end if;
+	 foreach v_role in array array['anon','service_role'] loop
+	   if has_function_privilege(v_role,'public.correct_expense_for_review(jsonb)','EXECUTE')
+	     or has_function_privilege(v_role,'public.list_expense_corrections(uuid,uuid)','EXECUTE') then
+	     raise exception 'ATOMIC_POSTCONDITION: unapproved correction grant for %',v_role;
+	   end if;
+	 end loop;
+	 v_sequence:=pg_get_serial_sequence('public.expense_accounting_events','sequence')::regclass;
+	 if v_sequence is null then raise exception 'ATOMIC_POSTCONDITION: identity sequence missing'; end if;
+	 foreach v_role in array array['anon','authenticated','service_role'] loop
+	   if has_sequence_privilege(v_role,v_sequence,'USAGE,SELECT,UPDATE') then
+	     raise exception 'ATOMIC_POSTCONDITION: sequence grant retained for %',v_role;
+	   end if;
+	 end loop;
+	end;
+	$atomic_postconditions$;
+2026-09-14 21:02:23.030 PDT [88612] ERROR:  Expense release source baseline changed: public.tg_place_expense
+2026-09-14 21:02:23.030 PDT [88612] CONTEXT:  PL/pgSQL function inline_code_block line 35 at RAISE
+2026-09-14 21:02:23.030 PDT [88612] STATEMENT:  DO $expense_release_baseline$
+	DECLARE
+	  mismatch text;
+	BEGIN
+	  IF current_user <> 'postgres' THEN
+	    RAISE EXCEPTION 'Expense release requires the reviewed postgres migration owner';
+	  END IF;
+	  WITH expected(schema_name,function_name,identity_arguments,expected_md5) AS (VALUES
+	    ('private', 'get_current_user_id', '', '127ffd06387933500d95f96aba24b605'),
+	    ('private', 'get_user_company_id', '', '3de642ffe4b81ee8827c1cc6507f85c4'),
+	    ('private', 'current_user_is_admin', '', '71fedd6dc3d8226af0b506dcfce72dd8'),
+	    ('private', 'current_user_scope_for', 'p_permission text', '2ac60f997a0ac6de618bef5ff7aa5592'),
+	    ('private', 'current_user_has_permission', 'p_permission text, p_min_scope text', '43eb70a695fbf7b8efb38fd40f9c57c3'),
+	    ('public', 'has_permission', 'p_user_id uuid, p_permission text, p_required_scope text', '2a04ca2eb341948215285025249f48f9'),
+	    ('private', 'enforce_expense_edit_authority', '', 'a489f4f6506516e5934ff08f8fba69ad'),
+	    ('public', 'save_expense_atomic', 'p_command jsonb', 'aebfc5e480082b8160de4c6cc4b6fbb3'),
+	    ('public', 'approve_expense_batch', 'p_batch_id uuid', '87bc087970d0c1fb3f36313836869d66'),
+	    ('public', 'early_clear_expense_line', 'p_expense_id uuid', '9b271925be5fe9e9ab8c6ca67cf1115c'),
+	    ('public', 'mark_expense_batch_paid', 'p_batch_id uuid', '0ca6d6ae5d05d8283bcc3bb67b8436b5'),
+	    ('public', 'unmark_expense_batch_paid', 'p_batch_id uuid', '981f644ded66f43707d800d7400ef6ce'),
+	    ('public', 'recalculate_expense_batch_total', 'p_batch_id uuid', '8781e28a7a0485dc02b1d06eefcc8a22'),
+	    ('public', 'place_expense', 'p_expense_id uuid', '69ae7eaa26297db59646c704ea454712'),
+	    ('public', 'tg_place_expense', '', '2a9d3575dd23507040a31cb49dc69825')
+	  )
+	  SELECT e.schema_name || '.' || e.function_name INTO mismatch
+	  FROM expected e
+	  LEFT JOIN pg_catalog.pg_namespace n ON n.nspname=e.schema_name
+	  LEFT JOIN pg_catalog.pg_proc p ON p.pronamespace=n.oid AND p.proname=e.function_name
+	    AND pg_catalog.pg_get_function_identity_arguments(p.oid)=e.identity_arguments
+	  WHERE p.oid IS NULL
+	    OR pg_catalog.md5(pg_catalog.pg_get_functiondef(p.oid)) IS DISTINCT FROM e.expected_md5
+	    OR pg_catalog.pg_get_userbyid(p.proowner) IS DISTINCT FROM 'postgres'
+	  LIMIT 1;
+	  IF mismatch IS NOT NULL THEN
+	    RAISE EXCEPTION 'Expense release source baseline changed: %', mismatch;
+	  END IF;
+	  IF EXISTS (SELECT 1 FROM unnest(ARRAY['public.expense_accounting_settings','public.expense_accounting_payee_mappings','public.expense_accounting_tax_mappings','public.expense_accounting_category_mappings','public.expense_accounting_project_mappings','public.expense_accounting_events','public.expense_accounting_postings','private.expense_accounting_state','private.expense_correction_requests','private.expense_correction_pending','private.expense_correction_scope']) AS target(name)
+	    WHERE pg_catalog.to_regclass(target.name) IS NOT NULL)
+	  OR EXISTS (SELECT 1 FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace
+	    WHERE n.nspname || '.' || p.proname = ANY(ARRAY['private.lock_expense_approver_context','private.lock_expense_batch_for_approval','private.execute_expense_decision','public.request_expense_accounting_sync','public.retry_expense_accounting_before_write','public.correct_expense_for_review','public.list_expense_corrections','private.derive_expense_reimbursement_amount','private.refresh_expense_reimbursement_amount','private.invalidate_expense_accounting_connection_binding','private.enforce_expense_accounting_authority','private.enforce_expense_accounting_related_authority','private.expense_queue_cancelled_before_write','private.cancel_unwritten_expense_reversals','private.queue_expense_accounting_event','private.append_expense_accounting_event','private.capture_expense_accounting_state','private.capture_expense_accounting_change','private.capture_expense_accounting_allocation','public.prepare_expense_accounting_write','public.finalize_expense_accounting_sync','public.save_expense_accounting_settings','private.notify_expense_accounting_review','private.expense_correction_content','private.expense_correction_snapshot','private.immutable_expense_correction','private.correct_expense_for_review','private.list_expense_corrections']))
+	  OR EXISTS (SELECT 1 FROM pg_catalog.pg_attribute a
+	    WHERE a.attrelid='public.expense_batches'::regclass
+	      AND a.attname='reimbursement_amount' AND NOT a.attisdropped) THEN
+	    RAISE EXCEPTION 'Expense release baseline is already installed or partially changed';
+	  END IF;
+	END;
+	$expense_release_baseline$;
+2026-09-14 21:02:23.061 PDT [88618] ERROR:  Expense release source baseline changed: public.tg_place_expense
+2026-09-14 21:02:23.061 PDT [88618] CONTEXT:  PL/pgSQL function inline_code_block line 35 at RAISE
+2026-09-14 21:02:23.061 PDT [88618] STATEMENT:  DO $expense_release_baseline$
+	DECLARE
+	  mismatch text;
+	BEGIN
+	  IF current_user <> 'postgres' THEN
+	    RAISE EXCEPTION 'Expense release requires the reviewed postgres migration owner';
+	  END IF;
+	  WITH expected(schema_name,function_name,identity_arguments,expected_md5) AS (VALUES
+	    ('private', 'get_current_user_id', '', '127ffd06387933500d95f96aba24b605'),
+	    ('private', 'get_user_company_id', '', '3de642ffe4b81ee8827c1cc6507f85c4'),
+	    ('private', 'current_user_is_admin', '', '71fedd6dc3d8226af0b506dcfce72dd8'),
+	    ('private', 'current_user_scope_for', 'p_permission text', '2ac60f997a0ac6de618bef5ff7aa5592'),
+	    ('private', 'current_user_has_permission', 'p_permission text, p_min_scope text', '43eb70a695fbf7b8efb38fd40f9c57c3'),
+	    ('public', 'has_permission', 'p_user_id uuid, p_permission text, p_required_scope text', '2a04ca2eb341948215285025249f48f9'),
+	    ('private', 'enforce_expense_edit_authority', '', 'a489f4f6506516e5934ff08f8fba69ad'),
+	    ('public', 'save_expense_atomic', 'p_command jsonb', 'aebfc5e480082b8160de4c6cc4b6fbb3'),
+	    ('public', 'approve_expense_batch', 'p_batch_id uuid', '87bc087970d0c1fb3f36313836869d66'),
+	    ('public', 'early_clear_expense_line', 'p_expense_id uuid', '9b271925be5fe9e9ab8c6ca67cf1115c'),
+	    ('public', 'mark_expense_batch_paid', 'p_batch_id uuid', '0ca6d6ae5d05d8283bcc3bb67b8436b5'),
+	    ('public', 'unmark_expense_batch_paid', 'p_batch_id uuid', '981f644ded66f43707d800d7400ef6ce'),
+	    ('public', 'recalculate_expense_batch_total', 'p_batch_id uuid', '8781e28a7a0485dc02b1d06eefcc8a22'),
+	    ('public', 'place_expense', 'p_expense_id uuid', '69ae7eaa26297db59646c704ea454712'),
+	    ('public', 'tg_place_expense', '', '2a9d3575dd23507040a31cb49dc69825')
+	  )
+	  SELECT e.schema_name || '.' || e.function_name INTO mismatch
+	  FROM expected e
+	  LEFT JOIN pg_catalog.pg_namespace n ON n.nspname=e.schema_name
+	  LEFT JOIN pg_catalog.pg_proc p ON p.pronamespace=n.oid AND p.proname=e.function_name
+	    AND pg_catalog.pg_get_function_identity_arguments(p.oid)=e.identity_arguments
+	  WHERE p.oid IS NULL
+	    OR pg_catalog.md5(pg_catalog.pg_get_functiondef(p.oid)) IS DISTINCT FROM e.expected_md5
+	    OR pg_catalog.pg_get_userbyid(p.proowner) IS DISTINCT FROM 'postgres'
+	  LIMIT 1;
+	  IF mismatch IS NOT NULL THEN
+	    RAISE EXCEPTION 'Expense release source baseline changed: %', mismatch;
+	  END IF;
+	  IF EXISTS (SELECT 1 FROM unnest(ARRAY['public.expense_accounting_settings','public.expense_accounting_payee_mappings','public.expense_accounting_tax_mappings','public.expense_accounting_category_mappings','public.expense_accounting_project_mappings','public.expense_accounting_events','public.expense_accounting_postings','private.expense_accounting_state','private.expense_correction_requests','private.expense_correction_pending','private.expense_correction_scope']) AS target(name)
+	    WHERE pg_catalog.to_regclass(target.name) IS NOT NULL)
+	  OR EXISTS (SELECT 1 FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace
+	    WHERE n.nspname || '.' || p.proname = ANY(ARRAY['private.lock_expense_approver_context','private.lock_expense_batch_for_approval','private.execute_expense_decision','public.request_expense_accounting_sync','public.retry_expense_accounting_before_write','public.correct_expense_for_review','public.list_expense_corrections','private.derive_expense_reimbursement_amount','private.refresh_expense_reimbursement_amount','private.invalidate_expense_accounting_connection_binding','private.enforce_expense_accounting_authority','private.enforce_expense_accounting_related_authority','private.expense_queue_cancelled_before_write','private.cancel_unwritten_expense_reversals','private.queue_expense_accounting_event','private.append_expense_accounting_event','private.capture_expense_accounting_state','private.capture_expense_accounting_change','private.capture_expense_accounting_allocation','public.prepare_expense_accounting_write','public.finalize_expense_accounting_sync','public.save_expense_accounting_settings','private.notify_expense_accounting_review','private.expense_correction_content','private.expense_correction_snapshot','private.immutable_expense_correction','private.correct_expense_for_review','private.list_expense_corrections']))
+	  OR EXISTS (SELECT 1 FROM pg_catalog.pg_attribute a
+	    WHERE a.attrelid='public.expense_batches'::regclass
+	      AND a.attname='reimbursement_amount' AND NOT a.attisdropped) THEN
+	    RAISE EXCEPTION 'Expense release baseline is already installed or partially changed';
+	  END IF;
+	END;
+	$expense_release_baseline$;
+2026-09-14 21:02:23.683 PDT [88672] ERROR:  Expense release source baseline changed: public.place_expense
+2026-09-14 21:02:23.683 PDT [88672] CONTEXT:  PL/pgSQL function inline_code_block line 35 at RAISE
+2026-09-14 21:02:23.683 PDT [88672] STATEMENT:  DO $expense_release_baseline$
+	DECLARE
+	  mismatch text;
+	BEGIN
+	  IF current_user <> 'postgres' THEN
+	    RAISE EXCEPTION 'Expense release requires the reviewed postgres migration owner';
+	  END IF;
+	  WITH expected(schema_name,function_name,identity_arguments,expected_md5) AS (VALUES
+	    ('private', 'get_current_user_id', '', '127ffd06387933500d95f96aba24b605'),
+	    ('private', 'get_user_company_id', '', '3de642ffe4b81ee8827c1cc6507f85c4'),
+	    ('private', 'current_user_is_admin', '', '71fedd6dc3d8226af0b506dcfce72dd8'),
+	    ('private', 'current_user_scope_for', 'p_permission text', '2ac60f997a0ac6de618bef5ff7aa5592'),
+	    ('private', 'current_user_has_permission', 'p_permission text, p_min_scope text', '43eb70a695fbf7b8efb38fd40f9c57c3'),
+	    ('public', 'has_permission', 'p_user_id uuid, p_permission text, p_required_scope text', '2a04ca2eb341948215285025249f48f9'),
+	    ('private', 'enforce_expense_edit_authority', '', 'a489f4f6506516e5934ff08f8fba69ad'),
+	    ('public', 'save_expense_atomic', 'p_command jsonb', 'aebfc5e480082b8160de4c6cc4b6fbb3'),
+	    ('public', 'approve_expense_batch', 'p_batch_id uuid', '87bc087970d0c1fb3f36313836869d66'),
+	    ('public', 'early_clear_expense_line', 'p_expense_id uuid', '9b271925be5fe9e9ab8c6ca67cf1115c'),
+	    ('public', 'mark_expense_batch_paid', 'p_batch_id uuid', '0ca6d6ae5d05d8283bcc3bb67b8436b5'),
+	    ('public', 'unmark_expense_batch_paid', 'p_batch_id uuid', '981f644ded66f43707d800d7400ef6ce'),
+	    ('public', 'recalculate_expense_batch_total', 'p_batch_id uuid', '8781e28a7a0485dc02b1d06eefcc8a22'),
+	    ('public', 'place_expense', 'p_expense_id uuid', '69ae7eaa26297db59646c704ea454712'),
+	    ('public', 'tg_place_expense', '', '2a9d3575dd23507040a31cb49dc69825')
+	  )
+	  SELECT e.schema_name || '.' || e.function_name INTO mismatch
+	  FROM expected e
+	  LEFT JOIN pg_catalog.pg_namespace n ON n.nspname=e.schema_name
+	  LEFT JOIN pg_catalog.pg_proc p ON p.pronamespace=n.oid AND p.proname=e.function_name
+	    AND pg_catalog.pg_get_function_identity_arguments(p.oid)=e.identity_arguments
+	  WHERE p.oid IS NULL
+	    OR pg_catalog.md5(pg_catalog.pg_get_functiondef(p.oid)) IS DISTINCT FROM e.expected_md5
+	    OR pg_catalog.pg_get_userbyid(p.proowner) IS DISTINCT FROM 'postgres'
+	  LIMIT 1;
+	  IF mismatch IS NOT NULL THEN
+	    RAISE EXCEPTION 'Expense release source baseline changed: %', mismatch;
+	  END IF;
+	  IF EXISTS (SELECT 1 FROM unnest(ARRAY['public.expense_accounting_settings','public.expense_accounting_payee_mappings','public.expense_accounting_tax_mappings','public.expense_accounting_category_mappings','public.expense_accounting_project_mappings','public.expense_accounting_events','public.expense_accounting_postings','private.expense_accounting_state','private.expense_correction_requests','private.expense_correction_pending','private.expense_correction_scope']) AS target(name)
+	    WHERE pg_catalog.to_regclass(target.name) IS NOT NULL)
+	  OR EXISTS (SELECT 1 FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace
+	    WHERE n.nspname || '.' || p.proname = ANY(ARRAY['private.lock_expense_approver_context','private.lock_expense_batch_for_approval','private.execute_expense_decision','public.request_expense_accounting_sync','public.retry_expense_accounting_before_write','public.correct_expense_for_review','public.list_expense_corrections','private.derive_expense_reimbursement_amount','private.refresh_expense_reimbursement_amount','private.invalidate_expense_accounting_connection_binding','private.enforce_expense_accounting_authority','private.enforce_expense_accounting_related_authority','private.expense_queue_cancelled_before_write','private.cancel_unwritten_expense_reversals','private.queue_expense_accounting_event','private.append_expense_accounting_event','private.capture_expense_accounting_state','private.capture_expense_accounting_change','private.capture_expense_accounting_allocation','public.prepare_expense_accounting_write','public.finalize_expense_accounting_sync','public.save_expense_accounting_settings','private.notify_expense_accounting_review','private.expense_correction_content','private.expense_correction_snapshot','private.immutable_expense_correction','private.correct_expense_for_review','private.list_expense_corrections']))
+	  OR EXISTS (SELECT 1 FROM pg_catalog.pg_attribute a
+	    WHERE a.attrelid='public.expense_batches'::regclass
+	      AND a.attname='reimbursement_amount' AND NOT a.attisdropped) THEN
+	    RAISE EXCEPTION 'Expense release baseline is already installed or partially changed';
+	  END IF;
+	END;
+	$expense_release_baseline$;
+2026-09-14 21:02:23.725 PDT [88678] ERROR:  Expense release source baseline changed: public.place_expense
+2026-09-14 21:02:23.725 PDT [88678] CONTEXT:  PL/pgSQL function inline_code_block line 35 at RAISE
+2026-09-14 21:02:23.725 PDT [88678] STATEMENT:  DO $expense_release_baseline$
+	DECLARE
+	  mismatch text;
+	BEGIN
+	  IF current_user <> 'postgres' THEN
+	    RAISE EXCEPTION 'Expense release requires the reviewed postgres migration owner';
+	  END IF;
+	  WITH expected(schema_name,function_name,identity_arguments,expected_md5) AS (VALUES
+	    ('private', 'get_current_user_id', '', '127ffd06387933500d95f96aba24b605'),
+	    ('private', 'get_user_company_id', '', '3de642ffe4b81ee8827c1cc6507f85c4'),
+	    ('private', 'current_user_is_admin', '', '71fedd6dc3d8226af0b506dcfce72dd8'),
+	    ('private', 'current_user_scope_for', 'p_permission text', '2ac60f997a0ac6de618bef5ff7aa5592'),
+	    ('private', 'current_user_has_permission', 'p_permission text, p_min_scope text', '43eb70a695fbf7b8efb38fd40f9c57c3'),
+	    ('public', 'has_permission', 'p_user_id uuid, p_permission text, p_required_scope text', '2a04ca2eb341948215285025249f48f9'),
+	    ('private', 'enforce_expense_edit_authority', '', 'a489f4f6506516e5934ff08f8fba69ad'),
+	    ('public', 'save_expense_atomic', 'p_command jsonb', 'aebfc5e480082b8160de4c6cc4b6fbb3'),
+	    ('public', 'approve_expense_batch', 'p_batch_id uuid', '87bc087970d0c1fb3f36313836869d66'),
+	    ('public', 'early_clear_expense_line', 'p_expense_id uuid', '9b271925be5fe9e9ab8c6ca67cf1115c'),
+	    ('public', 'mark_expense_batch_paid', 'p_batch_id uuid', '0ca6d6ae5d05d8283bcc3bb67b8436b5'),
+	    ('public', 'unmark_expense_batch_paid', 'p_batch_id uuid', '981f644ded66f43707d800d7400ef6ce'),
+	    ('public', 'recalculate_expense_batch_total', 'p_batch_id uuid', '8781e28a7a0485dc02b1d06eefcc8a22'),
+	    ('public', 'place_expense', 'p_expense_id uuid', '69ae7eaa26297db59646c704ea454712'),
+	    ('public', 'tg_place_expense', '', '2a9d3575dd23507040a31cb49dc69825')
+	  )
+	  SELECT e.schema_name || '.' || e.function_name INTO mismatch
+	  FROM expected e
+	  LEFT JOIN pg_catalog.pg_namespace n ON n.nspname=e.schema_name
+	  LEFT JOIN pg_catalog.pg_proc p ON p.pronamespace=n.oid AND p.proname=e.function_name
+	    AND pg_catalog.pg_get_function_identity_arguments(p.oid)=e.identity_arguments
+	  WHERE p.oid IS NULL
+	    OR pg_catalog.md5(pg_catalog.pg_get_functiondef(p.oid)) IS DISTINCT FROM e.expected_md5
+	    OR pg_catalog.pg_get_userbyid(p.proowner) IS DISTINCT FROM 'postgres'
+	  LIMIT 1;
+	  IF mismatch IS NOT NULL THEN
+	    RAISE EXCEPTION 'Expense release source baseline changed: %', mismatch;
+	  END IF;
+	  IF EXISTS (SELECT 1 FROM unnest(ARRAY['public.expense_accounting_settings','public.expense_accounting_payee_mappings','public.expense_accounting_tax_mappings','public.expense_accounting_category_mappings','public.expense_accounting_project_mappings','public.expense_accounting_events','public.expense_accounting_postings','private.expense_accounting_state','private.expense_correction_requests','private.expense_correction_pending','private.expense_correction_scope']) AS target(name)
+	    WHERE pg_catalog.to_regclass(target.name) IS NOT NULL)
+	  OR EXISTS (SELECT 1 FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace
+	    WHERE n.nspname || '.' || p.proname = ANY(ARRAY['private.lock_expense_approver_context','private.lock_expense_batch_for_approval','private.execute_expense_decision','public.request_expense_accounting_sync','public.retry_expense_accounting_before_write','public.correct_expense_for_review','public.list_expense_corrections','private.derive_expense_reimbursement_amount','private.refresh_expense_reimbursement_amount','private.invalidate_expense_accounting_connection_binding','private.enforce_expense_accounting_authority','private.enforce_expense_accounting_related_authority','private.expense_queue_cancelled_before_write','private.cancel_unwritten_expense_reversals','private.queue_expense_accounting_event','private.append_expense_accounting_event','private.capture_expense_accounting_state','private.capture_expense_accounting_change','private.capture_expense_accounting_allocation','public.prepare_expense_accounting_write','public.finalize_expense_accounting_sync','public.save_expense_accounting_settings','private.notify_expense_accounting_review','private.expense_correction_content','private.expense_correction_snapshot','private.immutable_expense_correction','private.correct_expense_for_review','private.list_expense_corrections']))
+	  OR EXISTS (SELECT 1 FROM pg_catalog.pg_attribute a
+	    WHERE a.attrelid='public.expense_batches'::regclass
+	      AND a.attname='reimbursement_amount' AND NOT a.attisdropped) THEN
+	    RAISE EXCEPTION 'Expense release baseline is already installed or partially changed';
+	  END IF;
+	END;
+	$expense_release_baseline$;
+2026-09-14 21:02:24.337 PDT [88728] ERROR:  Expense release source baseline changed: public.early_clear_expense_line
+2026-09-14 21:02:24.337 PDT [88728] CONTEXT:  PL/pgSQL function inline_code_block line 35 at RAISE
+2026-09-14 21:02:24.337 PDT [88728] STATEMENT:  DO $expense_release_baseline$
+	DECLARE
+	  mismatch text;
+	BEGIN
+	  IF current_user <> 'postgres' THEN
+	    RAISE EXCEPTION 'Expense release requires the reviewed postgres migration owner';
+	  END IF;
+	  WITH expected(schema_name,function_name,identity_arguments,expected_md5) AS (VALUES
+	    ('private', 'get_current_user_id', '', '127ffd06387933500d95f96aba24b605'),
+	    ('private', 'get_user_company_id', '', '3de642ffe4b81ee8827c1cc6507f85c4'),
+	    ('private', 'current_user_is_admin', '', '71fedd6dc3d8226af0b506dcfce72dd8'),
+	    ('private', 'current_user_scope_for', 'p_permission text', '2ac60f997a0ac6de618bef5ff7aa5592'),
+	    ('private', 'current_user_has_permission', 'p_permission text, p_min_scope text', '43eb70a695fbf7b8efb38fd40f9c57c3'),
+	    ('public', 'has_permission', 'p_user_id uuid, p_permission text, p_required_scope text', '2a04ca2eb341948215285025249f48f9'),
+	    ('private', 'enforce_expense_edit_authority', '', 'a489f4f6506516e5934ff08f8fba69ad'),
+	    ('public', 'save_expense_atomic', 'p_command jsonb', 'aebfc5e480082b8160de4c6cc4b6fbb3'),
+	    ('public', 'approve_expense_batch', 'p_batch_id uuid', '87bc087970d0c1fb3f36313836869d66'),
+	    ('public', 'early_clear_expense_line', 'p_expense_id uuid', '9b271925be5fe9e9ab8c6ca67cf1115c'),
+	    ('public', 'mark_expense_batch_paid', 'p_batch_id uuid', '0ca6d6ae5d05d8283bcc3bb67b8436b5'),
+	    ('public', 'unmark_expense_batch_paid', 'p_batch_id uuid', '981f644ded66f43707d800d7400ef6ce'),
+	    ('public', 'recalculate_expense_batch_total', 'p_batch_id uuid', '8781e28a7a0485dc02b1d06eefcc8a22'),
+	    ('public', 'place_expense', 'p_expense_id uuid', '69ae7eaa26297db59646c704ea454712'),
+	    ('public', 'tg_place_expense', '', '2a9d3575dd23507040a31cb49dc69825')
+	  )
+	  SELECT e.schema_name || '.' || e.function_name INTO mismatch
+	  FROM expected e
+	  LEFT JOIN pg_catalog.pg_namespace n ON n.nspname=e.schema_name
+	  LEFT JOIN pg_catalog.pg_proc p ON p.pronamespace=n.oid AND p.proname=e.function_name
+	    AND pg_catalog.pg_get_function_identity_arguments(p.oid)=e.identity_arguments
+	  WHERE p.oid IS NULL
+	    OR pg_catalog.md5(pg_catalog.pg_get_functiondef(p.oid)) IS DISTINCT FROM e.expected_md5
+	    OR pg_catalog.pg_get_userbyid(p.proowner) IS DISTINCT FROM 'postgres'
+	  LIMIT 1;
+	  IF mismatch IS NOT NULL THEN
+	    RAISE EXCEPTION 'Expense release source baseline changed: %', mismatch;
+	  END IF;
+	  IF EXISTS (SELECT 1 FROM unnest(ARRAY['public.expense_accounting_settings','public.expense_accounting_payee_mappings','public.expense_accounting_tax_mappings','public.expense_accounting_category_mappings','public.expense_accounting_project_mappings','public.expense_accounting_events','public.expense_accounting_postings','private.expense_accounting_state','private.expense_correction_requests','private.expense_correction_pending','private.expense_correction_scope']) AS target(name)
+	    WHERE pg_catalog.to_regclass(target.name) IS NOT NULL)
+	  OR EXISTS (SELECT 1 FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace
+	    WHERE n.nspname || '.' || p.proname = ANY(ARRAY['private.lock_expense_approver_context','private.lock_expense_batch_for_approval','private.execute_expense_decision','public.request_expense_accounting_sync','public.retry_expense_accounting_before_write','public.correct_expense_for_review','public.list_expense_corrections','private.derive_expense_reimbursement_amount','private.refresh_expense_reimbursement_amount','private.invalidate_expense_accounting_connection_binding','private.enforce_expense_accounting_authority','private.enforce_expense_accounting_related_authority','private.expense_queue_cancelled_before_write','private.cancel_unwritten_expense_reversals','private.queue_expense_accounting_event','private.append_expense_accounting_event','private.capture_expense_accounting_state','private.capture_expense_accounting_change','private.capture_expense_accounting_allocation','public.prepare_expense_accounting_write','public.finalize_expense_accounting_sync','public.save_expense_accounting_settings','private.notify_expense_accounting_review','private.expense_correction_content','private.expense_correction_snapshot','private.immutable_expense_correction','private.correct_expense_for_review','private.list_expense_corrections']))
+	  OR EXISTS (SELECT 1 FROM pg_catalog.pg_attribute a
+	    WHERE a.attrelid='public.expense_batches'::regclass
+	      AND a.attname='reimbursement_amount' AND NOT a.attisdropped) THEN
+	    RAISE EXCEPTION 'Expense release baseline is already installed or partially changed';
+	  END IF;
+	END;
+	$expense_release_baseline$;
+2026-09-14 21:02:24.368 PDT [88734] ERROR:  Expense release source baseline changed: public.early_clear_expense_line
+2026-09-14 21:02:24.368 PDT [88734] CONTEXT:  PL/pgSQL function inline_code_block line 35 at RAISE
+2026-09-14 21:02:24.368 PDT [88734] STATEMENT:  DO $expense_release_baseline$
+	DECLARE
+	  mismatch text;
+	BEGIN
+	  IF current_user <> 'postgres' THEN
+	    RAISE EXCEPTION 'Expense release requires the reviewed postgres migration owner';
+	  END IF;
+	  WITH expected(schema_name,function_name,identity_arguments,expected_md5) AS (VALUES
+	    ('private', 'get_current_user_id', '', '127ffd06387933500d95f96aba24b605'),
+	    ('private', 'get_user_company_id', '', '3de642ffe4b81ee8827c1cc6507f85c4'),
+	    ('private', 'current_user_is_admin', '', '71fedd6dc3d8226af0b506dcfce72dd8'),
+	    ('private', 'current_user_scope_for', 'p_permission text', '2ac60f997a0ac6de618bef5ff7aa5592'),
+	    ('private', 'current_user_has_permission', 'p_permission text, p_min_scope text', '43eb70a695fbf7b8efb38fd40f9c57c3'),
+	    ('public', 'has_permission', 'p_user_id uuid, p_permission text, p_required_scope text', '2a04ca2eb341948215285025249f48f9'),
+	    ('private', 'enforce_expense_edit_authority', '', 'a489f4f6506516e5934ff08f8fba69ad'),
+	    ('public', 'save_expense_atomic', 'p_command jsonb', 'aebfc5e480082b8160de4c6cc4b6fbb3'),
+	    ('public', 'approve_expense_batch', 'p_batch_id uuid', '87bc087970d0c1fb3f36313836869d66'),
+	    ('public', 'early_clear_expense_line', 'p_expense_id uuid', '9b271925be5fe9e9ab8c6ca67cf1115c'),
+	    ('public', 'mark_expense_batch_paid', 'p_batch_id uuid', '0ca6d6ae5d05d8283bcc3bb67b8436b5'),
+	    ('public', 'unmark_expense_batch_paid', 'p_batch_id uuid', '981f644ded66f43707d800d7400ef6ce'),
+	    ('public', 'recalculate_expense_batch_total', 'p_batch_id uuid', '8781e28a7a0485dc02b1d06eefcc8a22'),
+	    ('public', 'place_expense', 'p_expense_id uuid', '69ae7eaa26297db59646c704ea454712'),
+	    ('public', 'tg_place_expense', '', '2a9d3575dd23507040a31cb49dc69825')
+	  )
+	  SELECT e.schema_name || '.' || e.function_name INTO mismatch
+	  FROM expected e
+	  LEFT JOIN pg_catalog.pg_namespace n ON n.nspname=e.schema_name
+	  LEFT JOIN pg_catalog.pg_proc p ON p.pronamespace=n.oid AND p.proname=e.function_name
+	    AND pg_catalog.pg_get_function_identity_arguments(p.oid)=e.identity_arguments
+	  WHERE p.oid IS NULL
+	    OR pg_catalog.md5(pg_catalog.pg_get_functiondef(p.oid)) IS DISTINCT FROM e.expected_md5
+	    OR pg_catalog.pg_get_userbyid(p.proowner) IS DISTINCT FROM 'postgres'
+	  LIMIT 1;
+	  IF mismatch IS NOT NULL THEN
+	    RAISE EXCEPTION 'Expense release source baseline changed: %', mismatch;
+	  END IF;
+	  IF EXISTS (SELECT 1 FROM unnest(ARRAY['public.expense_accounting_settings','public.expense_accounting_payee_mappings','public.expense_accounting_tax_mappings','public.expense_accounting_category_mappings','public.expense_accounting_project_mappings','public.expense_accounting_events','public.expense_accounting_postings','private.expense_accounting_state','private.expense_correction_requests','private.expense_correction_pending','private.expense_correction_scope']) AS target(name)
+	    WHERE pg_catalog.to_regclass(target.name) IS NOT NULL)
+	  OR EXISTS (SELECT 1 FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace
+	    WHERE n.nspname || '.' || p.proname = ANY(ARRAY['private.lock_expense_approver_context','private.lock_expense_batch_for_approval','private.execute_expense_decision','public.request_expense_accounting_sync','public.retry_expense_accounting_before_write','public.correct_expense_for_review','public.list_expense_corrections','private.derive_expense_reimbursement_amount','private.refresh_expense_reimbursement_amount','private.invalidate_expense_accounting_connection_binding','private.enforce_expense_accounting_authority','private.enforce_expense_accounting_related_authority','private.expense_queue_cancelled_before_write','private.cancel_unwritten_expense_reversals','private.queue_expense_accounting_event','private.append_expense_accounting_event','private.capture_expense_accounting_state','private.capture_expense_accounting_change','private.capture_expense_accounting_allocation','public.prepare_expense_accounting_write','public.finalize_expense_accounting_sync','public.save_expense_accounting_settings','private.notify_expense_accounting_review','private.expense_correction_content','private.expense_correction_snapshot','private.immutable_expense_correction','private.correct_expense_for_review','private.list_expense_corrections']))
+	  OR EXISTS (SELECT 1 FROM pg_catalog.pg_attribute a
+	    WHERE a.attrelid='public.expense_batches'::regclass
+	      AND a.attname='reimbursement_amount' AND NOT a.attisdropped) THEN
+	    RAISE EXCEPTION 'Expense release baseline is already installed or partially changed';
+	  END IF;
+	END;
+	$expense_release_baseline$;
+2026-09-14 21:02:25.207 PDT [88784] ERROR:  Expense release baseline is already installed or partially changed
+2026-09-14 21:02:25.207 PDT [88784] CONTEXT:  PL/pgSQL function inline_code_block line 44 at RAISE
+2026-09-14 21:02:25.207 PDT [88784] STATEMENT:  DO $expense_release_baseline$
+	DECLARE
+	  mismatch text;
+	BEGIN
+	  IF current_user <> 'postgres' THEN
+	    RAISE EXCEPTION 'Expense release requires the reviewed postgres migration owner';
+	  END IF;
+	  WITH expected(schema_name,function_name,identity_arguments,expected_md5) AS (VALUES
+	    ('private', 'get_current_user_id', '', '127ffd06387933500d95f96aba24b605'),
+	    ('private', 'get_user_company_id', '', '3de642ffe4b81ee8827c1cc6507f85c4'),
+	    ('private', 'current_user_is_admin', '', '71fedd6dc3d8226af0b506dcfce72dd8'),
+	    ('private', 'current_user_scope_for', 'p_permission text', '2ac60f997a0ac6de618bef5ff7aa5592'),
+	    ('private', 'current_user_has_permission', 'p_permission text, p_min_scope text', '43eb70a695fbf7b8efb38fd40f9c57c3'),
+	    ('public', 'has_permission', 'p_user_id uuid, p_permission text, p_required_scope text', '2a04ca2eb341948215285025249f48f9'),
+	    ('private', 'enforce_expense_edit_authority', '', 'a489f4f6506516e5934ff08f8fba69ad'),
+	    ('public', 'save_expense_atomic', 'p_command jsonb', 'aebfc5e480082b8160de4c6cc4b6fbb3'),
+	    ('public', 'approve_expense_batch', 'p_batch_id uuid', '87bc087970d0c1fb3f36313836869d66'),
+	    ('public', 'early_clear_expense_line', 'p_expense_id uuid', '9b271925be5fe9e9ab8c6ca67cf1115c'),
+	    ('public', 'mark_expense_batch_paid', 'p_batch_id uuid', '0ca6d6ae5d05d8283bcc3bb67b8436b5'),
+	    ('public', 'unmark_expense_batch_paid', 'p_batch_id uuid', '981f644ded66f43707d800d7400ef6ce'),
+	    ('public', 'recalculate_expense_batch_total', 'p_batch_id uuid', '8781e28a7a0485dc02b1d06eefcc8a22'),
+	    ('public', 'place_expense', 'p_expense_id uuid', '69ae7eaa26297db59646c704ea454712'),
+	    ('public', 'tg_place_expense', '', '2a9d3575dd23507040a31cb49dc69825')
+	  )
+	  SELECT e.schema_name || '.' || e.function_name INTO mismatch
+	  FROM expected e
+	  LEFT JOIN pg_catalog.pg_namespace n ON n.nspname=e.schema_name
+	  LEFT JOIN pg_catalog.pg_proc p ON p.pronamespace=n.oid AND p.proname=e.function_name
+	    AND pg_catalog.pg_get_function_identity_arguments(p.oid)=e.identity_arguments
+	  WHERE p.oid IS NULL
+	    OR pg_catalog.md5(pg_catalog.pg_get_functiondef(p.oid)) IS DISTINCT FROM e.expected_md5
+	    OR pg_catalog.pg_get_userbyid(p.proowner) IS DISTINCT FROM 'postgres'
+	  LIMIT 1;
+	  IF mismatch IS NOT NULL THEN
+	    RAISE EXCEPTION 'Expense release source baseline changed: %', mismatch;
+	  END IF;
+	  IF EXISTS (SELECT 1 FROM unnest(ARRAY['public.expense_accounting_settings','public.expense_accounting_payee_mappings','public.expense_accounting_tax_mappings','public.expense_accounting_category_mappings','public.expense_accounting_project_mappings','public.expense_accounting_events','public.expense_accounting_postings','private.expense_accounting_state','private.expense_correction_requests','private.expense_correction_pending','private.expense_correction_scope']) AS target(name)
+	    WHERE pg_catalog.to_regclass(target.name) IS NOT NULL)
+	  OR EXISTS (SELECT 1 FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace
+	    WHERE n.nspname || '.' || p.proname = ANY(ARRAY['private.lock_expense_approver_context','private.lock_expense_batch_for_approval','private.execute_expense_decision','public.request_expense_accounting_sync','public.retry_expense_accounting_before_write','public.correct_expense_for_review','public.list_expense_corrections','private.derive_expense_reimbursement_amount','private.refresh_expense_reimbursement_amount','private.invalidate_expense_accounting_connection_binding','private.enforce_expense_accounting_authority','private.enforce_expense_accounting_related_authority','private.expense_queue_cancelled_before_write','private.cancel_unwritten_expense_reversals','private.queue_expense_accounting_event','private.append_expense_accounting_event','private.capture_expense_accounting_state','private.capture_expense_accounting_change','private.capture_expense_accounting_allocation','public.prepare_expense_accounting_write','public.finalize_expense_accounting_sync','public.save_expense_accounting_settings','private.notify_expense_accounting_review','private.expense_correction_content','private.expense_correction_snapshot','private.immutable_expense_correction','private.correct_expense_for_review','private.list_expense_corrections']))
+	  OR EXISTS (SELECT 1 FROM pg_catalog.pg_attribute a
+	    WHERE a.attrelid='public.expense_batches'::regclass
+	      AND a.attname='reimbursement_amount' AND NOT a.attisdropped) THEN
+	    RAISE EXCEPTION 'Expense release baseline is already installed or partially changed';
+	  END IF;
+	END;
+	$expense_release_baseline$;
+2026-09-14 21:02:25.245 PDT [88790] ERROR:  Expense release baseline is already installed or partially changed
+2026-09-14 21:02:25.245 PDT [88790] CONTEXT:  PL/pgSQL function inline_code_block line 44 at RAISE
+2026-09-14 21:02:25.245 PDT [88790] STATEMENT:  DO $expense_release_baseline$
+	DECLARE
+	  mismatch text;
+	BEGIN
+	  IF current_user <> 'postgres' THEN
+	    RAISE EXCEPTION 'Expense release requires the reviewed postgres migration owner';
+	  END IF;
+	  WITH expected(schema_name,function_name,identity_arguments,expected_md5) AS (VALUES
+	    ('private', 'get_current_user_id', '', '127ffd06387933500d95f96aba24b605'),
+	    ('private', 'get_user_company_id', '', '3de642ffe4b81ee8827c1cc6507f85c4'),
+	    ('private', 'current_user_is_admin', '', '71fedd6dc3d8226af0b506dcfce72dd8'),
+	    ('private', 'current_user_scope_for', 'p_permission text', '2ac60f997a0ac6de618bef5ff7aa5592'),
+	    ('private', 'current_user_has_permission', 'p_permission text, p_min_scope text', '43eb70a695fbf7b8efb38fd40f9c57c3'),
+	    ('public', 'has_permission', 'p_user_id uuid, p_permission text, p_required_scope text', '2a04ca2eb341948215285025249f48f9'),
+	    ('private', 'enforce_expense_edit_authority', '', 'a489f4f6506516e5934ff08f8fba69ad'),
+	    ('public', 'save_expense_atomic', 'p_command jsonb', 'aebfc5e480082b8160de4c6cc4b6fbb3'),
+	    ('public', 'approve_expense_batch', 'p_batch_id uuid', '87bc087970d0c1fb3f36313836869d66'),
+	    ('public', 'early_clear_expense_line', 'p_expense_id uuid', '9b271925be5fe9e9ab8c6ca67cf1115c'),
+	    ('public', 'mark_expense_batch_paid', 'p_batch_id uuid', '0ca6d6ae5d05d8283bcc3bb67b8436b5'),
+	    ('public', 'unmark_expense_batch_paid', 'p_batch_id uuid', '981f644ded66f43707d800d7400ef6ce'),
+	    ('public', 'recalculate_expense_batch_total', 'p_batch_id uuid', '8781e28a7a0485dc02b1d06eefcc8a22'),
+	    ('public', 'place_expense', 'p_expense_id uuid', '69ae7eaa26297db59646c704ea454712'),
+	    ('public', 'tg_place_expense', '', '2a9d3575dd23507040a31cb49dc69825')
+	  )
+	  SELECT e.schema_name || '.' || e.function_name INTO mismatch
+	  FROM expected e
+	  LEFT JOIN pg_catalog.pg_namespace n ON n.nspname=e.schema_name
+	  LEFT JOIN pg_catalog.pg_proc p ON p.pronamespace=n.oid AND p.proname=e.function_name
+	    AND pg_catalog.pg_get_function_identity_arguments(p.oid)=e.identity_arguments
+	  WHERE p.oid IS NULL
+	    OR pg_catalog.md5(pg_catalog.pg_get_functiondef(p.oid)) IS DISTINCT FROM e.expected_md5
+	    OR pg_catalog.pg_get_userbyid(p.proowner) IS DISTINCT FROM 'postgres'
+	  LIMIT 1;
+	  IF mismatch IS NOT NULL THEN
+	    RAISE EXCEPTION 'Expense release source baseline changed: %', mismatch;
+	  END IF;
+	  IF EXISTS (SELECT 1 FROM unnest(ARRAY['public.expense_accounting_settings','public.expense_accounting_payee_mappings','public.expense_accounting_tax_mappings','public.expense_accounting_category_mappings','public.expense_accounting_project_mappings','public.expense_accounting_events','public.expense_accounting_postings','private.expense_accounting_state','private.expense_correction_requests','private.expense_correction_pending','private.expense_correction_scope']) AS target(name)
+	    WHERE pg_catalog.to_regclass(target.name) IS NOT NULL)
+	  OR EXISTS (SELECT 1 FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace
+	    WHERE n.nspname || '.' || p.proname = ANY(ARRAY['private.lock_expense_approver_context','private.lock_expense_batch_for_approval','private.execute_expense_decision','public.request_expense_accounting_sync','public.retry_expense_accounting_before_write','public.correct_expense_for_review','public.list_expense_corrections','private.derive_expense_reimbursement_amount','private.refresh_expense_reimbursement_amount','private.invalidate_expense_accounting_connection_binding','private.enforce_expense_accounting_authority','private.enforce_expense_accounting_related_authority','private.expense_queue_cancelled_before_write','private.cancel_unwritten_expense_reversals','private.queue_expense_accounting_event','private.append_expense_accounting_event','private.capture_expense_accounting_state','private.capture_expense_accounting_change','private.capture_expense_accounting_allocation','public.prepare_expense_accounting_write','public.finalize_expense_accounting_sync','public.save_expense_accounting_settings','private.notify_expense_accounting_review','private.expense_correction_content','private.expense_correction_snapshot','private.immutable_expense_correction','private.correct_expense_for_review','private.list_expense_corrections']))
+	  OR EXISTS (SELECT 1 FROM pg_catalog.pg_attribute a
+	    WHERE a.attrelid='public.expense_batches'::regclass
+	      AND a.attname='reimbursement_amount' AND NOT a.attisdropped) THEN
+	    RAISE EXCEPTION 'Expense release baseline is already installed or partially changed';
+	  END IF;
+	END;
+	$expense_release_baseline$;
+2026-09-14 21:02:26.262 PDT [88843] ERROR:  Expense release baseline is already installed or partially changed
+2026-09-14 21:02:26.262 PDT [88843] CONTEXT:  PL/pgSQL function inline_code_block line 44 at RAISE
+2026-09-14 21:02:26.262 PDT [88843] STATEMENT:  DO $expense_release_baseline$
+	DECLARE
+	  mismatch text;
+	BEGIN
+	  IF current_user <> 'postgres' THEN
+	    RAISE EXCEPTION 'Expense release requires the reviewed postgres migration owner';
+	  END IF;
+	  WITH expected(schema_name,function_name,identity_arguments,expected_md5) AS (VALUES
+	    ('private', 'get_current_user_id', '', '127ffd06387933500d95f96aba24b605'),
+	    ('private', 'get_user_company_id', '', '3de642ffe4b81ee8827c1cc6507f85c4'),
+	    ('private', 'current_user_is_admin', '', '71fedd6dc3d8226af0b506dcfce72dd8'),
+	    ('private', 'current_user_scope_for', 'p_permission text', '2ac60f997a0ac6de618bef5ff7aa5592'),
+	    ('private', 'current_user_has_permission', 'p_permission text, p_min_scope text', '43eb70a695fbf7b8efb38fd40f9c57c3'),
+	    ('public', 'has_permission', 'p_user_id uuid, p_permission text, p_required_scope text', '2a04ca2eb341948215285025249f48f9'),
+	    ('private', 'enforce_expense_edit_authority', '', 'a489f4f6506516e5934ff08f8fba69ad'),
+	    ('public', 'save_expense_atomic', 'p_command jsonb', 'aebfc5e480082b8160de4c6cc4b6fbb3'),
+	    ('public', 'approve_expense_batch', 'p_batch_id uuid', '87bc087970d0c1fb3f36313836869d66'),
+	    ('public', 'early_clear_expense_line', 'p_expense_id uuid', '9b271925be5fe9e9ab8c6ca67cf1115c'),
+	    ('public', 'mark_expense_batch_paid', 'p_batch_id uuid', '0ca6d6ae5d05d8283bcc3bb67b8436b5'),
+	    ('public', 'unmark_expense_batch_paid', 'p_batch_id uuid', '981f644ded66f43707d800d7400ef6ce'),
+	    ('public', 'recalculate_expense_batch_total', 'p_batch_id uuid', '8781e28a7a0485dc02b1d06eefcc8a22'),
+	    ('public', 'place_expense', 'p_expense_id uuid', '69ae7eaa26297db59646c704ea454712'),
+	    ('public', 'tg_place_expense', '', '2a9d3575dd23507040a31cb49dc69825')
+	  )
+	  SELECT e.schema_name || '.' || e.function_name INTO mismatch
+	  FROM expected e
+	  LEFT JOIN pg_catalog.pg_namespace n ON n.nspname=e.schema_name
+	  LEFT JOIN pg_catalog.pg_proc p ON p.pronamespace=n.oid AND p.proname=e.function_name
+	    AND pg_catalog.pg_get_function_identity_arguments(p.oid)=e.identity_arguments
+	  WHERE p.oid IS NULL
+	    OR pg_catalog.md5(pg_catalog.pg_get_functiondef(p.oid)) IS DISTINCT FROM e.expected_md5
+	    OR pg_catalog.pg_get_userbyid(p.proowner) IS DISTINCT FROM 'postgres'
+	  LIMIT 1;
+	  IF mismatch IS NOT NULL THEN
+	    RAISE EXCEPTION 'Expense release source baseline changed: %', mismatch;
+	  END IF;
+	  IF EXISTS (SELECT 1 FROM unnest(ARRAY['public.expense_accounting_settings','public.expense_accounting_payee_mappings','public.expense_accounting_tax_mappings','public.expense_accounting_category_mappings','public.expense_accounting_project_mappings','public.expense_accounting_events','public.expense_accounting_postings','private.expense_accounting_state','private.expense_correction_requests','private.expense_correction_pending','private.expense_correction_scope']) AS target(name)
+	    WHERE pg_catalog.to_regclass(target.name) IS NOT NULL)
+	  OR EXISTS (SELECT 1 FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace
+	    WHERE n.nspname || '.' || p.proname = ANY(ARRAY['private.lock_expense_approver_context','private.lock_expense_batch_for_approval','private.execute_expense_decision','public.request_expense_accounting_sync','public.retry_expense_accounting_before_write','public.correct_expense_for_review','public.list_expense_corrections','private.derive_expense_reimbursement_amount','private.refresh_expense_reimbursement_amount','private.invalidate_expense_accounting_connection_binding','private.enforce_expense_accounting_authority','private.enforce_expense_accounting_related_authority','private.expense_queue_cancelled_before_write','private.cancel_unwritten_expense_reversals','private.queue_expense_accounting_event','private.append_expense_accounting_event','private.capture_expense_accounting_state','private.capture_expense_accounting_change','private.capture_expense_accounting_allocation','public.prepare_expense_accounting_write','public.finalize_expense_accounting_sync','public.save_expense_accounting_settings','private.notify_expense_accounting_review','private.expense_correction_content','private.expense_correction_snapshot','private.immutable_expense_correction','private.correct_expense_for_review','private.list_expense_corrections']))
+	  OR EXISTS (SELECT 1 FROM pg_catalog.pg_attribute a
+	    WHERE a.attrelid='public.expense_batches'::regclass
+	      AND a.attname='reimbursement_amount' AND NOT a.attisdropped) THEN
+	    RAISE EXCEPTION 'Expense release baseline is already installed or partially changed';
+	  END IF;
+	END;
+	$expense_release_baseline$;
+2026-09-14 21:02:26.298 PDT [88849] ERROR:  Expense release baseline is already installed or partially changed
+2026-09-14 21:02:26.298 PDT [88849] CONTEXT:  PL/pgSQL function inline_code_block line 44 at RAISE
+2026-09-14 21:02:26.298 PDT [88849] STATEMENT:  DO $expense_release_baseline$
+	DECLARE
+	  mismatch text;
+	BEGIN
+	  IF current_user <> 'postgres' THEN
+	    RAISE EXCEPTION 'Expense release requires the reviewed postgres migration owner';
+	  END IF;
+	  WITH expected(schema_name,function_name,identity_arguments,expected_md5) AS (VALUES
+	    ('private', 'get_current_user_id', '', '127ffd06387933500d95f96aba24b605'),
+	    ('private', 'get_user_company_id', '', '3de642ffe4b81ee8827c1cc6507f85c4'),
+	    ('private', 'current_user_is_admin', '', '71fedd6dc3d8226af0b506dcfce72dd8'),
+	    ('private', 'current_user_scope_for', 'p_permission text', '2ac60f997a0ac6de618bef5ff7aa5592'),
+	    ('private', 'current_user_has_permission', 'p_permission text, p_min_scope text', '43eb70a695fbf7b8efb38fd40f9c57c3'),
+	    ('public', 'has_permission', 'p_user_id uuid, p_permission text, p_required_scope text', '2a04ca2eb341948215285025249f48f9'),
+	    ('private', 'enforce_expense_edit_authority', '', 'a489f4f6506516e5934ff08f8fba69ad'),
+	    ('public', 'save_expense_atomic', 'p_command jsonb', 'aebfc5e480082b8160de4c6cc4b6fbb3'),
+	    ('public', 'approve_expense_batch', 'p_batch_id uuid', '87bc087970d0c1fb3f36313836869d66'),
+	    ('public', 'early_clear_expense_line', 'p_expense_id uuid', '9b271925be5fe9e9ab8c6ca67cf1115c'),
+	    ('public', 'mark_expense_batch_paid', 'p_batch_id uuid', '0ca6d6ae5d05d8283bcc3bb67b8436b5'),
+	    ('public', 'unmark_expense_batch_paid', 'p_batch_id uuid', '981f644ded66f43707d800d7400ef6ce'),
+	    ('public', 'recalculate_expense_batch_total', 'p_batch_id uuid', '8781e28a7a0485dc02b1d06eefcc8a22'),
+	    ('public', 'place_expense', 'p_expense_id uuid', '69ae7eaa26297db59646c704ea454712'),
+	    ('public', 'tg_place_expense', '', '2a9d3575dd23507040a31cb49dc69825')
+	  )
+	  SELECT e.schema_name || '.' || e.function_name INTO mismatch
+	  FROM expected e
+	  LEFT JOIN pg_catalog.pg_namespace n ON n.nspname=e.schema_name
+	  LEFT JOIN pg_catalog.pg_proc p ON p.pronamespace=n.oid AND p.proname=e.function_name
+	    AND pg_catalog.pg_get_function_identity_arguments(p.oid)=e.identity_arguments
+	  WHERE p.oid IS NULL
+	    OR pg_catalog.md5(pg_catalog.pg_get_functiondef(p.oid)) IS DISTINCT FROM e.expected_md5
+	    OR pg_catalog.pg_get_userbyid(p.proowner) IS DISTINCT FROM 'postgres'
+	  LIMIT 1;
+	  IF mismatch IS NOT NULL THEN
+	    RAISE EXCEPTION 'Expense release source baseline changed: %', mismatch;
+	  END IF;
+	  IF EXISTS (SELECT 1 FROM unnest(ARRAY['public.expense_accounting_settings','public.expense_accounting_payee_mappings','public.expense_accounting_tax_mappings','public.expense_accounting_category_mappings','public.expense_accounting_project_mappings','public.expense_accounting_events','public.expense_accounting_postings','private.expense_accounting_state','private.expense_correction_requests','private.expense_correction_pending','private.expense_correction_scope']) AS target(name)
+	    WHERE pg_catalog.to_regclass(target.name) IS NOT NULL)
+	  OR EXISTS (SELECT 1 FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace
+	    WHERE n.nspname || '.' || p.proname = ANY(ARRAY['private.lock_expense_approver_context','private.lock_expense_batch_for_approval','private.execute_expense_decision','public.request_expense_accounting_sync','public.retry_expense_accounting_before_write','public.correct_expense_for_review','public.list_expense_corrections','private.derive_expense_reimbursement_amount','private.refresh_expense_reimbursement_amount','private.invalidate_expense_accounting_connection_binding','private.enforce_expense_accounting_authority','private.enforce_expense_accounting_related_authority','private.expense_queue_cancelled_before_write','private.cancel_unwritten_expense_reversals','private.queue_expense_accounting_event','private.append_expense_accounting_event','private.capture_expense_accounting_state','private.capture_expense_accounting_change','private.capture_expense_accounting_allocation','public.prepare_expense_accounting_write','public.finalize_expense_accounting_sync','public.save_expense_accounting_settings','private.notify_expense_accounting_review','private.expense_correction_content','private.expense_correction_snapshot','private.immutable_expense_correction','private.correct_expense_for_review','private.list_expense_corrections']))
+	  OR EXISTS (SELECT 1 FROM pg_catalog.pg_attribute a
+	    WHERE a.attrelid='public.expense_batches'::regclass
+	      AND a.attname='reimbursement_amount' AND NOT a.attisdropped) THEN
+	    RAISE EXCEPTION 'Expense release baseline is already installed or partially changed';
+	  END IF;
+	END;
+	$expense_release_baseline$;
+2026-09-14 21:02:26.835 PDT [88899] ERROR:  Expense release baseline is already installed or partially changed
+2026-09-14 21:02:26.835 PDT [88899] CONTEXT:  PL/pgSQL function inline_code_block line 44 at RAISE
+2026-09-14 21:02:26.835 PDT [88899] STATEMENT:  DO $expense_release_baseline$
+	DECLARE
+	  mismatch text;
+	BEGIN
+	  IF current_user <> 'postgres' THEN
+	    RAISE EXCEPTION 'Expense release requires the reviewed postgres migration owner';
+	  END IF;
+	  WITH expected(schema_name,function_name,identity_arguments,expected_md5) AS (VALUES
+	    ('private', 'get_current_user_id', '', '127ffd06387933500d95f96aba24b605'),
+	    ('private', 'get_user_company_id', '', '3de642ffe4b81ee8827c1cc6507f85c4'),
+	    ('private', 'current_user_is_admin', '', '71fedd6dc3d8226af0b506dcfce72dd8'),
+	    ('private', 'current_user_scope_for', 'p_permission text', '2ac60f997a0ac6de618bef5ff7aa5592'),
+	    ('private', 'current_user_has_permission', 'p_permission text, p_min_scope text', '43eb70a695fbf7b8efb38fd40f9c57c3'),
+	    ('public', 'has_permission', 'p_user_id uuid, p_permission text, p_required_scope text', '2a04ca2eb341948215285025249f48f9'),
+	    ('private', 'enforce_expense_edit_authority', '', 'a489f4f6506516e5934ff08f8fba69ad'),
+	    ('public', 'save_expense_atomic', 'p_command jsonb', 'aebfc5e480082b8160de4c6cc4b6fbb3'),
+	    ('public', 'approve_expense_batch', 'p_batch_id uuid', '87bc087970d0c1fb3f36313836869d66'),
+	    ('public', 'early_clear_expense_line', 'p_expense_id uuid', '9b271925be5fe9e9ab8c6ca67cf1115c'),
+	    ('public', 'mark_expense_batch_paid', 'p_batch_id uuid', '0ca6d6ae5d05d8283bcc3bb67b8436b5'),
+	    ('public', 'unmark_expense_batch_paid', 'p_batch_id uuid', '981f644ded66f43707d800d7400ef6ce'),
+	    ('public', 'recalculate_expense_batch_total', 'p_batch_id uuid', '8781e28a7a0485dc02b1d06eefcc8a22'),
+	    ('public', 'place_expense', 'p_expense_id uuid', '69ae7eaa26297db59646c704ea454712'),
+	    ('public', 'tg_place_expense', '', '2a9d3575dd23507040a31cb49dc69825')
+	  )
+	  SELECT e.schema_name || '.' || e.function_name INTO mismatch
+	  FROM expected e
+	  LEFT JOIN pg_catalog.pg_namespace n ON n.nspname=e.schema_name
+	  LEFT JOIN pg_catalog.pg_proc p ON p.pronamespace=n.oid AND p.proname=e.function_name
+	    AND pg_catalog.pg_get_function_identity_arguments(p.oid)=e.identity_arguments
+	  WHERE p.oid IS NULL
+	    OR pg_catalog.md5(pg_catalog.pg_get_functiondef(p.oid)) IS DISTINCT FROM e.expected_md5
+	    OR pg_catalog.pg_get_userbyid(p.proowner) IS DISTINCT FROM 'postgres'
+	  LIMIT 1;
+	  IF mismatch IS NOT NULL THEN
+	    RAISE EXCEPTION 'Expense release source baseline changed: %', mismatch;
+	  END IF;
+	  IF EXISTS (SELECT 1 FROM unnest(ARRAY['public.expense_accounting_settings','public.expense_accounting_payee_mappings','public.expense_accounting_tax_mappings','public.expense_accounting_category_mappings','public.expense_accounting_project_mappings','public.expense_accounting_events','public.expense_accounting_postings','private.expense_accounting_state','private.expense_correction_requests','private.expense_correction_pending','private.expense_correction_scope']) AS target(name)
+	    WHERE pg_catalog.to_regclass(target.name) IS NOT NULL)
+	  OR EXISTS (SELECT 1 FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace
+	    WHERE n.nspname || '.' || p.proname = ANY(ARRAY['private.lock_expense_approver_context','private.lock_expense_batch_for_approval','private.execute_expense_decision','public.request_expense_accounting_sync','public.retry_expense_accounting_before_write','public.correct_expense_for_review','public.list_expense_corrections','private.derive_expense_reimbursement_amount','private.refresh_expense_reimbursement_amount','private.invalidate_expense_accounting_connection_binding','private.enforce_expense_accounting_authority','private.enforce_expense_accounting_related_authority','private.expense_queue_cancelled_before_write','private.cancel_unwritten_expense_reversals','private.queue_expense_accounting_event','private.append_expense_accounting_event','private.capture_expense_accounting_state','private.capture_expense_accounting_change','private.capture_expense_accounting_allocation','public.prepare_expense_accounting_write','public.finalize_expense_accounting_sync','public.save_expense_accounting_settings','private.notify_expense_accounting_review','private.expense_correction_content','private.expense_correction_snapshot','private.immutable_expense_correction','private.correct_expense_for_review','private.list_expense_corrections']))
+	  OR EXISTS (SELECT 1 FROM pg_catalog.pg_attribute a
+	    WHERE a.attrelid='public.expense_batches'::regclass
+	      AND a.attname='reimbursement_amount' AND NOT a.attisdropped) THEN
+	    RAISE EXCEPTION 'Expense release baseline is already installed or partially changed';
+	  END IF;
+	END;
+	$expense_release_baseline$;
+2026-09-14 21:02:26.866 PDT [88905] ERROR:  Expense release baseline is already installed or partially changed
+2026-09-14 21:02:26.866 PDT [88905] CONTEXT:  PL/pgSQL function inline_code_block line 44 at RAISE
+2026-09-14 21:02:26.866 PDT [88905] STATEMENT:  DO $expense_release_baseline$
+	DECLARE
+	  mismatch text;
+	BEGIN
+	  IF current_user <> 'postgres' THEN
+	    RAISE EXCEPTION 'Expense release requires the reviewed postgres migration owner';
+	  END IF;
+	  WITH expected(schema_name,function_name,identity_arguments,expected_md5) AS (VALUES
+	    ('private', 'get_current_user_id', '', '127ffd06387933500d95f96aba24b605'),
+	    ('private', 'get_user_company_id', '', '3de642ffe4b81ee8827c1cc6507f85c4'),
+	    ('private', 'current_user_is_admin', '', '71fedd6dc3d8226af0b506dcfce72dd8'),
+	    ('private', 'current_user_scope_for', 'p_permission text', '2ac60f997a0ac6de618bef5ff7aa5592'),
+	    ('private', 'current_user_has_permission', 'p_permission text, p_min_scope text', '43eb70a695fbf7b8efb38fd40f9c57c3'),
+	    ('public', 'has_permission', 'p_user_id uuid, p_permission text, p_required_scope text', '2a04ca2eb341948215285025249f48f9'),
+	    ('private', 'enforce_expense_edit_authority', '', 'a489f4f6506516e5934ff08f8fba69ad'),
+	    ('public', 'save_expense_atomic', 'p_command jsonb', 'aebfc5e480082b8160de4c6cc4b6fbb3'),
+	    ('public', 'approve_expense_batch', 'p_batch_id uuid', '87bc087970d0c1fb3f36313836869d66'),
+	    ('public', 'early_clear_expense_line', 'p_expense_id uuid', '9b271925be5fe9e9ab8c6ca67cf1115c'),
+	    ('public', 'mark_expense_batch_paid', 'p_batch_id uuid', '0ca6d6ae5d05d8283bcc3bb67b8436b5'),
+	    ('public', 'unmark_expense_batch_paid', 'p_batch_id uuid', '981f644ded66f43707d800d7400ef6ce'),
+	    ('public', 'recalculate_expense_batch_total', 'p_batch_id uuid', '8781e28a7a0485dc02b1d06eefcc8a22'),
+	    ('public', 'place_expense', 'p_expense_id uuid', '69ae7eaa26297db59646c704ea454712'),
+	    ('public', 'tg_place_expense', '', '2a9d3575dd23507040a31cb49dc69825')
+	  )
+	  SELECT e.schema_name || '.' || e.function_name INTO mismatch
+	  FROM expected e
+	  LEFT JOIN pg_catalog.pg_namespace n ON n.nspname=e.schema_name
+	  LEFT JOIN pg_catalog.pg_proc p ON p.pronamespace=n.oid AND p.proname=e.function_name
+	    AND pg_catalog.pg_get_function_identity_arguments(p.oid)=e.identity_arguments
+	  WHERE p.oid IS NULL
+	    OR pg_catalog.md5(pg_catalog.pg_get_functiondef(p.oid)) IS DISTINCT FROM e.expected_md5
+	    OR pg_catalog.pg_get_userbyid(p.proowner) IS DISTINCT FROM 'postgres'
+	  LIMIT 1;
+	  IF mismatch IS NOT NULL THEN
+	    RAISE EXCEPTION 'Expense release source baseline changed: %', mismatch;
+	  END IF;
+	  IF EXISTS (SELECT 1 FROM unnest(ARRAY['public.expense_accounting_settings','public.expense_accounting_payee_mappings','public.expense_accounting_tax_mappings','public.expense_accounting_category_mappings','public.expense_accounting_project_mappings','public.expense_accounting_events','public.expense_accounting_postings','private.expense_accounting_state','private.expense_correction_requests','private.expense_correction_pending','private.expense_correction_scope']) AS target(name)
+	    WHERE pg_catalog.to_regclass(target.name) IS NOT NULL)
+	  OR EXISTS (SELECT 1 FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace
+	    WHERE n.nspname || '.' || p.proname = ANY(ARRAY['private.lock_expense_approver_context','private.lock_expense_batch_for_approval','private.execute_expense_decision','public.request_expense_accounting_sync','public.retry_expense_accounting_before_write','public.correct_expense_for_review','public.list_expense_corrections','private.derive_expense_reimbursement_amount','private.refresh_expense_reimbursement_amount','private.invalidate_expense_accounting_connection_binding','private.enforce_expense_accounting_authority','private.enforce_expense_accounting_related_authority','private.expense_queue_cancelled_before_write','private.cancel_unwritten_expense_reversals','private.queue_expense_accounting_event','private.append_expense_accounting_event','private.capture_expense_accounting_state','private.capture_expense_accounting_change','private.capture_expense_accounting_allocation','public.prepare_expense_accounting_write','public.finalize_expense_accounting_sync','public.save_expense_accounting_settings','private.notify_expense_accounting_review','private.expense_correction_content','private.expense_correction_snapshot','private.immutable_expense_correction','private.correct_expense_for_review','private.list_expense_corrections']))
+	  OR EXISTS (SELECT 1 FROM pg_catalog.pg_attribute a
+	    WHERE a.attrelid='public.expense_batches'::regclass
+	      AND a.attname='reimbursement_amount' AND NOT a.attisdropped) THEN
+	    RAISE EXCEPTION 'Expense release baseline is already installed or partially changed';
+	  END IF;
+	END;
+	$expense_release_baseline$;
+2026-09-14 21:02:28.275 PDT [88968] ERROR:  Expense release requires the reviewed postgres migration owner
+2026-09-14 21:02:28.275 PDT [88968] CONTEXT:  PL/pgSQL function inline_code_block line 6 at RAISE
+2026-09-14 21:02:28.275 PDT [88968] STATEMENT:  DO $expense_release_baseline$
+	DECLARE
+	  mismatch text;
+	BEGIN
+	  IF current_user <> 'postgres' THEN
+	    RAISE EXCEPTION 'Expense release requires the reviewed postgres migration owner';
+	  END IF;
+	  WITH expected(schema_name,function_name,identity_arguments,expected_md5) AS (VALUES
+	    ('private', 'get_current_user_id', '', '127ffd06387933500d95f96aba24b605'),
+	    ('private', 'get_user_company_id', '', '3de642ffe4b81ee8827c1cc6507f85c4'),
+	    ('private', 'current_user_is_admin', '', '71fedd6dc3d8226af0b506dcfce72dd8'),
+	    ('private', 'current_user_scope_for', 'p_permission text', '2ac60f997a0ac6de618bef5ff7aa5592'),
+	    ('private', 'current_user_has_permission', 'p_permission text, p_min_scope text', '43eb70a695fbf7b8efb38fd40f9c57c3'),
+	    ('public', 'has_permission', 'p_user_id uuid, p_permission text, p_required_scope text', '2a04ca2eb341948215285025249f48f9'),
+	    ('private', 'enforce_expense_edit_authority', '', 'a489f4f6506516e5934ff08f8fba69ad'),
+	    ('public', 'save_expense_atomic', 'p_command jsonb', 'aebfc5e480082b8160de4c6cc4b6fbb3'),
+	    ('public', 'approve_expense_batch', 'p_batch_id uuid', '87bc087970d0c1fb3f36313836869d66'),
+	    ('public', 'early_clear_expense_line', 'p_expense_id uuid', '9b271925be5fe9e9ab8c6ca67cf1115c'),
+	    ('public', 'mark_expense_batch_paid', 'p_batch_id uuid', '0ca6d6ae5d05d8283bcc3bb67b8436b5'),
+	    ('public', 'unmark_expense_batch_paid', 'p_batch_id uuid', '981f644ded66f43707d800d7400ef6ce'),
+	    ('public', 'recalculate_expense_batch_total', 'p_batch_id uuid', '8781e28a7a0485dc02b1d06eefcc8a22'),
+	    ('public', 'place_expense', 'p_expense_id uuid', '69ae7eaa26297db59646c704ea454712'),
+	    ('public', 'tg_place_expense', '', '2a9d3575dd23507040a31cb49dc69825')
+	  )
+	  SELECT e.schema_name || '.' || e.function_name INTO mismatch
+	  FROM expected e
+	  LEFT JOIN pg_catalog.pg_namespace n ON n.nspname=e.schema_name
+	  LEFT JOIN pg_catalog.pg_proc p ON p.pronamespace=n.oid AND p.proname=e.function_name
+	    AND pg_catalog.pg_get_function_identity_arguments(p.oid)=e.identity_arguments
+	  WHERE p.oid IS NULL
+	    OR pg_catalog.md5(pg_catalog.pg_get_functiondef(p.oid)) IS DISTINCT FROM e.expected_md5
+	    OR pg_catalog.pg_get_userbyid(p.proowner) IS DISTINCT FROM 'postgres'
+	  LIMIT 1;
+	  IF mismatch IS NOT NULL THEN
+	    RAISE EXCEPTION 'Expense release source baseline changed: %', mismatch;
+	  END IF;
+	  IF EXISTS (SELECT 1 FROM unnest(ARRAY['public.expense_accounting_settings','public.expense_accounting_payee_mappings','public.expense_accounting_tax_mappings','public.expense_accounting_category_mappings','public.expense_accounting_project_mappings','public.expense_accounting_events','public.expense_accounting_postings','private.expense_accounting_state','private.expense_correction_requests','private.expense_correction_pending','private.expense_correction_scope']) AS target(name)
+	    WHERE pg_catalog.to_regclass(target.name) IS NOT NULL)
+	  OR EXISTS (SELECT 1 FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace
+	    WHERE n.nspname || '.' || p.proname = ANY(ARRAY['private.lock_expense_approver_context','private.lock_expense_batch_for_approval','private.execute_expense_decision','public.request_expense_accounting_sync','public.retry_expense_accounting_before_write','public.correct_expense_for_review','public.list_expense_corrections','private.derive_expense_reimbursement_amount','private.refresh_expense_reimbursement_amount','private.invalidate_expense_accounting_connection_binding','private.enforce_expense_accounting_authority','private.enforce_expense_accounting_related_authority','private.expense_queue_cancelled_before_write','private.cancel_unwritten_expense_reversals','private.queue_expense_accounting_event','private.append_expense_accounting_event','private.capture_expense_accounting_state','private.capture_expense_accounting_change','private.capture_expense_accounting_allocation','public.prepare_expense_accounting_write','public.finalize_expense_accounting_sync','public.save_expense_accounting_settings','private.notify_expense_accounting_review','private.expense_correction_content','private.expense_correction_snapshot','private.immutable_expense_correction','private.correct_expense_for_review','private.list_expense_corrections']))
+	  OR EXISTS (SELECT 1 FROM pg_catalog.pg_attribute a
+	    WHERE a.attrelid='public.expense_batches'::regclass
+	      AND a.attname='reimbursement_amount' AND NOT a.attisdropped) THEN
+	    RAISE EXCEPTION 'Expense release baseline is already installed or partially changed';
+	  END IF;
+	END;
+	$expense_release_baseline$;
+2026-09-14 21:02:28.330 PDT [88974] ERROR:  Expense release requires the reviewed postgres migration owner
+2026-09-14 21:02:28.330 PDT [88974] CONTEXT:  PL/pgSQL function inline_code_block line 6 at RAISE
+2026-09-14 21:02:28.330 PDT [88974] STATEMENT:  DO $expense_release_baseline$
+	DECLARE
+	  mismatch text;
+	BEGIN
+	  IF current_user <> 'postgres' THEN
+	    RAISE EXCEPTION 'Expense release requires the reviewed postgres migration owner';
+	  END IF;
+	  WITH expected(schema_name,function_name,identity_arguments,expected_md5) AS (VALUES
+	    ('private', 'get_current_user_id', '', '127ffd06387933500d95f96aba24b605'),
+	    ('private', 'get_user_company_id', '', '3de642ffe4b81ee8827c1cc6507f85c4'),
+	    ('private', 'current_user_is_admin', '', '71fedd6dc3d8226af0b506dcfce72dd8'),
+	    ('private', 'current_user_scope_for', 'p_permission text', '2ac60f997a0ac6de618bef5ff7aa5592'),
+	    ('private', 'current_user_has_permission', 'p_permission text, p_min_scope text', '43eb70a695fbf7b8efb38fd40f9c57c3'),
+	    ('public', 'has_permission', 'p_user_id uuid, p_permission text, p_required_scope text', '2a04ca2eb341948215285025249f48f9'),
+	    ('private', 'enforce_expense_edit_authority', '', 'a489f4f6506516e5934ff08f8fba69ad'),
+	    ('public', 'save_expense_atomic', 'p_command jsonb', 'aebfc5e480082b8160de4c6cc4b6fbb3'),
+	    ('public', 'approve_expense_batch', 'p_batch_id uuid', '87bc087970d0c1fb3f36313836869d66'),
+	    ('public', 'early_clear_expense_line', 'p_expense_id uuid', '9b271925be5fe9e9ab8c6ca67cf1115c'),
+	    ('public', 'mark_expense_batch_paid', 'p_batch_id uuid', '0ca6d6ae5d05d8283bcc3bb67b8436b5'),
+	    ('public', 'unmark_expense_batch_paid', 'p_batch_id uuid', '981f644ded66f43707d800d7400ef6ce'),
+	    ('public', 'recalculate_expense_batch_total', 'p_batch_id uuid', '8781e28a7a0485dc02b1d06eefcc8a22'),
+	    ('public', 'place_expense', 'p_expense_id uuid', '69ae7eaa26297db59646c704ea454712'),
+	    ('public', 'tg_place_expense', '', '2a9d3575dd23507040a31cb49dc69825')
+	  )
+	  SELECT e.schema_name || '.' || e.function_name INTO mismatch
+	  FROM expected e
+	  LEFT JOIN pg_catalog.pg_namespace n ON n.nspname=e.schema_name
+	  LEFT JOIN pg_catalog.pg_proc p ON p.pronamespace=n.oid AND p.proname=e.function_name
+	    AND pg_catalog.pg_get_function_identity_arguments(p.oid)=e.identity_arguments
+	  WHERE p.oid IS NULL
+	    OR pg_catalog.md5(pg_catalog.pg_get_functiondef(p.oid)) IS DISTINCT FROM e.expected_md5
+	    OR pg_catalog.pg_get_userbyid(p.proowner) IS DISTINCT FROM 'postgres'
+	  LIMIT 1;
+	  IF mismatch IS NOT NULL THEN
+	    RAISE EXCEPTION 'Expense release source baseline changed: %', mismatch;
+	  END IF;
+	  IF EXISTS (SELECT 1 FROM unnest(ARRAY['public.expense_accounting_settings','public.expense_accounting_payee_mappings','public.expense_accounting_tax_mappings','public.expense_accounting_category_mappings','public.expense_accounting_project_mappings','public.expense_accounting_events','public.expense_accounting_postings','private.expense_accounting_state','private.expense_correction_requests','private.expense_correction_pending','private.expense_correction_scope']) AS target(name)
+	    WHERE pg_catalog.to_regclass(target.name) IS NOT NULL)
+	  OR EXISTS (SELECT 1 FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace
+	    WHERE n.nspname || '.' || p.proname = ANY(ARRAY['private.lock_expense_approver_context','private.lock_expense_batch_for_approval','private.execute_expense_decision','public.request_expense_accounting_sync','public.retry_expense_accounting_before_write','public.correct_expense_for_review','public.list_expense_corrections','private.derive_expense_reimbursement_amount','private.refresh_expense_reimbursement_amount','private.invalidate_expense_accounting_connection_binding','private.enforce_expense_accounting_authority','private.enforce_expense_accounting_related_authority','private.expense_queue_cancelled_before_write','private.cancel_unwritten_expense_reversals','private.queue_expense_accounting_event','private.append_expense_accounting_event','private.capture_expense_accounting_state','private.capture_expense_accounting_change','private.capture_expense_accounting_allocation','public.prepare_expense_accounting_write','public.finalize_expense_accounting_sync','public.save_expense_accounting_settings','private.notify_expense_accounting_review','private.expense_correction_content','private.expense_correction_snapshot','private.immutable_expense_correction','private.correct_expense_for_review','private.list_expense_corrections']))
+	  OR EXISTS (SELECT 1 FROM pg_catalog.pg_attribute a
+	    WHERE a.attrelid='public.expense_batches'::regclass
+	      AND a.attname='reimbursement_amount' AND NOT a.attisdropped) THEN
+	    RAISE EXCEPTION 'Expense release baseline is already installed or partially changed';
+	  END IF;
+	END;
+	$expense_release_baseline$;
+2026-09-14 21:02:28.746 PDT [88245] LOG:  received immediate shutdown request
+2026-09-14 21:02:28.757 PDT [88245] LOG:  database system is shut down

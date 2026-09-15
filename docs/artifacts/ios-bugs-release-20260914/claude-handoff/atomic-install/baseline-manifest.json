@@ -1,0 +1,156 @@
+{
+  "capturedAt": "2026-09-15T03:05:51.671Z",
+  "projectId": "ijeekuhbatykdomumfjx",
+  "functions": [
+    {
+      "schema": "private",
+      "name": "get_current_user_id",
+      "identityArguments": "",
+      "md5": "127ffd06387933500d95f96aba24b605",
+      "owner": "postgres"
+    },
+    {
+      "schema": "private",
+      "name": "get_user_company_id",
+      "identityArguments": "",
+      "md5": "3de642ffe4b81ee8827c1cc6507f85c4",
+      "owner": "postgres"
+    },
+    {
+      "schema": "private",
+      "name": "current_user_is_admin",
+      "identityArguments": "",
+      "md5": "71fedd6dc3d8226af0b506dcfce72dd8",
+      "owner": "postgres"
+    },
+    {
+      "schema": "private",
+      "name": "current_user_scope_for",
+      "identityArguments": "p_permission text",
+      "md5": "2ac60f997a0ac6de618bef5ff7aa5592",
+      "owner": "postgres"
+    },
+    {
+      "schema": "private",
+      "name": "current_user_has_permission",
+      "identityArguments": "p_permission text, p_min_scope text",
+      "md5": "43eb70a695fbf7b8efb38fd40f9c57c3",
+      "owner": "postgres"
+    },
+    {
+      "schema": "public",
+      "name": "has_permission",
+      "identityArguments": "p_user_id uuid, p_permission text, p_required_scope text",
+      "md5": "2a04ca2eb341948215285025249f48f9",
+      "owner": "postgres"
+    },
+    {
+      "schema": "private",
+      "name": "enforce_expense_edit_authority",
+      "identityArguments": "",
+      "md5": "a489f4f6506516e5934ff08f8fba69ad",
+      "owner": "postgres"
+    },
+    {
+      "schema": "public",
+      "name": "save_expense_atomic",
+      "identityArguments": "p_command jsonb",
+      "md5": "aebfc5e480082b8160de4c6cc4b6fbb3",
+      "owner": "postgres"
+    },
+    {
+      "schema": "public",
+      "name": "approve_expense_batch",
+      "identityArguments": "p_batch_id uuid",
+      "md5": "87bc087970d0c1fb3f36313836869d66",
+      "owner": "postgres"
+    },
+    {
+      "schema": "public",
+      "name": "early_clear_expense_line",
+      "identityArguments": "p_expense_id uuid",
+      "md5": "9b271925be5fe9e9ab8c6ca67cf1115c",
+      "owner": "postgres"
+    },
+    {
+      "schema": "public",
+      "name": "mark_expense_batch_paid",
+      "identityArguments": "p_batch_id uuid",
+      "md5": "0ca6d6ae5d05d8283bcc3bb67b8436b5",
+      "owner": "postgres"
+    },
+    {
+      "schema": "public",
+      "name": "unmark_expense_batch_paid",
+      "identityArguments": "p_batch_id uuid",
+      "md5": "981f644ded66f43707d800d7400ef6ce",
+      "owner": "postgres"
+    },
+    {
+      "schema": "public",
+      "name": "recalculate_expense_batch_total",
+      "identityArguments": "p_batch_id uuid",
+      "md5": "8781e28a7a0485dc02b1d06eefcc8a22",
+      "owner": "postgres"
+    },
+    {
+      "schema": "public",
+      "name": "place_expense",
+      "identityArguments": "p_expense_id uuid",
+      "md5": "69ae7eaa26297db59646c704ea454712",
+      "owner": "postgres"
+    },
+    {
+      "schema": "public",
+      "name": "tg_place_expense",
+      "identityArguments": "",
+      "md5": "2a9d3575dd23507040a31cb49dc69825",
+      "owner": "postgres"
+    }
+  ],
+  "absentRelations": [
+    "public.expense_accounting_settings",
+    "public.expense_accounting_payee_mappings",
+    "public.expense_accounting_tax_mappings",
+    "public.expense_accounting_category_mappings",
+    "public.expense_accounting_project_mappings",
+    "public.expense_accounting_events",
+    "public.expense_accounting_postings",
+    "private.expense_accounting_state",
+    "private.expense_correction_requests",
+    "private.expense_correction_pending",
+    "private.expense_correction_scope"
+  ],
+  "absentFunctions": [
+    "private.lock_expense_approver_context",
+    "private.lock_expense_batch_for_approval",
+    "private.execute_expense_decision",
+    "public.request_expense_accounting_sync",
+    "public.retry_expense_accounting_before_write",
+    "public.correct_expense_for_review",
+    "public.list_expense_corrections",
+    "private.derive_expense_reimbursement_amount",
+    "private.refresh_expense_reimbursement_amount",
+    "private.invalidate_expense_accounting_connection_binding",
+    "private.enforce_expense_accounting_authority",
+    "private.enforce_expense_accounting_related_authority",
+    "private.expense_queue_cancelled_before_write",
+    "private.cancel_unwritten_expense_reversals",
+    "private.queue_expense_accounting_event",
+    "private.append_expense_accounting_event",
+    "private.capture_expense_accounting_state",
+    "private.capture_expense_accounting_change",
+    "private.capture_expense_accounting_allocation",
+    "public.prepare_expense_accounting_write",
+    "public.finalize_expense_accounting_sync",
+    "public.save_expense_accounting_settings",
+    "private.notify_expense_accounting_review",
+    "private.expense_correction_content",
+    "private.expense_correction_snapshot",
+    "private.immutable_expense_correction",
+    "private.correct_expense_for_review",
+    "private.list_expense_corrections"
+  ],
+  "guardSha256": "0c7f1fd89944620614ba17b595ffcccbe0d14b1c8f324f7719997d919b010423",
+  "executed": false
+}

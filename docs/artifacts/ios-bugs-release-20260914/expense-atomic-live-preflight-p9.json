@@ -1,0 +1,10 @@
+{
+  "project_id": "ijeekuhbatykdomumfjx",
+  "observed_after": "2026-09-15 03:37:42 UTC",
+  "bundle_sha256": "4d53da61929337ab783070818f387ac1e8650cd900230fd7685418a32c543d22",
+  "guard_sha256": "0c7f1fd89944620614ba17b595ffcccbe0d14b1c8f324f7719997d919b010423",
+  "mode": "BEGIN READ ONLY; same baseline DO guard; ROLLBACK",
+  "isError": false,
+  "passed": true,
+  "no_customer_or_schema_mutation": true
+}

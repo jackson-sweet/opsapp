@@ -1,0 +1,76 @@
+{
+  "prepareOnly": true,
+  "candidateRevision": "53d334378cd0d61adec387a8580d569a46cf5d33",
+  "sources": [
+    {
+      "path": "supabase/migrations/20260912012607_expense_decision_company_authority.sql",
+      "version": "20260912012607",
+      "sourceSha256": "07b6791dbeb19e365d20361242d5cb1103cff6b5037ce0a56d3c4e5a3b3d6cef",
+      "bodySha256": "5fcc2bffe3f131b73dfcff2d2f7db440419d7de048b032c434f5c993d988de36",
+      "removedOuterStatements": [
+        {
+          "startByte": 319,
+          "endByte": 325,
+          "removed": "begin;"
+        },
+        {
+          "startByte": 10369,
+          "endByte": 10376,
+          "removed": "commit;"
+        }
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260912203328_expense_accounting_lifecycle.sql",
+      "version": "20260912203328",
+      "sourceSha256": "77b420827c616996a062f35787e6bb257141b1c7da468a4253a61536ee922e23",
+      "bodySha256": "cc880e81abd08a02620df842e5314278f71ba39997f02aa94dc45e35c8066e95",
+      "removedOuterStatements": [
+        {
+          "startByte": 156,
+          "endByte": 162,
+          "removed": "begin;"
+        },
+        {
+          "startByte": 70423,
+          "endByte": 70430,
+          "removed": "commit;"
+        }
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260914200910_expense_payroll_reimbursement_projection.sql",
+      "version": "20260914200910",
+      "sourceSha256": "78db2cee099061cd5d31be11a8de4c174cbb6022a0c66c590f08feb53902dc0b",
+      "bodySha256": "78db2cee099061cd5d31be11a8de4c174cbb6022a0c66c590f08feb53902dc0b",
+      "removedOuterStatements": []
+    },
+    {
+      "path": "supabase/migrations/20260914214748_expense_admin_correction_review.sql",
+      "version": "20260914214748",
+      "sourceSha256": "f5a6d66815c8e9468817fc28d24a5fe1d7caa68dcb671b3b379a1ad227b5f015",
+      "bodySha256": "80ee7c4197e86de4caeb79ae554b97f5b3a494928c3fa96b8d7cdce4cfa38e71",
+      "removedOuterStatements": [
+        {
+          "startByte": 172,
+          "endByte": 178,
+          "removed": "begin;"
+        },
+        {
+          "startByte": 33284,
+          "endByte": 33291,
+          "removed": "commit;"
+        }
+      ]
+    }
+  ],
+  "ledger": {
+    "mechanism": "Supabase apply_migration once",
+    "actualVersion": null,
+    "constituentVersionsAreSuperseded": true
+  },
+  "baselineGuardSha256": "0c7f1fd89944620614ba17b595ffcccbe0d14b1c8f324f7719997d919b010423",
+  "bundleSha256": "4d53da61929337ab783070818f387ac1e8650cd900230fd7685418a32c543d22",
+  "bundleByteCount": 146738,
+  "sqlExecutionPerformed": false
+}

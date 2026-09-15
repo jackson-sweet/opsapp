@@ -1,0 +1,22 @@
+4d53da61929337ab783070818f387ac1e8650cd900230fd7685418a32c543d22 /Users/jacksonsweet/Projects/OPS/ops-ios/docs/artifacts/ios-bugs-release-20260914/claude-handoff/atomic-install/expense-release-atomic.sql
+0c7f1fd89944620614ba17b595ffcccbe0d14b1c8f324f7719997d919b010423 /Users/jacksonsweet/Projects/OPS/ops-ios/docs/artifacts/ios-bugs-release-20260914/claude-handoff/atomic-install/baseline-guard.sql
+2a7d8c203f9eda6846a4c0635c64f9b14bbdff802fbc54cd2277897865f5325c /Users/jacksonsweet/Projects/OPS/ops-ios/docs/artifacts/ios-bugs-release-20260914/claude-handoff/atomic-install/baseline-preflight-readonly.sql
+299cfc22fd61756bcd6d280beeec36af8ac33aaab417b26b9989ac07c7ec29b2 /private/tmp/ops-ios-bugs-p9-expense/atomic-fixture/seed.sql
+b33428af66c52be4b5531e89d329c57499959ab7803dbbc8e225f6a43518d37b /private/tmp/ops-ios-bugs-p9-expense/atomic-fixture/snapshot.sql
+b55bc851bf35a75ad5a728cf366fe50f1303609589d6f8c2c3e65fa30835c188 /private/tmp/ops-ios-bugs-p9-expense/atomic-fixture/postconditions.sql
+a4b8f4d6e2e280555f8ef53a726112cea4dc0bdc18e8cf264a156929120a4c48 /Users/jacksonsweet/Projects/OPS/ops-ios/docs/artifacts/ios-bugs-release-20260914/claude-handoff/atomic-install/postconditions-production.sql
+27ac0c9b7a053031b8a61144d0411d9ad4ba514b05918342a64460a19d3ccdc0 /Users/jacksonsweet/Projects/OPS/.worktrees/ios-bugs-p9-expense-release/tests/runtime/expense-correction-concurrency.py
+0f6a3f6a7bc61bbd48ab3427e6558e14e652faf4760b9363691347b60639dfb9 /Users/jacksonsweet/Projects/OPS/.worktrees/ios-bugs-p9-expense-release/tests/sql/expense-accounting-runtime.sql
+824b6a0ab3cf6f1a7c51ae03ea979ccdc34e3594e0af9ef7e34272ac8b4d5bb6 /Users/jacksonsweet/Projects/OPS/.worktrees/ios-bugs-p9-expense-release/tests/sql/expense-correction-runtime.sql
+78cf91b8a02ac296bb7bf1b046f36a2b9702704d75f6b9274d5a33c3bc661486 /Users/jacksonsweet/Projects/OPS/.worktrees/ios-bugs-p9-expense-release/tests/sql/expense-decision-authority-baseline.sql
+4e6808ae2046e612db9586e723588c92c54560fcd4380ae6b876d2f6140ebbc6 /Users/jacksonsweet/Projects/OPS/.worktrees/ios-bugs-p9-expense-release/tests/sql/expense-accounting-fixture.sql
+7609cdedb3496213df5967196931b81ddcebf7ff79051cfdba37a7025e742b6e /Users/jacksonsweet/Projects/OPS/.worktrees/ios-bugs-p9-expense-release/tests/sql/expense-correction-fixture.sql
+29e396e15f4516217f8ad4ac6d5ff9e72f9388810976627c69453295a2f0728c /Users/jacksonsweet/Projects/OPS/.worktrees/ios-bugs-p9-expense-release/supabase/migrations/20260720024121_expense_atomic_save.sql
+3f1508e3d9b7b388113a3ab1d17aa42b69e5c00a49081fa30118779f36c47b0a /Users/jacksonsweet/Projects/OPS/.worktrees/ios-bugs-p9-expense-release/supabase/migrations/20260720024623_fix_expense_batch_recalculation_alias.sql
+357c5aaad9c9de484b1c1a98cea4fdcaa37e307e51e9c0ff241141ea9f681e24 /Users/jacksonsweet/Projects/OPS/.worktrees/ios-bugs-p9-expense-release/tests/sql/expense-payroll-projection-live-baseline.sql
+fa701b6f7b31e7b5d2fd0200a18232a9b07114296d1be5e806d29f66f290f401 /Users/jacksonsweet/Projects/OPS/.worktrees/ios-bugs-p9-expense-release/tests/sql/expense-correction-baseline.sql
+frozen hash confirmed 4d53da61929337ab783070818f387ac1e8650cd900230fd7685418a32c543d22 /Users/jacksonsweet/Projects/OPS/ops-ios/docs/artifacts/ios-bugs-release-20260914/claude-handoff/atomic-install/expense-release-atomic.sql
+frozen hash confirmed 0c7f1fd89944620614ba17b595ffcccbe0d14b1c8f324f7719997d919b010423 /Users/jacksonsweet/Projects/OPS/ops-ios/docs/artifacts/ios-bugs-release-20260914/claude-handoff/atomic-install/baseline-guard.sql
+frozen byte count confirmed 146738
+PG psql version: psql (PostgreSQL) 17.11 (Homebrew)
+server_version: 17.11 (Homebrew)

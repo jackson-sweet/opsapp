@@ -1,0 +1,10 @@
+PASS vulnerable auth_id withdrawal during actor wait returned
+PASS vulnerable firebase_uid withdrawal during actor wait returned
+PASS vulnerable auth_id reassignment during actor wait returned
+PASS vulnerable company removal during company wait denied with no effects
+PASS vulnerable unchanged company after company wait returned
+PASS vulnerable approval cannot stamp the previous login owner returned
+PASS vulnerable accounting request reauthorizes login ownership returned
+PASS vulnerable new correction retains existing trigger defense denied with no effects
+PASS vulnerable exact correction replay reauthorizes login ownership returned
+9 real identity-lock checks passed: vulnerable

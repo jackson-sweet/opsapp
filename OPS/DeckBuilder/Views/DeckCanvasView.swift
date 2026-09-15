@@ -2324,10 +2324,21 @@ class GesturePassthroughView: UIView {
 /// The pinch recognizer fires for any two-finger movement. We track the midpoint
 /// delta each frame for panning, and the scale delta for zooming. No separate pan
 /// gesture, so there's zero conflict.
+///
+/// A read-only drawing opts into a second, one-finger pan recognizer: with
+/// nothing to draw, one finger should move the sheet the way it does in Photos
+/// and Maps. The editor leaves it off — one finger there draws.
 struct CanvasGestureView: UIViewRepresentable {
     @Binding var scale: CGFloat
     @Binding var offset: CGSize
     var isDrawing: Bool
+    /// Zoom bounds the host allows. The editor's canvas zooms out past fit to
+    /// show the whole workspace; a drawing that opens already fitted cannot go
+    /// below its own fit.
+    var scaleRange: ClosedRange<CGFloat> = 0.15...8.0
+    /// One finger pans. Off by default so the editor's draw gesture keeps the
+    /// single touch it has always owned.
+    var allowsSingleFingerPan: Bool = false
     /// Keeps the host's workspace recoverable without imposing a policy on
     /// read-only canvas consumers.
     var constrainOffset: (CGSize, CGFloat) -> CGSize = { offset, _ in offset }
@@ -2350,16 +2361,32 @@ struct CanvasGestureView: UIViewRepresentable {
         pinch.delaysTouchesBegan = false
         view.addGestureRecognizer(pinch)
         context.coordinator.pinchGesture = pinch
+
+        // Always installed, enabled only for hosts that asked for it: a
+        // recognizer created once and toggled in updateUIView cannot get out of
+        // step with the view the way a conditionally-added one can.
+        let pan = UIPanGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handlePan(_:)))
+        pan.cancelsTouchesInView = false
+        pan.delaysTouchesBegan = false
+        pan.minimumNumberOfTouches = 1
+        // A second finger ends this pan and the pinch takes the gesture over,
+        // so the two never both write offset.
+        pan.maximumNumberOfTouches = 1
+        pan.isEnabled = false
+        view.addGestureRecognizer(pan)
+        context.coordinator.panGesture = pan
         return view
     }
 
     func updateUIView(_ uiView: GesturePassthroughView, context: Context) {
         context.coordinator.scaleBinding = $scale
         context.coordinator.offsetBinding = $offset
+        context.coordinator.scaleRange = scaleRange
         context.coordinator.constrainOffset = constrainOffset
         context.coordinator.onInteractingChange = onInteractingChange
         context.coordinator.onInteractionBegan = onInteractionBegan
         context.coordinator.pinchGesture?.isEnabled = !isDrawing
+        context.coordinator.panGesture?.isEnabled = allowsSingleFingerPan && !isDrawing
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(scale: $scale, offset: $offset) }
@@ -2367,10 +2394,12 @@ struct CanvasGestureView: UIViewRepresentable {
     class Coordinator: NSObject {
         var scaleBinding: Binding<CGFloat>
         var offsetBinding: Binding<CGSize>
+        var scaleRange: ClosedRange<CGFloat> = 0.15...8.0
         var constrainOffset: (CGSize, CGFloat) -> CGSize = { offset, _ in offset }
         var onInteractingChange: (Bool) -> Void = { _ in }
         var onInteractionBegan: () -> Void = {}
         weak var pinchGesture: UIPinchGestureRecognizer?
+        weak var panGesture: UIPanGestureRecognizer?
         private var baseScale: CGFloat = 1.0
         private var lastMidpoint: CGPoint = .zero
         private var endWork: DispatchWorkItem?
@@ -2412,7 +2441,7 @@ struct CanvasGestureView: UIViewRepresentable {
                 newOffset.height += dy
 
                 // 2. Zoom: scale change anchored at current midpoint
-                let newScale = max(0.15, min(8.0, baseScale * gesture.scale))
+                let newScale = max(scaleRange.lowerBound, min(scaleRange.upperBound, baseScale * gesture.scale))
                 if abs(newScale - currentScale) > 0.001 {
                     let ratio = newScale / currentScale
                     newOffset.width = mid.x - ratio * (mid.x - newOffset.width)
@@ -2424,11 +2453,45 @@ struct CanvasGestureView: UIViewRepresentable {
 
             case .ended, .cancelled:
                 baseScale = scaleBinding.wrappedValue
-                let work = DispatchWorkItem { [weak self] in self?.onInteractingChange(false) }
-                endWork = work
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: work)
+                scheduleInteractionEnd()
             default: break
             }
+        }
+
+        /// One finger drags the sheet. Translation is consumed and reset every
+        /// frame so the handler stays a pure delta — the same shape the pinch's
+        /// midpoint tracking uses, and immune to a mid-gesture offset write from
+        /// anywhere else.
+        @objc func handlePan(_ gesture: UIPanGestureRecognizer) {
+            guard let view = gesture.view else { return }
+
+            switch gesture.state {
+            case .began:
+                endWork?.cancel()
+                onInteractionBegan()
+                onInteractingChange(true)
+                gesture.setTranslation(.zero, in: view)
+
+            case .changed:
+                let translation = gesture.translation(in: view)
+                gesture.setTranslation(.zero, in: view)
+
+                var newOffset = offsetBinding.wrappedValue
+                newOffset.width += translation.x
+                newOffset.height += translation.y
+                offsetBinding.wrappedValue = constrainOffset(newOffset, scaleBinding.wrappedValue)
+
+            case .ended, .cancelled:
+                scheduleInteractionEnd()
+
+            default: break
+            }
+        }
+
+        private func scheduleInteractionEnd() {
+            let work = DispatchWorkItem { [weak self] in self?.onInteractingChange(false) }
+            endWork = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: work)
         }
     }
 }

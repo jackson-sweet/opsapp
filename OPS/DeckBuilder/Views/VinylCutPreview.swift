@@ -9,12 +9,30 @@ import CoreGraphics
 import SwiftUI
 import UIKit
 
+/// The camera over the vinyl drawing.
+///
+/// The transform lives INSIDE the live `Canvas` (`translateBy` then `scaleBy`),
+/// not on a `scaleEffect` outside it — bug 1a8e48af: an outer `scaleEffect`
+/// bitmap-scales a fixed-size render, so zooming in read as a blurry snapshot
+/// rather than a drawing. Content maps to the viewport as
+/// `viewportPoint = (contentPoint × scale) + offset`, with content measured in
+/// the fitted drawing's own canvas points. Every method below shares that one
+/// mapping so the pinch, the double tap and the clamp can never disagree.
 struct VinylOrderViewportState: Equatable {
+    /// Fit is 1: `VinylPreviewFit` has already sized the drawing to its canvas,
+    /// so at rest the camera is the identity.
     static let minimumScale: CGFloat = 1
-    static let maximumScale: CGFloat = 4
+    /// Eight times fit — the same ceiling the deck builder's canvas carries, so
+    /// a seam reads the same close on both surfaces. Was 4×.
+    static let maximumScale: CGFloat = 8
     /// Where a double-tap lands. 2× is the step that reads as "closer" without
     /// losing the shape of the deck — the rung a second double-tap returns from.
     static let doubleTapScale: CGFloat = 2
+    /// How far past the drawn layout the operator may push it before the clamp
+    /// bites: a quarter of the viewport on each axis. Enough to pull a corner
+    /// callout out from under the header or the settings peek; never enough to
+    /// lose the drawing off screen.
+    static let contentMarginFraction: CGFloat = 0.25
 
     var scale: CGFloat = minimumScale
     var offset: CGSize = .zero
@@ -25,31 +43,62 @@ struct VinylOrderViewportState: Equatable {
         self == Self()
     }
 
-    mutating func applyZoom(multiplier: CGFloat, viewportSize: CGSize) {
-        scale = min(
-            Self.maximumScale,
-            max(Self.minimumScale, scale * multiplier)
+    /// The point of the fitted drawing currently sitting under `point`.
+    ///
+    /// `viewportSize` is part of the coordinate-space contract — every method
+    /// that takes a viewport-space point takes it, so a caller cannot quietly
+    /// hand one space's point to another's math. The transform itself is
+    /// anchored at the canvas origin, so the size does not enter this inverse.
+    func contentPoint(forViewportPoint point: CGPoint, viewportSize _: CGSize) -> CGPoint {
+        let scale = Self.usableScale(scale)
+        return CGPoint(
+            x: (point.x - offset.width) / scale,
+            y: (point.y - offset.height) / scale
         )
-
-        if scale == Self.minimumScale {
-            offset = .zero
-        } else {
-            offset = clampedOffset(offset, viewportSize: viewportSize)
-        }
     }
 
-    mutating func applyPan(translation: CGSize, viewportSize: CGSize) {
-        guard scale > Self.minimumScale else {
-            offset = .zero
-            return
-        }
+    /// Pinch. `anchor` is the pinch midpoint in viewport space; the offset walks
+    /// back by the scale ratio so the content under the fingers stays under the
+    /// fingers. Identical math to `CanvasGestureView`, which drives the live
+    /// gesture — this path serves the VoiceOver adjustable action.
+    mutating func applyZoom(
+        multiplier: CGFloat,
+        anchor: CGPoint,
+        viewportSize: CGSize,
+        contentBounds: CGRect
+    ) {
+        let current = Self.usableScale(scale)
+        let target = min(Self.maximumScale, max(Self.minimumScale, current * multiplier))
+        let ratio = target / current
 
-        offset = clampedOffset(
+        scale = target
+        offset = Self.clampedOffset(
+            CGSize(
+                width: anchor.x - (ratio * (anchor.x - offset.width)),
+                height: anchor.y - (ratio * (anchor.y - offset.height))
+            ),
+            scale: target,
+            viewportSize: viewportSize,
+            contentBounds: contentBounds
+        )
+    }
+
+    /// Drag. Allowed at every zoom, fit included — "fully pannable" was the
+    /// founder's word on 1a8e48af, and the old fit-scale guard refused the
+    /// gesture outright.
+    mutating func applyPan(
+        translation: CGSize,
+        viewportSize: CGSize,
+        contentBounds: CGRect
+    ) {
+        offset = Self.clampedOffset(
             CGSize(
                 width: offset.width + translation.width,
                 height: offset.height + translation.height
             ),
-            viewportSize: viewportSize
+            scale: scale,
+            viewportSize: viewportSize,
+            contentBounds: contentBounds
         )
     }
 
@@ -57,49 +106,86 @@ struct VinylOrderViewportState: Equatable {
         self = Self()
     }
 
-    /// Double-tap: fitted → `doubleTapScale` anchored on the tapped point,
+    /// Double-tap: at rest → `doubleTapScale` anchored on the tapped point,
     /// anywhere else → back to fit. Replaces the `+`/`−` rail the founder
     /// called redundant (bug 317da29f) with the gesture every map and photo
-    /// on the phone already uses.
-    ///
-    /// `point` is in the viewport's own coordinate space (origin top-left).
-    /// The drawing is `scaleEffect`-ed about the viewport centre and then
-    /// offset, so the content under the tap stays under the tap when the new
-    /// offset walks the anchor back by the scale ratio.
-    mutating func toggleFit(at point: CGPoint, viewportSize: CGSize) {
-        guard scale == Self.minimumScale else {
+    /// on the phone already uses. A drawing merely dragged at fit scale is off
+    /// its rest state too, so the tap re-fits it instead of zooming in from a
+    /// shifted position.
+    mutating func toggleFit(at point: CGPoint, viewportSize: CGSize, contentBounds: CGRect) {
+        guard isFitted else {
             fit()
             return
         }
 
-        let target = min(Self.maximumScale, Self.doubleTapScale)
-        let ratio = target / max(scale, 0.0001)
-        let fromCenter = CGSize(
-            width: point.x - (viewportSize.width / 2),
-            height: point.y - (viewportSize.height / 2)
-        )
-        let anchor = CGSize(
-            width: fromCenter.width - offset.width,
-            height: fromCenter.height - offset.height
-        )
-
-        scale = target
-        offset = clampedOffset(
-            CGSize(
-                width: fromCenter.width - (anchor.width * ratio),
-                height: fromCenter.height - (anchor.height * ratio)
-            ),
-            viewportSize: viewportSize
+        applyZoom(
+            multiplier: min(Self.maximumScale, Self.doubleTapScale) / Self.usableScale(scale),
+            anchor: point,
+            viewportSize: viewportSize,
+            contentBounds: contentBounds
         )
     }
 
-    private func clampedOffset(_ proposedOffset: CGSize, viewportSize: CGSize) -> CGSize {
-        let horizontalLimit = max(0, viewportSize.width * (scale - 1) / 2)
-        let verticalLimit = max(0, viewportSize.height * (scale - 1) / 2)
-        return CGSize(
-            width: min(horizontalLimit, max(-horizontalLimit, proposedOffset.width)),
-            height: min(verticalLimit, max(-verticalLimit, proposedOffset.height))
+    /// Fences the DRAWN LAYOUT, not the viewport.
+    ///
+    /// The old clamp assumed the drawing filled the viewport at every scale, so
+    /// at fit — where the drawing is letterboxed inside its band — it computed a
+    /// zero-width range and pinned the offset to nothing. This one keeps a
+    /// `contentMarginFraction` band of the viewport holding drawing on each
+    /// axis, which is the deck builder's own `constrainedOffset` shape with the
+    /// touch-target reveal swapped for a proportional margin.
+    ///
+    /// Static because the live gesture bridge writes `scale` and `offset`
+    /// through separate bindings and has to clamp against the scale it is ABOUT
+    /// to commit, not the one still on the state.
+    static func clampedOffset(
+        _ proposed: CGSize,
+        scale: CGFloat,
+        viewportSize: CGSize,
+        contentBounds: CGRect
+    ) -> CGSize {
+        CGSize(
+            width: clampedAxisOffset(
+                proposed.width,
+                contentMin: contentBounds.minX,
+                contentMax: contentBounds.maxX,
+                scale: scale,
+                viewportLength: viewportSize.width
+            ),
+            height: clampedAxisOffset(
+                proposed.height,
+                contentMin: contentBounds.minY,
+                contentMax: contentBounds.maxY,
+                scale: scale,
+                viewportLength: viewportSize.height
+            )
         )
+    }
+
+    private static func clampedAxisOffset(
+        _ proposed: CGFloat,
+        contentMin: CGFloat,
+        contentMax: CGFloat,
+        scale: CGFloat,
+        viewportLength: CGFloat
+    ) -> CGFloat {
+        let finiteProposal = proposed.isFinite ? proposed : 0
+        let viewportLength = max(0, viewportLength.isFinite ? viewportLength : 0)
+        guard contentMin.isFinite, contentMax.isFinite, contentMax >= contentMin else {
+            return finiteProposal
+        }
+
+        let scale = usableScale(scale)
+        // Never more than half the viewport, so the two bounds cannot invert on
+        // a degenerate band.
+        let margin = min(viewportLength * contentMarginFraction, viewportLength / 2)
+        let minimumOffset = margin - (contentMax * scale)
+        let maximumOffset = viewportLength - margin - (contentMin * scale)
+        return min(max(finiteProposal, minimumOffset), maximumOffset)
+    }
+
+    private static func usableScale(_ scale: CGFloat) -> CGFloat {
+        scale.isFinite && scale > 0 ? scale : 1
     }
 }
 
@@ -220,6 +306,18 @@ struct VinylPreviewFitResult: Equatable {
     let bounds: CGRect
     let origin: CGPoint
     let scale: CGFloat
+
+    /// Where the fitted drawing actually lands inside its canvas, in the
+    /// canvas's own points. The pan clamp fences this rect, so the clamp and the
+    /// drawing read one answer instead of each deriving their own.
+    var drawnRect: CGRect {
+        CGRect(
+            x: origin.x,
+            y: origin.y,
+            width: bounds.width * scale,
+            height: bounds.height * scale
+        )
+    }
 }
 
 /// Resolves the drawing's fit inside its canvas.
@@ -289,6 +387,10 @@ struct VinylCutPreview: View {
     /// here as it does on the deck canvas.
     var measurementSystem: MeasurementSystem = .imperial
     var annotationDetail: VinylPreviewAnnotationDetail = .full
+    /// Pan and zoom, applied inside the canvas so the vectors redraw at native
+    /// density at every scale (bug 1a8e48af). The identity by default — the
+    /// inline card and every export render the fitted drawing untouched.
+    var viewport: VinylOrderViewportState = VinylOrderViewportState()
 
     var body: some View {
         Canvas { context, size in
@@ -296,6 +398,12 @@ struct VinylCutPreview: View {
                 drawEmpty(in: &context, size: size)
                 return
             }
+
+            // World (fitted-canvas) → screen. Everything below draws in fitted
+            // canvas points, exactly as it did before the camera existed; at the
+            // rest state this transform is the identity.
+            context.translateBy(x: viewport.offset.width, y: viewport.offset.height)
+            context.scaleBy(x: viewport.scale, y: viewport.scale)
 
             for surface in plan.surfaces {
                 drawSurface(
@@ -317,7 +425,15 @@ struct VinylCutPreview: View {
         .accessibilityLabel("Vinyl cut preview")
     }
 
-    private func fit(in size: CGSize) -> VinylPreviewFitResult? {
+    /// Where the fitted drawing lands inside a `size`-sized canvas, before the
+    /// camera moves. The workspace's pan clamp fences this rect, so the clamp
+    /// and the drawing are answering the same question with the same code.
+    /// `nil` when there is nothing to draw.
+    func contentRect(in size: CGSize) -> CGRect? {
+        fit(in: size)?.drawnRect
+    }
+
+    func fit(in size: CGSize) -> VinylPreviewFitResult? {
         guard let content = contentBounds, content.width > 0, content.height > 0 else {
             return nil
         }
@@ -403,6 +519,23 @@ struct VinylCutPreview: View {
         drawDimensionLabels(annotationPlan, in: &context, bounds: bounds, origin: origin, scale: scale)
     }
 
+    /// A callout is not part of the geometry: it has to stay legible at its
+    /// design size on SCREEN whatever the zoom. The canvas carries the camera,
+    /// so every text draw undoes it in its own layer — the same inverse-scale
+    /// the deck builder uses for its dimension pills (`DeckCanvasView`).
+    private func drawScreenSized(
+        in context: inout GraphicsContext,
+        at point: CGPoint,
+        _ body: (inout GraphicsContext) -> Void
+    ) {
+        let inverseScale = 1 / max(abs(viewport.scale), CGFloat.ulpOfOne.squareRoot())
+        context.drawLayer { layer in
+            layer.translateBy(x: point.x, y: point.y)
+            layer.scaleBy(x: inverseScale, y: inverseScale)
+            body(&layer)
+        }
+    }
+
     /// The deck's own dimensions — the outermost ring of the drawing, outside
     /// the wrap band and the lap leaders.
     private func drawDimensionLabels(
@@ -413,13 +546,15 @@ struct VinylCutPreview: View {
         scale: CGFloat
     ) {
         for label in annotationPlan.dimensionLabels {
-            context.draw(
-                Text(label.text)
-                    .font(OPSStyle.Typography.microLabel)
-                    .foregroundColor(OPSStyle.Colors.text2),
-                at: map(label.point, bounds: bounds, origin: origin, scale: scale),
-                anchor: .center
-            )
+            let text = Text(label.text)
+                .font(OPSStyle.Typography.microLabel)
+                .foregroundColor(OPSStyle.Colors.text2)
+            drawScreenSized(
+                in: &context,
+                at: map(label.point, bounds: bounds, origin: origin, scale: scale)
+            ) { layer in
+                layer.draw(text, at: .zero, anchor: .center)
+            }
         }
     }
 
@@ -460,13 +595,15 @@ struct VinylCutPreview: View {
         scale: CGFloat
     ) {
         for label in annotationPlan.houseLabels {
-            context.draw(
-                Text(label.text)
-                    .font(OPSStyle.Typography.microLabel)
-                    .foregroundColor(annotationColor(for: label.tone)),
-                at: map(label.point, bounds: bounds, origin: origin, scale: scale),
-                anchor: .center
-            )
+            let text = Text(label.text)
+                .font(OPSStyle.Typography.microLabel)
+                .foregroundColor(annotationColor(for: label.tone))
+            drawScreenSized(
+                in: &context,
+                at: map(label.point, bounds: bounds, origin: origin, scale: scale)
+            ) { layer in
+                layer.draw(text, at: .zero, anchor: .center)
+            }
         }
     }
 
@@ -484,13 +621,15 @@ struct VinylCutPreview: View {
             line.addLine(to: map(leader.lineEnd, bounds: bounds, origin: origin, scale: scale))
             context.stroke(line, with: .color(color.opacity(0.82)), lineWidth: OPSStyle.Layout.Border.standard)
 
-            context.draw(
-                Text(leader.label)
-                    .font(OPSStyle.Typography.microLabel)
-                    .foregroundColor(color),
-                at: map(leader.labelPoint, bounds: bounds, origin: origin, scale: scale),
-                anchor: .center
-            )
+            let text = Text(leader.label)
+                .font(OPSStyle.Typography.microLabel)
+                .foregroundColor(color)
+            drawScreenSized(
+                in: &context,
+                at: map(leader.labelPoint, bounds: bounds, origin: origin, scale: scale)
+            ) { layer in
+                layer.draw(text, at: .zero, anchor: .center)
+            }
         }
     }
 
@@ -570,16 +709,27 @@ struct VinylCutPreview: View {
             // A label wider than its strip was clipped mid-glyph on the inline
             // card ("13" with no foot mark on a narrow last cut). Measure first;
             // a strip too narrow for its label shows the strip alone — the cut
-            // list below carries the number.
+            // list below carries the number. The comparison is in SCREEN points
+            // on both sides: the label is screen-sized, so zooming in earns a
+            // narrow strip its number back instead of leaving it blank.
             let resolvedLabel = clipped.resolve(label)
             let labelSize = resolvedLabel.measure(
                 in: CGSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
             )
             let stripBounds = cutPath.boundingRect
             let labelInset = CGFloat(OPSStyle.Layout.spacing1)
-            guard labelSize.width + labelInset * 2 <= stripBounds.width,
-                  labelSize.height + labelInset * 2 <= stripBounds.height else { continue }
-            clipped.draw(resolvedLabel, at: labelPoint(for: cut, surface: surface, bounds: bounds, origin: origin, scale: scale), anchor: .center)
+            let stripOnScreen = CGSize(
+                width: stripBounds.width * viewport.scale,
+                height: stripBounds.height * viewport.scale
+            )
+            guard labelSize.width + labelInset * 2 <= stripOnScreen.width,
+                  labelSize.height + labelInset * 2 <= stripOnScreen.height else { continue }
+            drawScreenSized(
+                in: &clipped,
+                at: labelPoint(for: cut, surface: surface, bounds: bounds, origin: origin, scale: scale)
+            ) { layer in
+                layer.draw(resolvedLabel, at: .zero, anchor: .center)
+            }
         }
     }
 
@@ -994,8 +1144,9 @@ struct VinylOrderWorkspace: View {
     let onSettingsChanged: () -> Void
     let onClose: () -> Void
 
-    @State private var lastMagnification: CGFloat = 1
-    @State private var lastDragTranslation: CGSize = .zero
+    /// A camera move is motion, not a crossfade: under Reduce Motion the FIT and
+    /// double-tap transitions place the drawing instantly rather than gliding.
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var panelDetent: VinylOrderPanelDetent
     @State private var panelDrag: CGFloat = 0
 
@@ -1082,10 +1233,6 @@ struct VinylOrderWorkspace: View {
         .ignoresSafeArea()
         .hidesGlobalTabBar()
         .accessibilityAddTraits(.isModal)
-        .onDisappear {
-            lastMagnification = 1
-            lastDragTranslation = .zero
-        }
     }
 
     // MARK: - Drawing
@@ -1096,30 +1243,64 @@ struct VinylOrderWorkspace: View {
     /// OPS curve. `OPSStyle.Animation.panel` is already reduce-motion aware,
     /// and the transition is opacity either way — nothing slides or scales.
     private func drawingViewport(size: CGSize) -> some View {
-        ZStack {
-            VinylCutPreview(plan: plan, measurementSystem: measurementSystem)
-                .frame(width: size.width, height: size.height)
-                .id(planIdentity)
-                .transition(.opacity)
+        let content = contentRect(in: size)
+
+        return ZStack {
+            VinylOrderDrawingCamera(
+                plan: plan,
+                measurementSystem: measurementSystem,
+                viewport: viewport
+            )
+            .frame(width: size.width, height: size.height)
+            .id(planIdentity)
+            .transition(.opacity)
         }
         .frame(width: size.width, height: size.height)
         .animation(OPSStyle.Animation.panel, value: planIdentity)
-        .scaleEffect(viewport.scale)
-        .offset(viewport.offset)
-        .frame(width: size.width, height: size.height)
         .clipped()
         .contentShape(Rectangle())
-        .onTapGesture(count: 2) { location in
-            zoomToggle(at: location, viewportSize: size)
+        // One recognizer owns pan and zoom. Two SwiftUI gestures used to fight
+        // over a pinch (bug 1a8e48af): the magnification and the drag both
+        // claimed the two-finger sequence and the drawing stuttered between
+        // them. This is the same bridge the deck builder's canvas uses — a
+        // single pinch recognizer doing anchored zoom plus two-finger pan, plus
+        // a one-finger pan because there is nothing to draw here.
+        .overlay {
+            CanvasGestureView(
+                scale: $viewport.scale,
+                offset: $viewport.offset,
+                isDrawing: false,
+                scaleRange: VinylOrderViewportState.minimumScale...VinylOrderViewportState.maximumScale,
+                allowsSingleFingerPan: true,
+                constrainOffset: { proposed, scale in
+                    VinylOrderViewportState.clampedOffset(
+                        proposed,
+                        scale: scale,
+                        viewportSize: size,
+                        contentBounds: content
+                    )
+                }
+            )
         }
-        .gesture(magnificationGesture(viewportSize: size))
-        .simultaneousGesture(panGesture(viewportSize: size))
+        .onTapGesture(count: 2) { location in
+            zoomToggle(at: location, viewportSize: size, contentBounds: content)
+        }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(VinylOrderWorkspaceCopy.drawingLabel)
         .accessibilityValue(VinylOrderWorkspaceCopy.zoomValue(scale: Double(viewport.scale)))
         .accessibilityAdjustableAction { direction in
-            adjustZoom(direction, viewportSize: size)
+            adjustZoom(direction, viewportSize: size, contentBounds: content)
         }
+    }
+
+    /// The rect the fitted drawing occupies in the band — the thing the pan
+    /// clamp fences. Resolved from the drawing itself so the two can never
+    /// disagree; an empty plan falls back to the band, which clamps to nothing
+    /// unreachable.
+    private func contentRect(in size: CGSize) -> CGRect {
+        VinylCutPreview(plan: plan, measurementSystem: measurementSystem)
+            .contentRect(in: size)
+            ?? CGRect(origin: .zero, size: size)
     }
 
     /// The workspace runs bezel to bezel, so its `GeometryReader` sits inside an
@@ -1257,53 +1438,30 @@ struct VinylOrderWorkspace: View {
         }
     }
 
-    // MARK: - Gestures
+    // MARK: - Camera
 
-    private func magnificationGesture(viewportSize: CGSize) -> some Gesture {
-        MagnificationGesture()
-            .onChanged { value in
-                let multiplier = value / lastMagnification
-                viewport.applyZoom(
-                    multiplier: multiplier,
-                    viewportSize: viewportSize
-                )
-                lastMagnification = value
-            }
-            .onEnded { _ in
-                lastMagnification = 1
-            }
-    }
-
-    private func panGesture(viewportSize: CGSize) -> some Gesture {
-        DragGesture()
-            .onChanged { value in
-                let translation = CGSize(
-                    width: value.translation.width - lastDragTranslation.width,
-                    height: value.translation.height - lastDragTranslation.height
-                )
-                viewport.applyPan(
-                    translation: translation,
-                    viewportSize: viewportSize
-                )
-                lastDragTranslation = value.translation
-            }
-            .onEnded { _ in
-                lastDragTranslation = .zero
-            }
-    }
+    // Transition beat: a 200ms glide on the one OPS curve, so the drawing reads
+    // as having been MOVED rather than swapped. Reduce Motion places it
+    // instantly — a camera move IS motion, and the token's crossfade fallback
+    // would still slide the whole drawing across the screen.
 
     /// Discovery beat: the zoom lands under the finger and the light impact
     /// fires with it, so the gesture reads as having been received.
-    private func zoomToggle(at location: CGPoint, viewportSize: CGSize) {
-        withAnimation(OPSStyle.Animation.page) {
-            viewport.toggleFit(at: location, viewportSize: viewportSize)
+    private func zoomToggle(at location: CGPoint, viewportSize: CGSize, contentBounds: CGRect) {
+        withAnimation(reduceMotion ? nil : OPSStyle.Animation.panel) {
+            viewport.toggleFit(
+                at: location,
+                viewportSize: viewportSize,
+                contentBounds: contentBounds
+            )
         }
         VinylOrderInteractionFeedback.fire()
     }
 
     private func adjustZoom(
         _ direction: AccessibilityAdjustmentDirection,
-        viewportSize: CGSize
+        viewportSize: CGSize,
+        contentBounds: CGRect
     ) {
         let step: CGFloat
         switch direction {
@@ -1311,17 +1469,61 @@ struct VinylOrderWorkspace: View {
         case .decrement: step = 1 / VinylOrderViewportState.doubleTapScale
         @unknown default: return
         }
-        withAnimation(OPSStyle.Animation.page) {
-            viewport.applyZoom(multiplier: step, viewportSize: viewportSize)
+        withAnimation(reduceMotion ? nil : OPSStyle.Animation.panel) {
+            viewport.applyZoom(
+                multiplier: step,
+                anchor: CGPoint(x: viewportSize.width / 2, y: viewportSize.height / 2),
+                viewportSize: viewportSize,
+                contentBounds: contentBounds
+            )
         }
         VinylOrderInteractionFeedback.fire()
     }
 
     private func fitLayout() {
-        withAnimation(OPSStyle.Animation.page) {
+        withAnimation(reduceMotion ? nil : OPSStyle.Animation.panel) {
             viewport.fit()
         }
         VinylOrderInteractionFeedback.fire()
+    }
+}
+
+/// Puts the camera inside SwiftUI's animation system.
+///
+/// The pan/zoom transform lives inside the `Canvas` so the drawing stays vector
+/// crisp — but a `Canvas` redraws from VALUES, and SwiftUI only interpolates
+/// values it owns. Conforming to `Animatable` hands it scale and offset as one
+/// animatable pair, so `withAnimation` re-invokes this body every frame of the
+/// double-tap and FIT transitions and the drawing glides instead of jumping.
+/// Live gestures write the viewport outside `withAnimation` and pass straight
+/// through, frame for frame.
+private struct VinylOrderDrawingCamera: View, Animatable {
+    let plan: VinylCutPlan
+    let measurementSystem: MeasurementSystem
+    var viewport: VinylOrderViewportState
+
+    var animatableData: AnimatablePair<CGFloat, AnimatablePair<CGFloat, CGFloat>> {
+        get {
+            AnimatablePair(
+                viewport.scale,
+                AnimatablePair(viewport.offset.width, viewport.offset.height)
+            )
+        }
+        set {
+            viewport.scale = newValue.first
+            viewport.offset = CGSize(
+                width: newValue.second.first,
+                height: newValue.second.second
+            )
+        }
+    }
+
+    var body: some View {
+        VinylCutPreview(
+            plan: plan,
+            measurementSystem: measurementSystem,
+            viewport: viewport
+        )
     }
 }
 

@@ -357,35 +357,87 @@ struct DeckTab2DView: View {
         context.stroke(path, with: .color(OPSStyle.Colors.primaryAccent), lineWidth: 2.5)
     }
 
-    /// Surface label — small monochrome pill at the surface centroid.
+    /// Surface label — monochrome glass pill filling the largest rectangle that
+    /// fits inside the surface.
+    ///
+    /// Bug f7dd3673 — the label used to be drawn at a fixed 11pt in CANVAS
+    /// space at the naive vertex mean. The canvas carries the fit transform
+    /// (~0.25-0.5 on a real deck), so the operator saw 3-6pt, and on a concave
+    /// surface the vertex mean can sit outside the shape entirely. The label is
+    /// now sized in canvas space to the surface's largest inscribed rectangle
+    /// and clamped to 11-28pt ON SCREEN, so it grows with the geometry and
+    /// never crosses an edge.
     private func drawSurfaceLabel(context: GraphicsContext, positions: [CGPoint], label: String) {
-        let cx = positions.map(\.x).reduce(0, +) / CGFloat(positions.count)
-        let cy = positions.map(\.y).reduce(0, +) / CGFloat(positions.count)
+        let safeScale = max(abs(canvasScale), CGFloat.ulpOfOne.squareRoot())
+        let measure: (String, CGFloat) -> CGSize = { text, size in
+            context.resolve(
+                Text(text)
+                    .font(OPSStyle.Typography.dataVoice(size: size))
+                    .foregroundColor(OPSStyle.Colors.text)
+            ).measure(
+                in: CGSize(
+                    width: CGFloat.greatestFiniteMagnitude,
+                    height: CGFloat.greatestFiniteMagnitude
+                )
+            )
+        }
+
+        // Chrome padding is a screen measure, so it converts into canvas units
+        // — capped at a quarter of the rectangle so a heavily zoomed-out deck
+        // can't let the padding swallow the space the text was given.
+        let screenPadding = CGFloat(OPSStyle.Layout.spacing1) / safeScale
+
+        let anchor: CGPoint
+        let fit: DeckSurfaceLabelPlacement.Fit
+        if let rect = DeckSurfaceLabelPlacement.largestInscribedRect(in: positions) {
+            anchor = CGPoint(x: rect.midX, y: rect.midY)
+            fit = DeckSurfaceLabelPlacement.fit(
+                text: label,
+                in: rect,
+                canvasScale: canvasScale,
+                padding: min(screenPadding, min(rect.width, rect.height) / 4),
+                measure: measure
+            )
+        } else {
+            // Degenerate surface (colinear or near-zero area): keep the label
+            // visible at the on-screen floor on the area-weighted centroid.
+            guard let centroid = PolygonMath.polygonCentroid(vertices: positions) else { return }
+            anchor = centroid
+            let floorSize = DeckSurfaceLabelPlacement.screenFloorPoints / safeScale
+            fit = DeckSurfaceLabelPlacement.Fit(
+                text: label,
+                fontSize: floorSize,
+                size: measure(label, floorSize)
+            )
+        }
+
         let resolved = context.resolve(
-            Text(label)
-                .font(OPSStyle.Typography.microLabel)
+            Text(fit.text)
+                .font(OPSStyle.Typography.dataVoice(size: fit.fontSize))
                 .foregroundColor(OPSStyle.Colors.text)
         )
-        let textSize = resolved.measure(in: CGSize(width: canvasSize, height: canvasSize))
-        let horizontalPadding = CGFloat(OPSStyle.Layout.spacing1)
-        let verticalPadding = CGFloat(OPSStyle.Layout.spacing1) / 2
+        let textSize = fit.size
+        let horizontalPadding = screenPadding
+        let verticalPadding = screenPadding / 2
         let pillRect = CGRect(
-            x: cx - textSize.width / 2 - horizontalPadding,
-            y: cy - textSize.height / 2 - verticalPadding,
+            x: anchor.x - textSize.width / 2 - horizontalPadding,
+            y: anchor.y - textSize.height / 2 - verticalPadding,
             width: textSize.width + horizontalPadding * 2,
             height: textSize.height + verticalPadding * 2
         )
+        // Radius and hairline are chrome too: held at their token size ON
+        // SCREEN so the pill reads the same at fit zoom as at 1:1.
         let pillPath = Path(
             roundedRect: pillRect,
-            cornerRadius: CGFloat(OPSStyle.Layout.chipRadius)
+            cornerRadius: CGFloat(OPSStyle.Layout.chipRadius) / safeScale
         )
         context.fill(pillPath, with: .color(OPSStyle.Colors.glassDenseApprox))
         context.stroke(
             pillPath,
             with: .color(OPSStyle.Colors.line),
-            lineWidth: OPSStyle.Layout.Border.standard
+            lineWidth: OPSStyle.Layout.Border.standard / safeScale
         )
-        context.draw(resolved, at: CGPoint(x: cx, y: cy), anchor: .center)
+        context.draw(resolved, at: anchor, anchor: .center)
     }
 
     private func drawEdge(context: GraphicsContext, edge: DeckEdge, vertexLookup: (String) -> DeckVertex?) {
@@ -663,8 +715,30 @@ struct DeckTab2DView: View {
             }
 
             guard let secondaryText else { return }
+            // The caption reads at fit zoom by scaling with the run it
+            // annotates — 60% of the edge's on-screen length, floor 11pt, cap
+            // 20pt (bug f7dd3673). The dimension pill above it stays 11pt.
+            let edgeScreenLength = hypot(
+                end.position.x - start.position.x,
+                end.position.y - start.position.y
+            ) * max(abs(canvasScale), CGFloat.ulpOfOne.squareRoot())
+            let metrics = layer
+            let captionSize = DeckSurfaceLabelPlacement.edgeCaptionFontSize(
+                edgeScreenLength: edgeScreenLength,
+                measure: { size in
+                    metrics.resolve(Text(secondaryText)
+                        .font(OPSStyle.Typography.dataVoice(size: size))
+                        .foregroundColor(secondaryColor)
+                    ).measure(
+                        in: CGSize(
+                            width: CGFloat.greatestFiniteMagnitude,
+                            height: CGFloat.greatestFiniteMagnitude
+                        )
+                    )
+                }
+            )
             let caption = layer.resolve(Text(secondaryText)
-                .font(OPSStyle.Typography.microLabel)
+                .font(OPSStyle.Typography.dataVoice(size: captionSize))
                 .foregroundColor(secondaryColor))
             layer.draw(
                 caption,

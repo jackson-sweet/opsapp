@@ -22,17 +22,22 @@ import Foundation
 /// for cell, at a fraction of the cost of 4096 independent ray casts.
 enum DeckSurfaceLabelPlacement {
     static let gridResolution = 64
-    static let screenFloorPoints: CGFloat = 11   // DESIGN.md: 11px minimum, no exceptions
-    static let screenCapPoints: CGFloat = 28     // DESIGN.md display ceiling
+    /// DESIGN.md: "11px minimum. No exceptions." — and MOBILE.md puts a mono
+    /// metadata label at 10-11px, so this is the label's own scale, not a
+    /// concession.
+    static let screenFloorPoints: CGFloat = 11
+    /// Top of the mobile type scale (MOBILE.md screen title, 28px). A name
+    /// written on the drawing never outsizes the screen's own title.
+    static let screenCapPoints: CGFloat = 28
 
     /// The single ellipsis a truncated label ends with. Never "..." — the
     /// glyph keeps the label one character wide at the floor size.
     static let ellipsis = "\u{2026}"
 
-    /// Ceiling for an edge's custom caption, on screen. Lower than the surface
-    /// ceiling on purpose: a caption hangs off a dimension pill and annotates
-    /// one run, so it must stay quieter than a surface name that owns a whole
-    /// face.
+    /// Ceiling for an edge's custom caption, on screen: the top of the mono
+    /// data-value range (MOBILE.md, JetBrains Mono 16-20px). Lower than the
+    /// surface ceiling on purpose — a caption hangs off a dimension pill and
+    /// annotates one run, so it stays quieter than a name that owns a face.
     static let edgeCaptionCapPoints: CGFloat = 20
 
     /// Share of an edge's on-screen length a caption may occupy. Keeps the

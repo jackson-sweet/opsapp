@@ -267,32 +267,32 @@ final class DeckCanvasWorkspaceTests: XCTestCase {
         )
     }
 
-    func testPerimeterReorientationCameraLifecycleStopsMotionThenCentersAfterLift() {
-        let anchor = PerimeterEntryAnchor(
-            vertexId: "v1",
-            position: CGPoint(x: 5_100, y: -120),
-            incomingAngleDegrees: 90,
-            rootVertexId: "v0"
-        )
+    /// Bug 5f285f64 — the finger owns the camera while a direction drag is
+    /// running, and on release the camera follows the draft's FAR END. It used
+    /// to recentre on the anchor, which is the one point the operator was not
+    /// looking at: they had just swung the run somewhere new and the view went
+    /// back to where the run started.
+    func testPerimeterReorientationCameraLifecycleStopsMotionThenFollowsTheDraftEnd() {
+        let draftEnd = CGPoint(x: 5_100, y: -840)
 
         XCTAssertEqual(
             DeckCanvasWorkspaceInteractionPolicy.perimeterReorientationCameraAction(
                 phase: .changed,
-                activeAnchor: anchor
+                draftFocus: draftEnd
             ),
             .stopCurrentMotion
         )
         XCTAssertEqual(
             DeckCanvasWorkspaceInteractionPolicy.perimeterReorientationCameraAction(
                 phase: .ended,
-                activeAnchor: anchor
+                draftFocus: draftEnd
             ),
-            .centerOn(anchor.position)
+            .follow(draftEnd)
         )
         XCTAssertEqual(
             DeckCanvasWorkspaceInteractionPolicy.perimeterReorientationCameraAction(
                 phase: .ended,
-                activeAnchor: nil
+                draftFocus: nil
             ),
             .reconcileWorkspace
         )

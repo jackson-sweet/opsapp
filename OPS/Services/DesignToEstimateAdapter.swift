@@ -111,6 +111,15 @@ struct DesignToEstimateAdapter {
                 rawValue = metadata[key]
             }
 
+            // A count option named after something the drawing measured takes
+            // its value from the drawing, with no per-product setup. This is
+            // what carries "Left ends 1, Right ends 1, Corners 1" from a
+            // railing run onto the estimate line the recipe engine scales.
+            if rawValue == nil, opt.kind == .integer,
+               let metadataKey = Self.designMetadataKey(forIntegerOptionNamed: opt.name) {
+                rawValue = metadata[metadataKey]
+            }
+
             // Fall back to default_value
             if rawValue == nil {
                 rawValue = opt.defaultValue
@@ -144,6 +153,37 @@ struct DesignToEstimateAdapter {
             }
         }
         return result
+    }
+
+    // MARK: - Design-measured count options
+
+    /// Integer option name → the drawing metadata key that measures it.
+    /// Names are matched case- and whitespace-insensitively, so "Left Ends"
+    /// and "left ends" both resolve.
+    ///
+    /// Deliberately absent: "Wall returns". A return to the house takes an end
+    /// post by default (it is already counted as an end); a wall bracket
+    /// instead of that post is the estimator's call, not the drawing's.
+    private static let designMetadataKeysByOptionName: [String: String] = [
+        "left ends": "left_ends",
+        "right ends": "right_ends",
+        "corners": "corners",
+        "90° corners": "corners",
+        "90 corners": "corners",
+        "45° corners": "off_angle_corners",
+        "45 corners": "off_angle_corners",
+        "off-angle corners": "off_angle_corners",
+        "off angle corners": "off_angle_corners",
+        "house returns": "house_returns",
+        "linear feet": "linear_feet",
+    ]
+
+    static func designMetadataKey(forIntegerOptionNamed name: String) -> String? {
+        let normalized = name
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .lowercased()
+        return designMetadataKeysByOptionName[normalized]
     }
 
     // MARK: - Quantity

@@ -207,7 +207,7 @@ enum CatalogEstimateMerger {
     /// is empty (legacy rows or barebones flat products), which lets the
     /// DTO leave the column as JSON `null` instead of `{}`.
     ///
-    /// Wire format mirrors `RecipeResolver.decodeConfigured` — select
+    /// Wire format mirrors `ProductConfigurationResolver.decodeConfiguredOptions` — select
     /// kinds map option_id → option_value_id (string), integer kinds
     /// map to JSON numbers, boolean kinds to JSON bools.
     static func encodeConfiguredOptions(

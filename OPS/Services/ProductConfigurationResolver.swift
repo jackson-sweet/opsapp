@@ -80,6 +80,49 @@ struct ProductConfigurationResolver {
         return Resolution(unitPrice: price, label: label, serializedOptions: serialized)
     }
 
+    // MARK: - configured_options snapshot decoding
+
+    /// Decodes a line item's `configured_options` JSON snapshot into typed
+    /// option values. The single decoder for every reader (cut-list
+    /// materialization, the line item editor) so they cannot drift.
+    ///
+    /// Wire format (written by `CatalogEstimateMerger.encodeConfiguredOptions`
+    /// and the web editor):
+    ///   - select kinds: `"<option_id>": "<option_value_id>"` (string)
+    ///   - integer kinds: `"<option_id>": <number>` — integral values only
+    ///   - boolean kinds: `"<option_id>": <bool>`
+    ///
+    /// `JSONSerialization` hands back JSON booleans as `NSNumber`s that
+    /// `as? Int` reads as 0/1, so the CFBoolean check runs first. A
+    /// non-integral number (`2.5`) is not a count and is left absent rather
+    /// than truncated. Malformed JSON or a non-object root decodes to `[:]`.
+    static func decodeConfiguredOptions(_ json: String) -> [String: OptionValue] {
+        guard let data = json.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return [:]
+        }
+        var result: [String: OptionValue] = [:]
+        for (key, raw) in object {
+            if let s = raw as? String {
+                result[key] = .selectId(s)
+            } else if let number = raw as? NSNumber {
+                if CFGetTypeID(number as CFTypeRef) == CFBooleanGetTypeID() {
+                    result[key] = .boolean(number.boolValue)
+                } else if let n = raw as? Int {
+                    result[key] = .integer(n)
+                } else {
+                    let d = number.doubleValue
+                    if d.isFinite,
+                       d.rounded(.towardZero) == d,
+                       d >= Double(Int.min), d < Double(Int.max) {
+                        result[key] = .integer(Int(d))
+                    }
+                }
+            }
+        }
+        return result
+    }
+
     private func fires(modifier: ProductPricingModifier, value: OptionValue) -> Bool {
         if let triggerId = modifier.triggerValueId {
             if case .selectId(let id) = value, id == triggerId { return true }

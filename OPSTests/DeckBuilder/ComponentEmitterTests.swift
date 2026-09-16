@@ -23,7 +23,12 @@ final class ComponentEmitterTests: XCTestCase {
 
     // MARK: - Closed quad with railing on every edge (spec § 8 scenario 2)
 
-    func test_emit_closedQuadWithRailings_emits4Railings4PostSets_cornersZeroPerEdge() {
+    /// Railing is counted per RUN, not per edge (`RailingTakeoff`): the four
+    /// railed edges of a closed quad are ONE continuous picket system, so they
+    /// emit one railing row carrying the whole run's totals — 48 lf, four 90°
+    /// corners, and no end posts because the loop never ends. Post sets stay
+    /// per-edge, because post spacing is a property of an edge's own length.
+    func test_emit_closedQuadWithRailings_emitsOneRunWithFourCorners() {
         let data = makeClosedQuadWithRailings(
             railingType: .picket,
             color: "Black",
@@ -35,22 +40,26 @@ final class ComponentEmitterTests: XCTestCase {
         let railings = rows.filter { $0.componentType == "railing" }
         let posts = rows.filter { $0.componentType == "post_set" }
 
-        XCTAssertEqual(railings.count, 4, "Closed quad with 4 railing-bearing edges should emit 4 railings")
-        XCTAssertEqual(posts.count, 4, "Each railing emits a paired post_set")
+        XCTAssertEqual(railings.count, 1, "Four edges of one picket system are one run, not four railings")
+        XCTAssertEqual(posts.count, 4, "Each railed edge still emits its own post_set")
 
-        for row in railings {
-            XCTAssertEqual(row.metadata["corners_count"], AnyCodable(0),
-                           "Per-edge corners_count is 0 — corners live at vertices shared between edges, not within an edge")
-            XCTAssertEqual(row.metadata["color"], AnyCodable("Black"))
-            XCTAssertEqual(row.metadata["mount_type"], AnyCodable("Topmount"))
-            XCTAssertEqual(row.metadata["mount_surface"], AnyCodable("Surface"))
-        }
+        let railing = railings[0]
+        XCTAssertEqual(railing.metadata["linear_feet"], AnyCodable(48.0), "4 × 12 ft sides")
+        XCTAssertEqual(railing.metadata["corners"], AnyCodable(4))
+        XCTAssertEqual(railing.metadata["off_angle_corners"], AnyCodable(0))
+        XCTAssertEqual(railing.metadata["left_ends"], AnyCodable(0), "a closed loop has no run ends")
+        XCTAssertEqual(railing.metadata["right_ends"], AnyCodable(0))
+        XCTAssertEqual(railing.metadata["house_returns"], AnyCodable(0))
+        XCTAssertEqual(railing.metadata["railing_type"], AnyCodable("picket"))
+        XCTAssertEqual(railing.metadata["color"], AnyCodable("Black"))
+        XCTAssertEqual(railing.metadata["mount_type"], AnyCodable("Topmount"))
+        XCTAssertEqual(railing.metadata["mount_surface"], AnyCodable("Surface"))
 
-        // Each railing pair (railing + post_set) should reference the same edge_id.
-        let railingEdgeIds = Set(railings.compactMap { stringValue($0, "edge_id") })
-        let postEdgeIds = Set(posts.compactMap { stringValue($0, "edge_id") })
-        XCTAssertEqual(railingEdgeIds, postEdgeIds, "post_set pairs with its railing via edge_id")
-        XCTAssertEqual(railingEdgeIds.count, 4, "Each of the 4 edges contributes one unique edge_id")
+        // Posts still carry the edge they belong to; the railing row spans the
+        // whole run and so carries no single edge_id.
+        XCTAssertEqual(Set(posts.compactMap { stringValue($0, "edge_id") }).count, 4,
+                       "Each of the 4 edges contributes one unique post_set edge_id")
+        XCTAssertNil(railing.metadata["edge_id"], "a run row is not tied to one edge")
     }
 
     // MARK: - Single stair edge (scenario 3)

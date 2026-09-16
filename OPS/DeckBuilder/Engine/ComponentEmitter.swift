@@ -24,6 +24,16 @@ enum ComponentEmitter {
     /// session can introduce one without breaking the metadata schema.
     static let defaultGateWidthInches: Double = 36.0
 
+    /// A railed edge's billable length in inches: the drawn dimension less
+    /// every gate's span and any stair opening. Shared with `RailingTakeoff`
+    /// so the run totals and this projection can never disagree.
+    static func netRailingInches(edge: DeckEdge) -> Double {
+        guard let edgeInches = edge.dimension, edgeInches > 0 else { return 0 }
+        let gateInches = Double(edge.assignedItems.filter { $0.isGate }.count) * defaultGateWidthInches
+        let stairInches = edge.stairConfig?.width ?? 0
+        return max(0, edgeInches - gateInches - stairInches)
+    }
+
     /// Returns the `components` array as Codable rows, ready for inclusion
     /// in DeckDrawingData's JSON. Pure function — no I/O, no side effects.
     /// Multi-level designs flatten components across levels with a
@@ -58,6 +68,14 @@ enum ComponentEmitter {
                 levelId: nil
             ))
         }
+
+        // Railing is counted per RUN, not per edge: end posts, corner
+        // sleeves and 45° hardware live at the vertices where edges meet, so
+        // no single edge can see them. `RailingTakeoff` walks the whole
+        // drawing (every level) and returns one row per railing system.
+        rows.append(contentsOf: RailingTakeoff.compute(data: data).map { group in
+            DesignComponentRow(componentType: "railing", metadata: group.componentMetadata)
+        })
 
         return rows
     }
@@ -102,35 +120,14 @@ enum ComponentEmitter {
         guard let edgeInches = edge.dimension, edgeInches > 0 else { return rows }
 
         let gateItems = edge.assignedItems.filter { $0.isGate }
-        let totalGateInches = Double(gateItems.count) * defaultGateWidthInches
-        let stairInches = edge.stairConfig?.width ?? 0
 
-        // Railing component. House edges are wall/cladding boundaries, not
-        // deck railing targets. Parapet walls intentionally do not emit a
-        // post_set because they are continuous low walls, not post-supported
-        // rail systems.
+        // House edges are wall/cladding boundaries, not deck railing targets.
         if let railing = edge.railingConfig, edge.edgeType == .deckEdge {
-            let netLengthInches = max(0, edgeInches - totalGateInches - stairInches)
-            let linearFt = round((netLengthInches / 12.0) * 100) / 100
-
-            // Per-edge corners_count is 0: corners live at vertices shared
-            // between edges, not within an edge's interior. The catalog
-            // model treats corner hardware as a Product option that the user
-            // can enter on the line item form for designs where it matters.
-            var meta: [String: AnyCodable] = [
-                "linear_feet": AnyCodable(linearFt),
-                "corners_count": AnyCodable(0),
-                "color": AnyCodable(railing.color),
-                "mount_type": AnyCodable(railing.mountType),
-                "mount_surface": AnyCodable(railing.mountSurface),
-                "edge_id": AnyCodable(edge.id),
-            ]
-            if railing.railingType == .parapetWall {
-                meta["wall_material"] = AnyCodable(railing.wallMaterial.rawValue)
-            }
-            if let levelId = levelId { meta["level_id"] = AnyCodable(levelId) }
-            rows.append(DesignComponentRow(componentType: "railing", metadata: meta))
-
+            // The railing row itself is emitted once per run by
+            // `RailingTakeoff` (see `emit`) — an edge cannot count its own
+            // ends or corners. Posts stay per-edge: spacing is a property of
+            // the edge's own length. Parapet walls are continuous low walls,
+            // not post-supported rail systems, so they emit no post_set.
             if railing.railingType != .parapetWall {
                 let postCount = DimensionEngine.postCount(
                     edgeLengthInches: edgeInches,

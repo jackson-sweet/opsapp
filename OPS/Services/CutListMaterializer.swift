@@ -147,28 +147,9 @@ struct CutListMaterializer {
     // MARK: - JSON Decoding
 
     /// Decode a `configured_options` JSON string into the resolver's typed
-    /// option-value enum. Wire format mirrors what the resolver emits at
-    /// snapshot time:
-    ///   - select kinds: `{"<option_id>": "<option_value_id>"}` (string)
-    ///   - integer kinds: `{"<option_id>": <int>}`
-    ///   - boolean kinds: `{"<option_id>": <bool>}`
+    /// option-value enum. Shared with the line item editor — see
+    /// `ProductConfigurationResolver.decodeConfiguredOptions`.
     private func decodeConfigured(_ json: String) -> [String: ProductConfigurationResolver.OptionValue] {
-        guard let data = json.data(using: .utf8),
-              let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            return [:]
-        }
-        var result: [String: ProductConfigurationResolver.OptionValue] = [:]
-        for (key, raw) in dict {
-            if let s = raw as? String {
-                result[key] = .selectId(s)
-            } else if let n = raw as? Int {
-                result[key] = .integer(n)
-            } else if let b = raw as? Bool {
-                result[key] = .boolean(b)
-            } else if let n = raw as? Double, n.truncatingRemainder(dividingBy: 1) == 0 {
-                result[key] = .integer(Int(n))
-            }
-        }
-        return result
+        ProductConfigurationResolver.decodeConfiguredOptions(json)
     }
 }

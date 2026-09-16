@@ -24,6 +24,19 @@ struct RecipeResolver {
         case selectorReferencesUnknownOption(key: String)
     }
 
+    /// A non-fatal finding attached to one resolved recipe row. Codes mirror
+    /// the database resolver (`private.resolve_estimate_material_demand_plan`)
+    /// so both engines speak the same vocabulary.
+    struct ResolverWarning: Equatable {
+        /// `scaled_option_value_missing` — the row is scaled by an option
+        /// count, but the line carries no integer value for that option.
+        static let scaledOptionValueMissing = "scaled_option_value_missing"
+
+        let code: String
+        let productMaterialId: String
+        let productOptionId: String?
+    }
+
     /// For each ProductMaterial row, resolve to one ResolvedMaterial pinned
     /// to a specific `catalog_variant_id`.
     ///
@@ -36,7 +49,11 @@ struct RecipeResolver {
     /// Quantity:
     ///   - default: `quantity_per_unit * lineQuantity`
     ///   - if `scaled_by_option_id` is set AND that configured option is
-    ///     `.integer(n)` → `quantity_per_unit * n` (replaces line scaling).
+    ///     `.integer(n)` → `quantity_per_unit * max(n, 0)` (replaces line scaling).
+    ///   - if `scaled_by_option_id` is set and the option is missing or not an
+    ///     integer → quantity 0 plus a `scaled_option_value_missing` warning.
+    ///     Never falls back to line scaling: a missing corner count must not
+    ///     turn into one corner cap per linear foot.
     func resolve(
         materials: [ProductMaterial],
         configuredOptions: [String: ProductConfigurationResolver.OptionValue],
@@ -48,7 +65,34 @@ struct RecipeResolver {
         catalogOptionsByItemId: [String: [CatalogOption]],
         lineQuantity: Double
     ) throws -> [ResolvedMaterial] {
+        try resolveDetailed(
+            materials: materials,
+            configuredOptions: configuredOptions,
+            productOptionsById: productOptionsById,
+            productOptionValuesById: productOptionValuesById,
+            catalogVariants: catalogVariants,
+            catalogVariantOptionValues: catalogVariantOptionValues,
+            catalogOptionValuesById: catalogOptionValuesById,
+            catalogOptionsByItemId: catalogOptionsByItemId,
+            lineQuantity: lineQuantity
+        ).materials
+    }
+
+    /// `resolve` plus the warnings raised while resolving. See `resolve` for
+    /// the variant and quantity rules.
+    func resolveDetailed(
+        materials: [ProductMaterial],
+        configuredOptions: [String: ProductConfigurationResolver.OptionValue],
+        productOptionsById: [String: ProductOption],
+        productOptionValuesById: [String: ProductOptionValue],
+        catalogVariants: [CatalogVariant],
+        catalogVariantOptionValues: [CatalogVariantOptionValue],
+        catalogOptionValuesById: [String: CatalogOptionValue],
+        catalogOptionsByItemId: [String: [CatalogOption]],
+        lineQuantity: Double
+    ) throws -> (materials: [ResolvedMaterial], warnings: [ResolverWarning]) {
         var output: [ResolvedMaterial] = []
+        var warnings: [ResolverWarning] = []
 
         // Build family→variant index for quick lookup.
         let variantsByFamily = Dictionary(grouping: catalogVariants, by: \.catalogItemId)
@@ -98,12 +142,22 @@ struct RecipeResolver {
             guard let variantId = resolvedVariantId else { continue }
 
             // 2. Compute scaled quantity.
-            var qty = mat.quantityPerUnit * lineQuantity
-            if let scaledByOptionId = mat.scaledByOptionId,
-               case .integer(let n) = configuredOptions[scaledByOptionId] {
-                // The scaling option is the per-line scalar (e.g. corners count) —
-                // it replaces lineQuantity, doesn't multiply on top of it.
-                qty = mat.quantityPerUnit * Double(n)
+            let qty: Double
+            if let scaledByOptionId = mat.scaledByOptionId {
+                if case .integer(let n) = configuredOptions[scaledByOptionId] {
+                    // The scaling option is the per-line scalar (e.g. corners count) —
+                    // it replaces lineQuantity, doesn't multiply on top of it.
+                    qty = max(mat.quantityPerUnit, 0) * Double(max(n, 0))
+                } else {
+                    qty = 0
+                    warnings.append(ResolverWarning(
+                        code: ResolverWarning.scaledOptionValueMissing,
+                        productMaterialId: mat.id,
+                        productOptionId: scaledByOptionId
+                    ))
+                }
+            } else {
+                qty = mat.quantityPerUnit * lineQuantity
             }
 
             output.append(ResolvedMaterial(
@@ -114,7 +168,7 @@ struct RecipeResolver {
             ))
         }
 
-        return output
+        return (output, warnings)
     }
 
     // MARK: - Selector parsing

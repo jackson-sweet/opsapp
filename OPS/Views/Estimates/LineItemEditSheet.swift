@@ -465,22 +465,7 @@ struct LineItemEditSheet: View {
     }
 
     private func decodeConfiguredOptions(_ json: String) -> [String: ProductConfigurationResolver.OptionValue] {
-        guard let data = json.data(using: .utf8),
-              let raw = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-        else { return [:] }
-        var result: [String: ProductConfigurationResolver.OptionValue] = [:]
-        for (key, value) in raw {
-            if let s = value as? String {
-                result[key] = .selectId(s)
-            } else if let n = value as? Int {
-                result[key] = .integer(n)
-            } else if let b = value as? Bool {
-                result[key] = .boolean(b)
-            } else if let d = value as? Double {
-                result[key] = .integer(Int(d))
-            }
-        }
-        return result
+        ProductConfigurationResolver.decodeConfiguredOptions(json)
     }
 
     // MARK: - Actions

@@ -145,6 +145,157 @@ final class RecipeResolverTests: XCTestCase {
         XCTAssertEqual(m.quantity, 4.0, accuracy: 0.001)
     }
 
+    // MARK: - Test 3b: scaled line with a missing / non-integer count is zeroed
+
+    /// A scaled recipe row whose option count was never written must NOT fall
+    /// back to `quantity_per_unit × line quantity` (20 corner caps on a 20 lf
+    /// run). It resolves to 0 and says why, mirroring the database resolver's
+    /// `scaled_option_value_missing` warning.
+    func test_scaledByOption_missingValue_zeroesQuantityAndWarns() throws {
+        let recipe = ProductMaterial(
+            id: "m_cap",
+            productId: "p_rail",
+            catalogVariantId: "v_cap",
+            quantityPerUnit: 1.0,
+            scaledByOptionId: "o_corners"
+        )
+
+        let result = try RecipeResolver().resolveDetailed(
+            materials: [recipe],
+            configuredOptions: [:],
+            productOptionsById: [:],
+            productOptionValuesById: [:],
+            catalogVariants: [],
+            catalogVariantOptionValues: [],
+            catalogOptionValuesById: [:],
+            catalogOptionsByItemId: [:],
+            lineQuantity: 20
+        )
+
+        XCTAssertEqual(result.materials.count, 1)
+        let m = try XCTUnwrap(result.materials.first)
+        XCTAssertEqual(m.catalogVariantId, "v_cap")
+        XCTAssertEqual(m.quantity, 0, accuracy: 0.000_001)
+        XCTAssertEqual(result.warnings, [
+            RecipeResolver.ResolverWarning(
+                code: "scaled_option_value_missing",
+                productMaterialId: "m_cap",
+                productOptionId: "o_corners"
+            )
+        ])
+    }
+
+    func test_scaledByOption_booleanValue_zeroesQuantityAndWarns() throws {
+        let recipe = ProductMaterial(
+            id: "m_cap",
+            productId: "p_rail",
+            catalogVariantId: "v_cap",
+            quantityPerUnit: 1.0,
+            scaledByOptionId: "o_corners"
+        )
+
+        let result = try RecipeResolver().resolveDetailed(
+            materials: [recipe],
+            configuredOptions: ["o_corners": .boolean(true)],
+            productOptionsById: [:],
+            productOptionValuesById: [:],
+            catalogVariants: [],
+            catalogVariantOptionValues: [],
+            catalogOptionValuesById: [:],
+            catalogOptionsByItemId: [:],
+            lineQuantity: 20
+        )
+
+        XCTAssertEqual(try XCTUnwrap(result.materials.first).quantity, 0, accuracy: 0.000_001)
+        XCTAssertEqual(result.warnings.map(\.code), ["scaled_option_value_missing"])
+    }
+
+    func test_scaledByOption_selectValue_zeroesQuantityAndWarns() throws {
+        let recipe = ProductMaterial(
+            id: "m_cap",
+            productId: "p_rail",
+            catalogVariantId: "v_cap",
+            quantityPerUnit: 1.0,
+            scaledByOptionId: "o_corners"
+        )
+
+        let result = try RecipeResolver().resolveDetailed(
+            materials: [recipe],
+            configuredOptions: ["o_corners": .selectId("v_something")],
+            productOptionsById: [:],
+            productOptionValuesById: [:],
+            catalogVariants: [],
+            catalogVariantOptionValues: [],
+            catalogOptionValuesById: [:],
+            catalogOptionsByItemId: [:],
+            lineQuantity: 20
+        )
+
+        XCTAssertEqual(try XCTUnwrap(result.materials.first).quantity, 0, accuracy: 0.000_001)
+        XCTAssertEqual(result.warnings.map(\.productOptionId), ["o_corners"])
+    }
+
+    /// Unscaled lines keep line-quantity scaling and produce no warnings;
+    /// `resolve` stays a source-compatible view over `resolveDetailed`.
+    func test_unscaledLine_noWarnings_andResolveMatchesDetailed() throws {
+        let recipe = ProductMaterial(
+            id: "m_board",
+            productId: "p_rail",
+            catalogVariantId: "v_board",
+            quantityPerUnit: 2.0
+        )
+        let resolver = RecipeResolver()
+        let detailed = try resolver.resolveDetailed(
+            materials: [recipe],
+            configuredOptions: [:],
+            productOptionsById: [:],
+            productOptionValuesById: [:],
+            catalogVariants: [],
+            catalogVariantOptionValues: [],
+            catalogOptionValuesById: [:],
+            catalogOptionsByItemId: [:],
+            lineQuantity: 7
+        )
+        let plain = try resolver.resolve(
+            materials: [recipe],
+            configuredOptions: [:],
+            productOptionsById: [:],
+            productOptionValuesById: [:],
+            catalogVariants: [],
+            catalogVariantOptionValues: [],
+            catalogOptionValuesById: [:],
+            catalogOptionsByItemId: [:],
+            lineQuantity: 7
+        )
+        XCTAssertTrue(detailed.warnings.isEmpty)
+        XCTAssertEqual(detailed.materials, plain)
+        XCTAssertEqual(try XCTUnwrap(plain.first).quantity, 14, accuracy: 0.000_001)
+    }
+
+    // MARK: - configured_options decoder
+
+    /// JSON `true` bridges to an NSNumber that `as? Int` happily reads as 1 —
+    /// the decoder must see the CFBoolean first. Integral doubles are counts;
+    /// non-integral doubles are not and stay absent (never truncated).
+    func test_decodeConfiguredOptions_distinguishesBooleansAndRejectsFractions() {
+        let decoded = ProductConfigurationResolver.decodeConfiguredOptions(
+            #"{"a": true, "b": 1, "c": 2.0, "d": 2.5, "e": "val_1", "f": false, "g": 0}"#
+        )
+        XCTAssertEqual(decoded["a"], .boolean(true))
+        XCTAssertEqual(decoded["b"], .integer(1))
+        XCTAssertEqual(decoded["c"], .integer(2))
+        XCTAssertNil(decoded["d"])
+        XCTAssertEqual(decoded["e"], .selectId("val_1"))
+        XCTAssertEqual(decoded["f"], .boolean(false))
+        XCTAssertEqual(decoded["g"], .integer(0))
+        XCTAssertEqual(decoded.count, 6)
+    }
+
+    func test_decodeConfiguredOptions_malformedJSON_isEmpty() {
+        XCTAssertTrue(ProductConfigurationResolver.decodeConfiguredOptions("not json").isEmpty)
+        XCTAssertTrue(ProductConfigurationResolver.decodeConfiguredOptions("[1, 2]").isEmpty)
+    }
+
     // MARK: - Test 4: selector matches no variant → throws
 
     /// Family `f_board` has Color = Black AND Green declared at the family

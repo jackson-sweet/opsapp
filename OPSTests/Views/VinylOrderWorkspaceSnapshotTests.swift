@@ -76,6 +76,35 @@ final class VinylOrderWorkspaceSnapshotTests: XCTestCase {
         )
     }
 
+    /// Zoomed 4× about the middle of the band — a state the operator can
+    /// actually reach, resolved through the real camera and the real content
+    /// rect. The picture has to show vector geometry (no bitmap smear: the
+    /// transform is inside the live `Canvas` now) with its callouts still the
+    /// same size on screen as they are in the fitted PNG. Bug 1a8e48af.
+    func testZoomedDrawingKeepsItsCalloutsAtScreenSize() throws {
+        let layout = VinylOrderWorkspaceGeometry(
+            containerSize: frameSize,
+            topInset: 59,
+            bottomInset: 34
+        )
+        let content = try XCTUnwrap(
+            VinylCutPreview(plan: VinylOrderQAFixture.plan(), measurementSystem: .imperial)
+                .contentRect(in: layout.drawingSize),
+            "the QA fixture has to draw something to zoom into"
+        )
+
+        var viewport = VinylOrderViewportState()
+        viewport.applyZoom(
+            multiplier: 4,
+            anchor: CGPoint(x: layout.drawingSize.width / 2, y: layout.drawingSize.height / 2),
+            viewportSize: layout.drawingSize,
+            contentBounds: content
+        )
+        XCTAssertEqual(viewport.scale, 4, accuracy: 0.001)
+
+        try capture("vinyl-workspace-zoomed-4x", workspace(viewport: viewport))
+    }
+
     func testHalfSheetPutsTheSettingsUnderTheDrawing() throws {
         try capture(
             "vinyl-workspace-half-sheet",

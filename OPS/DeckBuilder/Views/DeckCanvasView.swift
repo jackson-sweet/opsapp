@@ -47,6 +47,14 @@ struct DeckCanvasView: View {
     @State private var perimeterLongPressWheelCenter: CGPoint?
     @State private var isReorientingPerimeterDraft = false
 
+    /// The work area as of the latest layout pass. A camera animation already in
+    /// flight clamps against this rather than the size measured when it started:
+    /// the speed-draw chrome resizes for the whole duration of a pan, and the
+    /// layout handler now retargets that pan instead of cancelling it (5f285f64),
+    /// so a stale work area would clamp the landing against a viewport that no
+    /// longer exists.
+    @State private var liveUnobstructedSize: CGSize = .zero
+
     // Drives the auto-pan when the user drags toward the viewport edge.
     // Lives on the view so its timer is torn down with the view.
     @StateObject private var edgePan = EdgePanController()
@@ -81,6 +89,23 @@ struct DeckCanvasView: View {
         let clampedZoom = Swift.min(Self.annotationMaxZoom, Swift.max(Self.annotationMinZoom, canvasScale))
         let compensated = basePt / clampedZoom
         return Swift.min(maxPt, Swift.max(minPt, compensated))
+    }
+
+    /// Canvas-space geometry of the perimeter direction ghost — the dashed ray
+    /// the canvas draws from the anchor once a direction is chosen but before a
+    /// length exists. The camera reads the same numbers so a follow tracks
+    /// exactly what the operator can see, and the two can never drift apart.
+    private var perimeterDirectionGhostGap: CGFloat {
+        scaledSize(11, min: 8, max: 18)
+    }
+
+    private var perimeterDirectionGhostRayLength: CGFloat {
+        72 / Swift.max(canvasScale, 0.0001)
+    }
+
+    /// Distance from the anchor to the tip of the ghost ray.
+    private var perimeterDirectionGhostLength: CGFloat {
+        perimeterDirectionGhostGap + perimeterDirectionGhostRayLength
     }
 
     /// Grid spacing for dot rendering. Always a whole multiple of the snap increment so
@@ -138,6 +163,14 @@ struct DeckCanvasView: View {
             drawingMode: viewModel.drawingMode,
             isReorientingPerimeterDraft: isReorientingPerimeterDraft
         )
+    }
+
+    /// A perimeter walk owns the camera: it is tracking the point being placed.
+    /// The fit-recentring that suits an idle canvas would throw that follow away
+    /// on any axis the workspace happens to fit — which, at fit zoom on a fresh
+    /// drawing, is both of them (bug 5f285f64).
+    private var cameraFollowsPerimeterWork: Bool {
+        viewModel.perimeterEntry.activeAnchor != nil
     }
 
     var body: some View {
@@ -213,6 +246,7 @@ struct DeckCanvasView: View {
             )
             .simultaneousGesture(longPressGesture(size: unobstructedSize))
             .onAppear {
+                liveUnobstructedSize = unobstructedSize
                 var initialWorkspace = workspace
                 initialWorkspace.expand(toInclude: workspaceContentPoints)
                 workspace = initialWorkspace
@@ -233,17 +267,31 @@ struct DeckCanvasView: View {
                 // bottom instrument can change height with selection context.
                 // Preserve the same world-space center inside the work area,
                 // then keep edge zones and pan constraints in lockstep.
-                viewportSnap.stop()
+                liveUnobstructedSize = newLayout.unobstructedSize
                 let centeredOffset = newLayout.offsetPreservingUnobstructedCenter(
                     canvasOffset,
                     from: previousLayout
                 )
-                canvasOffset = workspace.constrainedOffset(
-                    centeredOffset,
-                    scale: canvasScale,
-                    viewportSize: newLayout.unobstructedSize,
-                    minimumVisibleLength: CGFloat(OPSStyle.Layout.touchTargetMin)
+                // Retarget, never cancel (bug 5f285f64). The speed-draw chrome
+                // animates its height for the full 200ms a camera pan takes and
+                // re-reports it every frame, so stopping the pan to apply this
+                // correction killed it at roughly 0% progress — the operator saw
+                // a twitch instead of a glide. Handing the same correction to the
+                // animator shifts the ramp instead, and the camera and the chrome
+                // settle together.
+                let recenter = CGSize(
+                    width: centeredOffset.width - canvasOffset.width,
+                    height: centeredOffset.height - canvasOffset.height
                 )
+                if !viewportSnap.translateTarget(by: recenter) {
+                    canvasOffset = workspace.constrainedOffset(
+                        centeredOffset,
+                        scale: canvasScale,
+                        viewportSize: newLayout.unobstructedSize,
+                        minimumVisibleLength: CGFloat(OPSStyle.Layout.touchTargetMin),
+                        centerWhenWorkspaceFits: !cameraFollowsPerimeterWork
+                    )
+                }
                 workspaceNeedsOffsetReconciliation = false
                 wireEdgePan(viewportSize: newLayout.unobstructedSize)
             }
@@ -257,9 +305,9 @@ struct DeckCanvasView: View {
             }
             .onChange(of: viewModel.perimeterDraftPreview) { _, preview in
                 guard let preview else { return }
-                followPerimeterDraft(preview, viewportSize: unobstructedSize)
+                followPoint(preview.end, context: preview.start, viewportSize: unobstructedSize)
             }
-            .onChange(of: viewModel.perimeterEntry) { _, entry in
+            .onChange(of: viewModel.perimeterEntry) { previousEntry, entry in
                 if !DeckCanvasGesturePolicy.allowsPerimeterDraftReorientation(for: entry) {
                     isReorientingPerimeterDraft = false
                 }
@@ -271,7 +319,15 @@ struct DeckCanvasView: View {
                        perimeterLongPressWheelCenter != nil {
                         return
                     }
-                    centerViewport(on: anchor.position, viewportSize: unobstructedSize)
+                    // Follow the point being placed, not the one already placed
+                    // (bug 5f285f64). Starting a walk is the exception: the plan
+                    // reports no focus for it, and the operator gets a recentre
+                    // on the point they have just planted.
+                    if let focus = perimeterCameraFocus(after: entry, previous: previousEntry) {
+                        followPoint(focus, context: anchor.position, viewportSize: unobstructedSize)
+                    } else {
+                        centerViewport(on: anchor.position, viewportSize: unobstructedSize)
+                    }
                 } else {
                     perimeterWheelHighlightedDirection = nil
                     reconcileWorkspaceOffsetIfReady(viewportSize: unobstructedSize)
@@ -1388,8 +1444,8 @@ struct DeckCanvasView: View {
 
         // Start the ray clear of the anchor marker so it emanates from it rather
         // than piercing it; fixed on-screen ray + arrowhead length.
-        let gap = scaledSize(11, min: 8, max: 18)
-        let rayLength = 72 / scale
+        let gap = perimeterDirectionGhostGap
+        let rayLength = perimeterDirectionGhostRayLength
         let headLength = 16 / scale
         let origin = CGPoint(x: start.x + dirX * gap, y: start.y + dirY * gap)
         let end = CGPoint(x: start.x + dirX * (gap + rayLength), y: start.y + dirY * (gap + rayLength))
@@ -1824,23 +1880,53 @@ struct DeckCanvasView: View {
         )
     }
 
-    /// Keep the point being created in view as the operator draws or dictates
-    /// successive points (bug 5f285f64). The camera used to track only the
-    /// anchor — where the segment starts — so a dictated run walked its new
-    /// endpoint off-screen and the canvas appeared frozen.
+    /// The world point the camera should follow after a perimeter-entry change.
+    private func perimeterCameraFocus(
+        after next: PerimeterEntryMode,
+        previous: PerimeterEntryMode
+    ) -> CGPoint? {
+        DeckCanvasCameraPlan.focus(
+            after: next,
+            previous: previous,
+            ghostLength: perimeterDirectionGhostLength,
+            scaleFactor: viewModel.drawingData.scaleFactor
+        )
+    }
+
+    /// The world point the camera should follow for the state it is in, with no
+    /// transition to reason about — a direction drag that lifts on the direction
+    /// it was already showing emits no state change at all.
+    private func perimeterCameraFocus(for mode: PerimeterEntryMode) -> CGPoint? {
+        DeckCanvasCameraPlan.focus(
+            for: mode,
+            ghostLength: perimeterDirectionGhostLength,
+            scaleFactor: viewModel.drawingData.scaleFactor
+        )
+    }
+
+    /// Keep the point being placed in view as the operator draws, dictates or
+    /// re-aims (bug 5f285f64). The camera used to track only the anchor — where
+    /// the current segment STARTS — so a dictated run walked its new endpoint
+    /// off-screen, a commit parked the view on the point just left behind, and
+    /// the canvas appeared frozen.
     ///
-    /// Pans by the minimum amount that puts the new endpoint (and the anchor
-    /// too, whenever both fit) back inside the work area. Deliberately NOT a
-    /// recentre: recentring on every dictated digit would sling the drawing
-    /// around and cost the operator their bearings.
-    private func followPerimeterDraft(_ preview: PerimeterDraftPreview, viewportSize: CGSize) {
+    /// Pans by the minimum amount that puts `focus` (and `context` too, whenever
+    /// both fit) back inside the work area. Deliberately NOT a recentre:
+    /// recentring on every dictated digit would sling the drawing around and
+    /// cost the operator their bearings.
+    private func followPoint(_ focus: CGPoint, context: CGPoint?, viewportSize: CGSize) {
         // Never fight a finger that is already driving the camera.
         guard !hasActiveWorkspaceManipulation else { return }
         guard viewportSize.width > 0, viewportSize.height > 0 else { return }
+        guard focus.x.isFinite, focus.y.isFinite else { return }
 
-        // The draft can reach past the session's world bounds; grow them first
+        // The point can reach past the session's world bounds; grow them first
         // so the pan below is not immediately clamped back.
-        expandWorkspace(toInclude: [preview.start, preview.end], viewportSize: viewportSize)
+        var contentPoints = [focus]
+        if let context, context.x.isFinite, context.y.isFinite {
+            contentPoints.append(context)
+        }
+        expandWorkspace(toInclude: contentPoints, viewportSize: viewportSize)
 
         let margin = CGFloat(OPSStyle.Layout.touchTargetMin)
         let safeArea = CGRect(origin: .zero, size: viewportSize)
@@ -1848,8 +1934,8 @@ struct DeckCanvasView: View {
         guard safeArea.width > 0, safeArea.height > 0 else { return }
 
         let delta = DeckCanvasFollowPolicy.pan(
-            focus: screenPoint(fromCanvas: preview.end),
-            context: screenPoint(fromCanvas: preview.start),
+            focus: screenPoint(fromCanvas: focus),
+            context: context.map { screenPoint(fromCanvas: $0) },
             safeArea: safeArea
         )
         guard delta != .zero else { return }
@@ -1868,8 +1954,13 @@ struct DeckCanvasView: View {
             canvasOffset = workspace.constrainedOffset(
                 next,
                 scale: canvasScale,
-                viewportSize: viewportSize,
-                minimumVisibleLength: CGFloat(OPSStyle.Layout.touchTargetMin)
+                viewportSize: currentUnobstructedSize(fallback: viewportSize),
+                minimumVisibleLength: CGFloat(OPSStyle.Layout.touchTargetMin),
+                // A follow is a deliberate camera move. Recentring the workspace
+                // on any axis it happens to fit — which a small deck does on
+                // both — discards that move entirely, which is exactly how the
+                // point being placed stayed parked under the bottom chrome.
+                centerWhenWorkspaceFits: false
             )
         }
     }
@@ -1889,10 +1980,21 @@ struct DeckCanvasView: View {
             canvasOffset = workspace.constrainedOffset(
                 next,
                 scale: canvasScale,
-                viewportSize: viewportSize,
+                viewportSize: currentUnobstructedSize(fallback: viewportSize),
                 minimumVisibleLength: CGFloat(OPSStyle.Layout.touchTargetMin)
             )
         }
+    }
+
+    /// The work area to clamp a camera animation against on this frame. A snap
+    /// outlives the layout pass that started it now that chrome remeasures
+    /// retarget instead of cancelling (5f285f64), so it must read the live work
+    /// area rather than the size captured when it began.
+    private func currentUnobstructedSize(fallback: CGSize) -> CGSize {
+        guard liveUnobstructedSize.width > 0, liveUnobstructedSize.height > 0 else {
+            return fallback
+        }
+        return liveUnobstructedSize
     }
 
     // MARK: - Coordinate Conversion
@@ -2070,7 +2172,7 @@ struct DeckCanvasView: View {
                 applyPerimeterReorientationCameraAction(
                     DeckCanvasWorkspaceInteractionPolicy.perimeterReorientationCameraAction(
                         phase: .changed,
-                        activeAnchor: viewModel.perimeterEntry.activeAnchor
+                        draftFocus: nil
                     ),
                     viewportSize: size
                 )
@@ -2084,7 +2186,7 @@ struct DeckCanvasView: View {
                 applyPerimeterReorientationCameraAction(
                     DeckCanvasWorkspaceInteractionPolicy.perimeterReorientationCameraAction(
                         phase: .ended,
-                        activeAnchor: viewModel.perimeterEntry.activeAnchor
+                        draftFocus: perimeterCameraFocus(for: viewModel.perimeterEntry)
                     ),
                     viewportSize: size
                 )
@@ -2098,8 +2200,12 @@ struct DeckCanvasView: View {
         switch action {
         case .stopCurrentMotion:
             viewportSnap.stop()
-        case .centerOn(let point):
-            centerViewport(on: point, viewportSize: viewportSize)
+        case .follow(let point):
+            followPoint(
+                point,
+                context: viewModel.perimeterEntry.activeAnchor?.position,
+                viewportSize: viewportSize
+            )
         case .reconcileWorkspace:
             reconcileWorkspaceOffsetIfReady(viewportSize: viewportSize)
         }
@@ -2198,6 +2304,18 @@ struct DeckCanvasView: View {
 
 @MainActor
 final class ViewportSnapAnimator: ObservableObject {
+
+    /// How the ramp is stepped. `.runLoop` schedules a 60 Hz main-run-loop timer
+    /// (production). `.manual` leaves stepping to the caller's `advance(to:)` so
+    /// a 200ms ramp can be asserted deterministically instead of waited on.
+    enum Driver {
+        case runLoop
+        case manual
+    }
+
+    private let driver: Driver
+    private let now: () -> Date
+
     private var timer: Timer?
     private var startOffset: CGSize = .zero
     private var targetOffset: CGSize = .zero
@@ -2206,6 +2324,11 @@ final class ViewportSnapAnimator: ObservableObject {
     private var onUpdate: ((CGSize) -> Void)?
 
     private static let tickInterval: TimeInterval = 1.0 / 60.0
+
+    init(driver: Driver = .runLoop, now: @escaping () -> Date = { Date() }) {
+        self.driver = driver
+        self.now = now
+    }
 
     deinit {
         timer?.invalidate()
@@ -2226,18 +2349,56 @@ final class ViewportSnapAnimator: ObservableObject {
 
         startOffset = start
         targetOffset = target
-        startedAt = Date()
+        startedAt = now()
         self.duration = duration
         self.onUpdate = onUpdate
 
-        let timer = Timer(timeInterval: Self.tickInterval, repeats: true) { [weak self] _ in
-            Task { @MainActor in
-                self?.tick()
+        if driver == .runLoop {
+            let timer = Timer(timeInterval: Self.tickInterval, repeats: true) { [weak self] _ in
+                Task { @MainActor in
+                    guard let self else { return }
+                    self.advance(to: self.now())
+                }
             }
+            self.timer = timer
+            RunLoop.main.add(timer, forMode: .common)
         }
-        self.timer = timer
-        RunLoop.main.add(timer, forMode: .common)
         onUpdate(start)
+    }
+
+    /// Shifts an in-flight ramp — both where it started and where it lands — by
+    /// `delta`, and emits the corrected offset for the current frame.
+    ///
+    /// Bug 5f285f64. The speed-draw chrome grows roughly 150–190pt when the
+    /// length picker replaces the status strip, and it animates that height over
+    /// the same 200ms the camera pan needs. The layout handler has to keep the
+    /// same world point centred in the shrinking work area, and it used to do
+    /// that by stopping the snap — which killed the pan at about 0% progress and
+    /// left a twitch where a glide belonged. Moving the ramp's start AND target
+    /// by the same delta keeps the motion continuous and merely relocates where
+    /// it lands, so the camera and the chrome settle together.
+    ///
+    /// Returns `false` when there is no ramp to retarget, so the caller knows it
+    /// still owns the camera and must place it itself.
+    @discardableResult
+    func translateTarget(by delta: CGSize) -> Bool {
+        guard let startedAt, let onUpdate else { return false }
+        guard delta.width.isFinite, delta.height.isFinite else { return false }
+
+        startOffset = CGSize(
+            width: startOffset.width + delta.width,
+            height: startOffset.height + delta.height
+        )
+        targetOffset = CGSize(
+            width: targetOffset.width + delta.width,
+            height: targetOffset.height + delta.height
+        )
+        onUpdate(Self.interpolatedOffset(
+            from: startOffset,
+            to: targetOffset,
+            progress: progress(at: now(), startedAt: startedAt)
+        ))
+        return true
     }
 
     func stop() {
@@ -2260,19 +2421,25 @@ final class ViewportSnapAnimator: ObservableObject {
         return CGFloat(1 - pow(Double(1 - t), 3))
     }
 
-    private func tick() {
+    /// Steps the ramp to `date`. The run-loop timer calls this every tick;
+    /// `.manual` callers call it themselves.
+    func advance(to date: Date) {
         guard let startedAt, let onUpdate else {
             stop()
             return
         }
 
-        let elapsed = Date().timeIntervalSince(startedAt)
-        let progress = min(max(CGFloat(elapsed / duration), 0), 1)
+        let progress = progress(at: date, startedAt: startedAt)
         onUpdate(Self.interpolatedOffset(from: startOffset, to: targetOffset, progress: progress))
 
         if progress >= 1 {
             stop()
         }
+    }
+
+    private func progress(at date: Date, startedAt: Date) -> CGFloat {
+        guard duration > 0 else { return 1 }
+        return min(max(CGFloat(date.timeIntervalSince(startedAt) / duration), 0), 1)
     }
 }
 

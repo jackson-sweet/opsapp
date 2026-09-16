@@ -165,6 +165,62 @@ final class DeckCanvasFollowPolicyTests: XCTestCase {
         assertInside(moved)
     }
 
+    // MARK: - Surviving the camera clamp
+
+    /// The third half of bug 5f285f64: the policy computed a correct pan and the
+    /// camera clamp threw it straight back away.
+    ///
+    /// `constrainedOffset` recentres the workspace on any axis the workspace
+    /// fits — sensible for an idle camera, fatal for a follow. A small deck fits
+    /// the viewport on both axes, so every follow was cancelled and the point
+    /// being placed stayed parked under the bottom chrome. A follow must opt out
+    /// of that recentring.
+    func testFollowSurvivesTheCameraClampOnlyWithoutWorkspaceRecentring() {
+        // 300 × 300 of world at 1×, centred inside a 390 × 500 work area — the
+        // workspace fits on both axes.
+        let workspace = DeckCanvasWorkspace(bounds: CGRect(x: 0, y: 0, width: 300, height: 300))
+        let viewportSize = CGSize(width: 390, height: 500)
+        let scale: CGFloat = 1
+        let offset = CGSize(width: 45, height: 100)
+        let margin = CGFloat(OPSStyle.Layout.touchTargetMin)
+        let workArea = CGRect(origin: .zero, size: viewportSize).insetBy(dx: margin, dy: margin)
+
+        // The point just committed sits below the work area, under the chrome.
+        let focus = CGPoint(x: 150, y: 420)
+        let onScreenFocus = workspace.screenPoint(fromWorld: focus, scale: scale, offset: offset)
+        XCTAssertGreaterThan(onScreenFocus.y, workArea.maxY, "fixture must start with the point hidden")
+
+        let delta = DeckCanvasFollowPolicy.pan(focus: onScreenFocus, context: nil, safeArea: workArea)
+        XCTAssertLessThan(delta.height, 0, "the camera must lift the new point out from under the chrome")
+
+        let proposed = CGSize(
+            width: offset.width + delta.width,
+            height: offset.height + delta.height
+        )
+
+        let recentred = workspace.constrainedOffset(
+            proposed,
+            scale: scale,
+            viewportSize: viewportSize,
+            minimumVisibleLength: margin,
+            centerWhenWorkspaceFits: true
+        )
+        XCTAssertEqual(recentred.height, offset.height, accuracy: 1e-6,
+                       "recentring discards the follow — this is the bug")
+
+        let followed = workspace.constrainedOffset(
+            proposed,
+            scale: scale,
+            viewportSize: viewportSize,
+            minimumVisibleLength: margin,
+            centerWhenWorkspaceFits: false
+        )
+        XCTAssertEqual(followed.height, proposed.height, accuracy: 1e-6)
+
+        let settled = workspace.screenPoint(fromWorld: focus, scale: scale, offset: followed)
+        XCTAssertLessThanOrEqual(settled.y, workArea.maxY + 1e-6, "the new point must end up in the work area")
+    }
+
     // MARK: - Helper
 
     /// Inclusive containment. A minimum pan deliberately rests the point ON the

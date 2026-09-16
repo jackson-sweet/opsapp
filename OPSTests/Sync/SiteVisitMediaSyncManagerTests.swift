@@ -24,6 +24,36 @@ final class SiteVisitMediaSyncManagerTests: XCTestCase {
         super.tearDown()
     }
 
+    /// The phone that took a photo must keep showing it after the upload
+    /// replaces its local pointer with the server address — the bucket may
+    /// refuse that address (site-visits/ was never made public-read, 2026-09-15)
+    /// and the field has no signal. The uploaded bytes are kept under the
+    /// remote URL's cache key so the loader finds them without the network.
+    func test_successfulUploadKeepsAReadableCopyUnderTheRemoteURL() async throws {
+        let context = try makeContainer().mainContext
+        let artifact = makeArtifact()
+        artifact.lastSyncedAt = Date()
+        context.insert(artifact)
+        let media = try insertMediaOperation(for: artifact, in: context)
+        media.status = "inProgress"
+
+        var kept: [(data: Data, key: String)] = []
+        let manager = SiteVisitMediaSyncManager(
+            uploader: { _, _, variant, _, _ in "https://cdn.ops.test/\(variant.rawValue).jpg" },
+            loader: { _ in (Data([1, 2, 3]), "image/jpeg") },
+            cacheLocalCopy: { data, key in kept.append((data, key)) }
+        )
+        try await manager.uploadPendingMedia(artifactId: artifactId, mediaOperation: media, context: context)
+
+        XCTAssertEqual(kept.map(\.key), [
+            "https://cdn.ops.test/original.jpg",
+            "https://cdn.ops.test/rendered.jpg",
+            "https://cdn.ops.test/thumbnail.jpg",
+        ])
+        XCTAssertTrue(kept.allSatisfy { $0.data == Data([1, 2, 3]) })
+        XCTAssertEqual(artifact.localAssetURL, "https://cdn.ops.test/original.jpg")
+    }
+
     func test_partialFailurePersistsCompletedVariantAndQueuesURLUpsertBehindMedia() async throws {
         let context = try makeContainer().mainContext
         let artifact = makeArtifact()

@@ -150,6 +150,9 @@ struct SiteVisitMediaSyncManager {
     private let loader: Loader?
     private let preparer: Preparer
 
+    typealias CacheLocalCopy = (Data, String) -> Void
+    private let cacheLocalCopy: CacheLocalCopy
+
     init(
         uploader: @escaping Uploader = { siteVisitId, artifactId, variant, data, contentType in
             try await PresignedURLUploadService.shared.uploadSiteVisitArtifact(
@@ -166,11 +169,15 @@ struct SiteVisitMediaSyncManager {
                 data: asset.data,
                 contentType: asset.contentType
             )
+        },
+        cacheLocalCopy: @escaping CacheLocalCopy = { data, remoteURL in
+            _ = ImageFileManager.shared.saveImage(data: data, localID: remoteURL, allowEviction: false)
         }
     ) {
         self.uploader = uploader
         self.loader = loader
         self.preparer = preparer
+        self.cacheLocalCopy = cacheLocalCopy
     }
 
     func uploadPendingMedia(
@@ -254,6 +261,13 @@ struct SiteVisitMediaSyncManager {
             guard Self.isRemoteURL(remoteURL) else {
                 throw SiteVisitMediaSyncError.invalidRemoteURL(remoteURL)
             }
+            // The pointer below becomes the remote URL, and the loader looks
+            // that URL up in the local cache before touching the network. Keep
+            // the bytes the server now holds under that key, so the phone that
+            // took the photo keeps showing it offline — or when the bucket
+            // refuses the address (site-visits/ had no public-read statement,
+            // 2026-09-15). Non-evictable: it is this device's own capture.
+            cacheLocalCopy(prepared.data, remoteURL)
 
             try context.transaction {
                 // A user can replace a capture while its previous bytes are in

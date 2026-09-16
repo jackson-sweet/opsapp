@@ -324,6 +324,9 @@ final class SiteVisitCaptureViewModel: ObservableObject {
             sortBy: [SortDescriptor(\.capturedAt, order: .reverse)]
         )
         artifacts = (try? modelContext.fetch(descriptor)) ?? []
+        // Photos this phone took stay visible even when their server address
+        // is unreadable: re-seed the remote-URL cache from the original file.
+        SiteVisitOwnCopyRepair.seed(artifacts)
     }
 
     func reloadSiteVisitTypes() {

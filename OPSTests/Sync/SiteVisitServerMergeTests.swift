@@ -265,7 +265,13 @@ final class SiteVisitServerMergeTests: XCTestCase {
         XCTAssertEqual(local.notes, "Server changed the note")
     }
 
-    func testLogicalChecklistMatchRekeysDirtyRowAndEveryUnresolvedOperationInPlace() throws {
+    /// Two versions, not one. When a server row arrives on a logical identity
+    /// (visit + field) the phone already owns locally with unsent work, the
+    /// merge preserves BOTH: the local row keeps its own id and every attempted
+    /// write stays pointed at it, while the server's row is parked on the local
+    /// write state as the reviewable second copy. An immutable attempted write
+    /// is never retargeted at a different server row.
+    func testDirtyLogicalChecklistMatchKeepsItsIdentityAndParksTheServerRow() throws {
         let context = try makeContext()
         let localId = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
         let serverAnswer = try XCTUnwrap(makeBundle().checklistAnswers.first)
@@ -310,6 +316,7 @@ final class SiteVisitServerMergeTests: XCTestCase {
         let firstSnapshot = OperationSnapshot(first)
         let secondSnapshot = OperationSnapshot(second)
         let completionSnapshot = OperationSnapshot(completion)
+        let queuedPayloads = [first.payload, second.payload]
         let now = Date(timeIntervalSince1970: 1_000)
 
         let report = try SiteVisitServerMerge.merge(
@@ -321,17 +328,26 @@ final class SiteVisitServerMergeTests: XCTestCase {
 
         XCTAssertEqual(report, SiteVisitMergeReport(inserted: 0, updated: 1, unchanged: 0))
         let answers = try context.fetch(FetchDescriptor<SiteVisitChecklistAnswer>())
-        XCTAssertEqual(answers.count, 1)
+        XCTAssertEqual(answers.count, 1, "The parked server row must not become a second local row")
         XCTAssertTrue(answers[0] === local)
-        XCTAssertEqual(local.id, serverAnswer.id)
-        XCTAssertEqual(local.answerValue.text, "Local unsent width")
-        XCTAssertEqual(local.label, serverAnswer.label)
-        XCTAssertTrue(local.needsSync)
-        XCTAssertEqual(local.lastSyncedAt, now)
 
-        XCTAssertEqual(OperationSnapshot(first), firstSnapshot.rekeyed(to: serverAnswer.id))
-        XCTAssertEqual(OperationSnapshot(second), secondSnapshot.rekeyed(to: serverAnswer.id))
+        // The phone's version is untouched: its own identity, its own unsent
+        // value and label, and still dirty. Nothing here has been settled.
+        XCTAssertEqual(local.id, localId)
+        XCTAssertNotEqual(local.id, serverAnswer.id)
+        XCTAssertEqual(local.answerValue.text, "Local unsent width")
+        XCTAssertEqual(local.label, "Local width")
+        XCTAssertTrue(local.needsSync)
+        XCTAssertNil(local.lastSyncedAt)
+
+        // The server's version is kept verbatim for review rather than applied.
+        XCTAssertEqual(local.writeState.remoteRow, try SiteVisitWriteJSON.encode(serverAnswer))
+
+        // Every queued write still targets the local row, byte for byte.
+        XCTAssertEqual(OperationSnapshot(first), firstSnapshot)
+        XCTAssertEqual(OperationSnapshot(second), secondSnapshot)
         XCTAssertEqual(OperationSnapshot(completion), completionSnapshot)
+        XCTAssertEqual([first.payload, second.payload], queuedPayloads)
         XCTAssertEqual(completion.dependsOnId, first.id.uuidString.lowercased())
 
         for operation in [first, second] {
@@ -339,10 +355,124 @@ final class SiteVisitServerMergeTests: XCTestCase {
                 SiteVisitSyncOperation.Payload.self,
                 from: operation.payload
             )
-            XCTAssertEqual(envelope.entityId, serverAnswer.id)
+            XCTAssertEqual(envelope.entityId, localId)
             XCTAssertEqual(envelope.siteVisitId, visitId)
             XCTAssertEqual(envelope.companyId, companyId)
         }
+
+        // Re-delivering the same server row costs nothing: it is already parked.
+        let echo = try SiteVisitServerMerge.merge(
+            checklistAnswer: serverAnswer,
+            companyId: companyId,
+            into: context,
+            now: now
+        )
+        XCTAssertEqual(echo, SiteVisitMergeReport(inserted: 0, updated: 0, unchanged: 1))
+    }
+
+    /// The mirror case. A logical match the phone has nothing left to send for
+    /// — not dirty, no open base revision, no unresolved queue work — DOES adopt
+    /// the server's identity and snapshot, so the row converges instead of
+    /// forking. Its settled operations are finished with the row: there is
+    /// nothing left to send for them, so the rekey carries none of them along.
+    func testCleanLogicalChecklistMatchAdoptsTheServerIdentityAndSnapshot() throws {
+        let context = try makeContext()
+        let localId = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
+        let serverAnswer = try XCTUnwrap(makeBundle().checklistAnswers.first)
+        let visit = makeLocalVisit()
+        let local = makeLocalAnswer(id: localId, value: "Width the server already has")
+        // Settled: the answer setter dirties the row and opens a base revision,
+        // so a row with nothing outstanding has to be stated explicitly.
+        local.needsSync = false
+        local.writeState = SiteVisitWriteState()
+        let settled = try makeChecklistOperation(
+            answerId: localId,
+            operationType: "update",
+            status: "completed",
+            changedFields: ["answer_value"]
+        )
+        settled.createdAt = Date(timeIntervalSince1970: 10)
+        settled.lastAttemptedAt = Date(timeIntervalSince1970: 20)
+        settled.completedAt = Date(timeIntervalSince1970: 20)
+        context.insert(visit)
+        context.insert(local)
+        context.insert(settled)
+        try context.save()
+
+        let settledSnapshot = OperationSnapshot(settled)
+        let now = Date(timeIntervalSince1970: 1_000)
+
+        let report = try SiteVisitServerMerge.merge(
+            checklistAnswer: serverAnswer,
+            companyId: companyId,
+            into: context,
+            now: now
+        )
+
+        XCTAssertEqual(report, SiteVisitMergeReport(inserted: 0, updated: 1, unchanged: 0))
+        let answers = try context.fetch(FetchDescriptor<SiteVisitChecklistAnswer>())
+        XCTAssertEqual(answers.count, 1, "The server row must adopt the local row, not duplicate it")
+        XCTAssertTrue(answers[0] === local)
+
+        // Adopted whole: identity, label, and value now come from the server.
+        XCTAssertEqual(local.id, serverAnswer.id)
+        XCTAssertEqual(local.label, serverAnswer.label)
+        XCTAssertEqual(local.answerValue.text, "12 ft")
+        XCTAssertFalse(local.needsSync)
+        XCTAssertEqual(local.lastSyncedAt, now)
+        XCTAssertNil(local.writeState.remoteRow, "A converged row has no second version to review")
+
+        // `completed` and `declined` are finished with the row.
+        XCTAssertEqual(OperationSnapshot(settled), settledSnapshot)
+        XCTAssertEqual(settled.entityId, localId)
+    }
+
+    /// The one collision the rekey still refuses. The server identity a settled
+    /// local row would adopt already carries unsent work of its own, so two
+    /// separate unsent writes would land on one id. It fails before the bundle
+    /// writes anything.
+    func testCanonicalChecklistIdWithUnresolvedQueueWorkFailsBeforeBundleWrites() throws {
+        let context = try makeContext()
+        let localId = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
+        let bundle = try makeBundle()
+        let serverAnswer = try XCTUnwrap(bundle.checklistAnswers.first)
+        let local = makeLocalAnswer(id: localId, value: "Settled local width")
+        local.needsSync = false
+        local.writeState = SiteVisitWriteState()
+        let canonicalWork = try makeChecklistOperation(
+            answerId: serverAnswer.id,
+            operationType: "update",
+            status: "pending",
+            changedFields: ["answer_value"]
+        )
+        context.insert(local)
+        context.insert(canonicalWork)
+        try context.save()
+
+        let snapshot = OperationSnapshot(canonicalWork)
+        let answerOnlyBundle = SiteVisitBundleDTO(
+            visit: bundle.visit,
+            artifacts: [],
+            checklistAnswers: bundle.checklistAnswers,
+            identityDrafts: []
+        )
+
+        XCTAssertThrowsError(
+            try SiteVisitServerMerge.merge(bundle: answerOnlyBundle, into: context)
+        ) { error in
+            guard let mergeError = error as? SiteVisitMergeError,
+                  case .unsafeChecklistOperation(let operationId, let reason) = mergeError else {
+                return XCTFail("Expected unsafeChecklistOperation, got \(error)")
+            }
+            XCTAssertEqual(operationId, canonicalWork.id)
+            XCTAssertTrue(reason.contains("unresolved queue work"), reason)
+        }
+
+        XCTAssertTrue(try context.fetch(FetchDescriptor<SiteVisit>()).isEmpty)
+        XCTAssertEqual(local.id, localId)
+        XCTAssertEqual(local.answerValue.text, "Settled local width")
+        XCTAssertEqual(OperationSnapshot(canonicalWork), snapshot)
+        XCTAssertFalse(context.hasChanges)
     }
 
     func testAmbiguousDirtyLogicalChecklistMatchesFailBeforeBundleWrites() throws {
@@ -380,7 +510,10 @@ final class SiteVisitServerMergeTests: XCTestCase {
         XCTAssertFalse(context.hasChanges)
     }
 
-    func testMalformedUnresolvedChecklistEnvelopeFailsBeforeBundleWrites() throws {
+    /// A parked write's payload is never decoded by the merge. The row it
+    /// belongs to is not being retargeted, so a corrupt envelope can neither
+    /// orphan the write nor wedge inbound sync for the rest of the visit.
+    func testMalformedUnresolvedChecklistEnvelopeLeavesTheParkedWriteIntact() throws {
         let context = try makeContext()
         let localId = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
         let local = makeLocalAnswer(id: localId, value: "Never discard this")
@@ -398,31 +531,29 @@ final class SiteVisitServerMergeTests: XCTestCase {
         context.insert(operation)
         try context.save()
         let bundle = try makeBundle()
+        let serverAnswer = try XCTUnwrap(bundle.checklistAnswers.first)
         let answerOnlyBundle = SiteVisitBundleDTO(
             visit: bundle.visit,
             artifacts: [],
             checklistAnswers: bundle.checklistAnswers,
             identityDrafts: []
         )
+        let snapshot = OperationSnapshot(operation)
 
-        XCTAssertThrowsError(
-            try SiteVisitServerMerge.merge(bundle: answerOnlyBundle, into: context)
-        ) { error in
-            XCTAssertTrue(error is SiteVisitMergeError)
-        }
+        let report = try SiteVisitServerMerge.merge(bundle: answerOnlyBundle, into: context)
 
-        XCTAssertTrue(try context.fetch(FetchDescriptor<SiteVisit>()).isEmpty)
+        XCTAssertEqual(report, SiteVisitMergeReport(inserted: 1, updated: 1, unchanged: 0))
+        XCTAssertEqual(try context.fetch(FetchDescriptor<SiteVisit>()).map(\.id), [visitId])
         XCTAssertEqual(local.id, localId)
         XCTAssertEqual(local.answerValue.text, "Never discard this")
-        XCTAssertEqual(operation.entityId, localId)
+        XCTAssertEqual(local.writeState.remoteRow, try SiteVisitWriteJSON.encode(serverAnswer))
+        XCTAssertEqual(OperationSnapshot(operation), snapshot)
         XCTAssertEqual(operation.payload, Data("not-json".utf8))
-        XCTAssertEqual(operation.status, "parked")
-        XCTAssertEqual(operation.retryCount, 3)
-        XCTAssertEqual(operation.lastError, "Original failure")
-        XCTAssertFalse(context.hasChanges)
     }
 
-    func testMisroutedUnresolvedChecklistEnvelopeFailsBeforeBundleWrites() throws {
+    /// The same guarantee for a write whose envelope points at another row: the
+    /// merge does not read it, does not repoint it, and does not discard it.
+    func testMisroutedUnresolvedChecklistEnvelopeLeavesTheFailedWriteIntact() throws {
         let context = try makeContext()
         let localId = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
         let wrongEntityId = "ffffffff-ffff-4fff-8fff-ffffffffffff"
@@ -446,26 +577,24 @@ final class SiteVisitServerMergeTests: XCTestCase {
         context.insert(operation)
         try context.save()
         let bundle = try makeBundle()
+        let serverAnswer = try XCTUnwrap(bundle.checklistAnswers.first)
         let answerOnlyBundle = SiteVisitBundleDTO(
             visit: bundle.visit,
             artifacts: [],
             checklistAnswers: bundle.checklistAnswers,
             identityDrafts: []
         )
+        let snapshot = OperationSnapshot(operation)
 
-        XCTAssertThrowsError(
-            try SiteVisitServerMerge.merge(bundle: answerOnlyBundle, into: context)
-        ) { error in
-            XCTAssertTrue(error is SiteVisitMergeError)
-        }
+        let report = try SiteVisitServerMerge.merge(bundle: answerOnlyBundle, into: context)
 
-        XCTAssertTrue(try context.fetch(FetchDescriptor<SiteVisit>()).isEmpty)
+        XCTAssertEqual(report, SiteVisitMergeReport(inserted: 1, updated: 1, unchanged: 0))
+        XCTAssertEqual(try context.fetch(FetchDescriptor<SiteVisit>()).map(\.id), [visitId])
         XCTAssertEqual(local.id, localId)
         XCTAssertEqual(local.answerValue.text, "Keep this routed value")
-        XCTAssertEqual(operation.entityId, localId)
+        XCTAssertEqual(local.writeState.remoteRow, try SiteVisitWriteJSON.encode(serverAnswer))
+        XCTAssertEqual(OperationSnapshot(operation), snapshot)
         XCTAssertEqual(operation.payload, originalPayload)
-        XCTAssertEqual(operation.status, "failed")
-        XCTAssertFalse(context.hasChanges)
     }
 
     private func makeContext() throws -> ModelContext {
@@ -651,27 +780,5 @@ private struct OperationSnapshot: Equatable {
         dependsOnId = operation.dependsOnId
         completedAt = operation.completedAt
         serverConfirmedAt = operation.serverConfirmedAt
-    }
-
-    private init(copying source: OperationSnapshot, entityId: String) {
-        id = source.id
-        self.entityId = entityId
-        operationType = source.operationType
-        changedFields = source.changedFields
-        createdAt = source.createdAt
-        retryCount = source.retryCount
-        lastAttemptedAt = source.lastAttemptedAt
-        status = source.status
-        lastError = source.lastError
-        previousValues = source.previousValues
-        priority = source.priority
-        requiresWiFi = source.requiresWiFi
-        dependsOnId = source.dependsOnId
-        completedAt = source.completedAt
-        serverConfirmedAt = source.serverConfirmedAt
-    }
-
-    func rekeyed(to entityId: String) -> OperationSnapshot {
-        OperationSnapshot(copying: self, entityId: entityId)
     }
 }

@@ -168,7 +168,7 @@ final class ViewportSnapAnimatorTests: XCTestCase {
         clock = clock.addingTimeInterval(0.06)
         animator.advance(to: clock)
 
-        XCTAssertFalse(animator.translateTarget(by: CGSize(width: .nan, height: 0)))
+        XCTAssertFalse(animator.translateTarget(by: CGSize(width: CGFloat.nan, height: 0)))
 
         clock = clock.addingTimeInterval(0.25)
         animator.advance(to: clock)

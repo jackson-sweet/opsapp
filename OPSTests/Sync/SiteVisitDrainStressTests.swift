@@ -124,6 +124,14 @@ final class SiteVisitDrainStressTests: XCTestCase {
             XCTAssertFalse(artifact.needsSync, "Artifact \(artifact.id) still dirty")
             XCTAssertNotNil(artifact.lastSyncedAt)
         }
+        // Checklist answers settle on their write receipt, not on the echo
+        // behind it: the accepted revision is what clears the dirty flag.
+        for answer in try fetchAll(SiteVisitChecklistAnswer.self, in: context) {
+            XCTAssertFalse(answer.needsSync, "Answer \(answer.id) still dirty after its write landed")
+            XCTAssertNotNil(answer.lastSyncedAt)
+            XCTAssertEqual(answer.writeState.revision, 1, "Answer \(answer.id) did not accept its receipt")
+            XCTAssertNil(answer.writeState.baseRevision, "Answer \(answer.id) left a base revision open")
+        }
 
         // MARK: Redundant echo waves must not write
 
@@ -441,12 +449,23 @@ final class SiteVisitDrainStressTests: XCTestCase {
             priority: specification.priority,
             dependsOnId: dependency?.id.uuidString.lowercased()
         )
+        // Every queued site-visit operation is stamped with the author who made
+        // it, exactly as SiteVisitPersistenceCoordinator does. Both the parent
+        // CRUD path and the versioned checklist-answer path refuse to send a
+        // write whose actor is missing or is not the signed-in operator.
+        operation.siteVisitWriteActorId = userId
         context.insert(operation)
         return operation
     }
 
     // MARK: - Stubs and helpers
 
+    /// The session user is injected rather than read from `UserDefaults`, so a
+    /// simulator with no `currentUserId` cannot silently turn every write into
+    /// `legacyPayload`. Checklist answers travel the versioned write path, so
+    /// the drain also needs an `apply_site_visit_write` stand-in: it accepts
+    /// every command and echoes each requested row back with the server-owned
+    /// id, company and revision the receipt check requires.
     private func makeSync() -> SiteVisitOutboundSync {
         let writer = StubSiteVisitWriter()
         return SiteVisitOutboundSync(
@@ -456,7 +475,28 @@ final class SiteVisitDrainStressTests: XCTestCase {
                     "https://cdn.example.com/\(artifactId)/\(variant.rawValue).jpg"
                 },
                 loader: { _ in (data: Data("bytes".utf8), contentType: "image/jpeg") }
-            )
+            ),
+            sessionUserId: { self.userId },
+            deliverWrite: { commandId, command, actor in
+                XCTAssertEqual(actor, self.userId, "A versioned write left with the wrong author")
+                let rows = command.rows.compactMap { row -> SiteVisitWriteJSON? in
+                    guard case .object(var values) = row.values else {
+                        XCTFail("Write command row \(row.id) is not an object")
+                        return nil
+                    }
+                    values["id"] = .string(row.id)
+                    values["company_id"] = .string(self.companyId)
+                    values["write_revision"] = .number(1)
+                    return .object(values)
+                }
+                return SiteVisitWriteReceipt(
+                    commandId: commandId,
+                    entity: command.entity,
+                    outcome: "saved",
+                    reason: nil,
+                    rows: rows
+                )
+            }
         )
     }
 

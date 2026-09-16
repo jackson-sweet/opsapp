@@ -816,19 +816,78 @@ struct DeckCanvasView: View {
                      at: CGPoint(x: cx, y: cy))
     }
 
+    /// Surface label — glass pill on the surface's largest inscribed rectangle.
+    ///
+    /// The builder keeps its own `scaledSize` type clamps (this is an editing
+    /// surface, not a finished drawing), but shares the viewer's anchor so a
+    /// label never lands outside a concave surface, the viewer's truncation so
+    /// a long name can never spill onto the geometry being edited, and the
+    /// viewer's tokens — JetBrains Mono on `Colors.text`, glass-dense fill,
+    /// `Colors.line` hairline. No accent: that is the primary CTA and the
+    /// focus ring, never a label (f7dd3673).
     private func drawSurfaceLabel(context: GraphicsContext, positions: [CGPoint], label: String) {
-        let cx = positions.map(\.x).reduce(0, +) / CGFloat(positions.count)
-        let cy = positions.map(\.y).reduce(0, +) / CGFloat(positions.count)
-        let charW = scaledSize(7, min: 5, max: 11)
-        let pillW = CGFloat(label.count) * charW + scaledSize(16, min: 10, max: 22)
-        let pillH = scaledSize(20, min: 14, max: 28)
-        let cr = scaledSize(4, min: 2, max: 6)
-        let pillRect = CGRect(x: cx - pillW / 2, y: cy - pillH / 2, width: pillW, height: pillH)
-        context.fill(Path(roundedRect: pillRect, cornerRadius: cr),
-                     with: .color(OPSStyle.Colors.cardBackground.opacity(0.9)))
+        let inscribed = DeckSurfaceLabelPlacement.largestInscribedRect(in: positions)
+        let anchor: CGPoint
+        if let inscribed {
+            anchor = CGPoint(x: inscribed.midX, y: inscribed.midY)
+        } else if let centroid = PolygonMath.polygonCentroid(vertices: positions) {
+            anchor = centroid
+        } else {
+            return
+        }
+
         let fontSize = scaledSize(11, min: 8, max: 17)
-        context.draw(Text(label).font(.system(size: fontSize, weight: .medium, design: .monospaced))
-            .foregroundColor(OPSStyle.Colors.primaryAccent), at: CGPoint(x: cx, y: cy))
+        let padH = scaledSize(CGFloat(OPSStyle.Layout.spacing2), min: 5, max: 11)
+        let padV = padH / 2
+        let measure: (String, CGFloat) -> CGSize = { text, size in
+            context.resolve(
+                Text(text)
+                    .font(OPSStyle.Typography.dataVoice(size: size))
+                    .foregroundColor(OPSStyle.Colors.text)
+            ).measure(
+                in: CGSize(
+                    width: CGFloat.greatestFiniteMagnitude,
+                    height: CGFloat.greatestFiniteMagnitude
+                )
+            )
+        }
+
+        // The pill may not leave the rectangle, so the text is truncated to
+        // what is left inside it rather than drawn past its own pill.
+        let widthLimit = inscribed?.width ?? CGFloat.greatestFiniteMagnitude
+        let fit = DeckSurfaceLabelPlacement.fitting(
+            text: label,
+            toWidth: max(widthLimit - padH * 2, 0),
+            fontSize: fontSize,
+            measure: measure
+        )
+
+        let pillW = min(fit.size.width + padH * 2, widthLimit)
+        let pillH = min(
+            fit.size.height + padV * 2,
+            inscribed?.height ?? CGFloat.greatestFiniteMagnitude
+        )
+        let cr = scaledSize(CGFloat(OPSStyle.Layout.chipRadius), min: 2, max: 6)
+        let pillRect = CGRect(
+            x: anchor.x - pillW / 2,
+            y: anchor.y - pillH / 2,
+            width: pillW,
+            height: pillH
+        )
+        let pillPath = Path(roundedRect: pillRect, cornerRadius: cr)
+        context.fill(pillPath, with: .color(OPSStyle.Colors.glassDenseApprox))
+        context.stroke(
+            pillPath,
+            with: .color(OPSStyle.Colors.line),
+            lineWidth: scaledSize(OPSStyle.Layout.Border.standard, min: 0.5, max: 2)
+        )
+        context.draw(
+            Text(fit.text)
+                .font(OPSStyle.Typography.dataVoice(size: fontSize))
+                .foregroundColor(OPSStyle.Colors.text),
+            at: anchor,
+            anchor: .center
+        )
     }
 
     // MARK: - Pool Overlay

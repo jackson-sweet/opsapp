@@ -424,6 +424,12 @@ enum OPSStyle {
         /// Badge — Cake Mono Light 11pt
         static let badgeCake = Font.badgeCake
 
+        /// Data voice at a computed size — JetBrains Mono, the same family as
+        /// `microLabel`. For geometry-driven labels only (deck surface names
+        /// sized to the space the surface offers); fixed sizes use the named
+        /// roles.
+        static func dataVoice(size: CGFloat) -> Font { Font.dataVoice(size: size) }
+
         /// Panel title — JetBrains Mono 11pt (widget and section titles, with `//` prefix)
         static let panelTitle = Font.panelTitle
 

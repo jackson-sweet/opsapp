@@ -75,6 +75,19 @@ extension Font {
     // where possible (SwiftUI doesn't expose `font-feature-settings` directly — use
     // `.monospacedDigit()` on the view modifier for tabular-lining behavior).
 
+    /// The data-voice family. Exposed so the handful of surfaces that must
+    /// COMPUTE a size (geometry-filling labels on a transformed canvas, where
+    /// the on-screen size is derived from the drawing, not from the type scale)
+    /// keep the family in the type system instead of re-typing the font name.
+    public static let dataVoiceFamily = "JetBrainsMono-Regular"
+
+    /// Data voice at a computed size — same family as `microLabel` and every
+    /// other JetBrains Mono role. Use ONLY where the size is geometric; every
+    /// fixed size belongs to a named role above.
+    public static func dataVoice(size: CGFloat) -> Font {
+        return Font.custom(dataVoiceFamily, size: size)
+    }
+
     /// Panel title — JetBrains Mono 11pt (widget and section titles, prefixed with `//`)
     public static var panelTitle: Font {
         return Font.custom("JetBrainsMono-Regular", size: 11)

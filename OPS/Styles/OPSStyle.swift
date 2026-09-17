@@ -1209,6 +1209,7 @@ enum OPSStyle {
         static let clockFill        = "clock.fill"
         static let exclamationmarkCircleFill = "exclamationmark.circle.fill"
         static let lockFill         = "lock.fill"
+        static let recurring        = "repeat"   // THE icon for a recurring reimbursement — the office files it monthly, no receipt
     }
 
     // MARK: - Wizard

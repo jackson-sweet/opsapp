@@ -139,6 +139,63 @@ enum Feedback {
         static let ruleDeleted     = Toast(label: "// RULE DELETED", tone: .success)
     }
 
+    // MARK: - Recurring reimbursements
+
+    /// A fixed monthly amount the office pays with a crew member's expenses.
+    /// Month and amount arrive pre-formatted (`AUG 2026`, `CA$350.00`).
+    enum Recurring {
+        static let updated = Toast(label: "// RECURRING UPDATED", tone: .success)
+        static let resumed = Toast(label: "// END REMOVED · RUNS MONTHLY", tone: .success)
+        static let deleted = Toast(label: "// RECURRING DELETED", tone: .success)
+        static let loadFailed = Toast(label: "// COULDN'T LOAD · TRY AGAIN", tone: .warning)
+
+        static func added(amount: String) -> Toast {
+            Toast(label: "// RECURRING ADDED · \(amount) / MO", tone: .success)
+        }
+
+        static func ended(month: String) -> Toast {
+            Toast(label: "// ENDS AFTER \(month)", tone: .success)
+        }
+
+        /// UNDO puts the month back — mis-tap recovery, same window as payouts.
+        static func skipped(month: String, undo: @escaping () -> Void) -> Toast {
+            Toast(
+                label: "// \(month) SKIPPED",
+                tone: .success,
+                autoDismissAfter: 6,
+                action: ToastAction(label: "UNDO", accessibilityLabel: "Restore \(month)", handler: undo)
+            )
+        }
+
+        static func restored(month: String) -> Toast {
+            Toast(label: "// \(month) RESTORED", tone: .success)
+        }
+
+        /// The server's refusal, said plainly. Contention and connectivity are
+        /// warnings (try again); everything else is a hard stop.
+        static func refused(_ refusal: ExpenseRecurring.Refusal) -> Toast {
+            switch refusal {
+            case .duplicate:      return Toast(label: "// THEY ALREADY HAVE ONE BY THAT NAME", tone: .error)
+            case .changed:        return Toast(label: "// CHANGED ELSEWHERE · OPEN IT AGAIN", tone: .warning)
+            case .busy:           return Toast(label: "// EXPENSES UPDATING · TRY AGAIN", tone: .warning)
+            case .permission:     return Toast(label: "// NO ACCESS TO RECURRING", tone: .error)
+            case .selfGrant:      return Toast(label: "// ONLY AN ADMIN CAN ADD THEIR OWN", tone: .error)
+            case .paid:           return Toast(label: "// THAT MONTH IS ALREADY PAID", tone: .error)
+            case .endBefore:      return Toast(label: "// LATER MONTH ON A BATCH · SKIP IT FIRST", tone: .error)
+            case .removed:        return Toast(label: "// NO LONGER EXISTS", tone: .warning)
+            case .name:           return Toast(label: "// NAME: 80 CHARACTERS MAX", tone: .error)
+            case .amount:         return Toast(label: "// AMOUNT: 0.01 TO 10,000.00", tone: .error)
+            case .start:          return Toast(label: "// START WITHIN 12 MONTHS", tone: .error)
+            case .category:       return Toast(label: "// CATEGORY NO LONGER AVAILABLE", tone: .error)
+            case .person:         return Toast(label: "// THAT PERSON ISN'T ACTIVE", tone: .error)
+            case .endBeforeStart: return Toast(label: "// END ON OR AFTER THE FIRST MONTH", tone: .error)
+            case .afterEnd:       return Toast(label: "// THAT MONTH IS AFTER IT ENDS", tone: .error)
+            case .offline:        return Toast(label: "// OFFLINE · TRY AGAIN", tone: .warning)
+            case .failed:         return Toast(label: "// SAVE FAILED · TRY AGAIN", tone: .error)
+            }
+        }
+    }
+
     // MARK: - Job board (projects, clients, task types)
 
     enum JobBoard {
@@ -520,6 +577,8 @@ enum Feedback {
         Expense.flagged, Expense.flagCleared, Expense.categoryCreated, Expense.categoryUpdated, Expense.settingsSaved,
         Expense.allocationsSaved, Expense.ruleCreated, Expense.ruleUpdated, Expense.ruleDeleted,
         Expense.receiptUploadFailed,
+        Recurring.updated, Recurring.resumed, Recurring.deleted, Recurring.loadFailed, Recurring.added(amount: "CA$350.00"),
+        Recurring.ended(month: "AUG 2026"), Recurring.skipped(month: "AUG 2026", undo: {}), Recurring.restored(month: "AUG 2026"),
         JobBoard.taskTypeCreated, JobBoard.taskTypeUpdated, JobBoard.statusChanged, JobBoard.teamUpdated,
         JobBoard.clientCreated, JobBoard.clientUpdated, JobBoard.deleted, JobBoard.projectCompleted, JobBoard.projectClosed,
         JobBoard.noTasksToReschedule(createTask: {}),

@@ -31,6 +31,7 @@ struct BooksLedger: View {
     let expenseFilter: BooksExpenseFilter
 
     @EnvironmentObject private var dataController: DataController
+    @EnvironmentObject private var permissionStore: PermissionStore
     @Query private var clients: [Client]
     @Query private var teamMembers: [TeamMember]
 
@@ -41,6 +42,8 @@ struct BooksLedger: View {
     @Binding var selectedInvoice: Invoice?
     @Binding var selectedEstimate: Estimate?
     @State private var editingExpense: ExpenseDTO?
+    /// A recurring reimbursement line opens its own sheet — never the expense form.
+    @State private var recurringLine: ExpenseDTO?
     @State private var showCreateEstimate = false
     @State private var showCreateExpense = false
 
@@ -74,6 +77,17 @@ struct BooksLedger: View {
         // wired there. Sheets/dialogs are unaffected by the lazy-container rule.
         .sheet(item: $editingExpense) { expense in
             ExpenseFormSheet(viewModel: expenseVM, editing: expense)
+        }
+        .sheet(item: $recurringLine) { line in
+            RecurringLineSheet(
+                line: line,
+                batchIsPaid: expenseVM.batches.first(where: { $0.id == line.batchId })?.paidAt != nil,
+                canManage: permissionStore.can("expenses.approve"),
+                batches: expenseVM.batches,
+                nameFor: personName,
+                onChanged: { Task { await expenseVM.loadAll() } }
+            )
+            .environmentObject(dataController)
         }
         .sheet(isPresented: $showCreateEstimate) {
             EstimateFormSheet(viewModel: estimateVM)
@@ -148,6 +162,11 @@ struct BooksLedger: View {
             return m.fullName.uppercased()
         }
         return nil
+    }
+
+    /// Proper-case name for sheets ("Paid to …"); `—` when not cached.
+    private func personName(_ userId: String) -> String {
+        teamMembers.first(where: { $0.id.lowercased() == userId.lowercased() })?.fullName ?? "—"
     }
 
     // MARK: - Invoices
@@ -287,7 +306,11 @@ struct BooksLedger: View {
                                 in: batchStatuses
                             )
                         ) {
-                            editingExpense = expense
+                            if expense.isRecurringReimbursement {
+                                recurringLine = expense
+                            } else {
+                                editingExpense = expense
+                            }
                         }
                     }
                 }

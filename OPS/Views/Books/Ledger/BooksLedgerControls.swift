@@ -113,7 +113,8 @@ enum BooksExpenseFilter: String, CaseIterable, Identifiable {
     func matches(_ expense: ExpenseDTO) -> Bool {
         switch self {
         case .all: return true
-        case .noReceipt: return (expense.receiptImageUrl?.isEmpty ?? true)
+        // A recurring reimbursement needs no receipt — never counted as missing one.
+        case .noReceipt: return !expense.isRecurringReimbursement && (expense.receiptImageUrl?.isEmpty ?? true)
         }
     }
 

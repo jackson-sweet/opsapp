@@ -120,8 +120,12 @@ struct DesignToEstimateAdapter {
                 rawValue = metadata[metadataKey]
             }
 
-            // Fall back to default_value
-            if rawValue == nil {
+            // Fall back to default_value — never for a count. A count is the
+            // job's geometry: one the drawing did not measure stays off the
+            // line for the estimator to enter, because acceptance refuses a
+            // blank count but cannot tell a default or a filled-in 0 from a
+            // real one.
+            if rawValue == nil, opt.kind != .integer {
                 rawValue = opt.defaultValue
             }
 
@@ -133,14 +137,10 @@ struct DesignToEstimateAdapter {
                 }
                 // If no match, leave option unset — resolver still computes a sensible label/price.
             case .integer:
-                if let n = rawValue as? Int {
+                // Only a whole number is a count; anything else (absent, 1.5,
+                // a boolean, text) leaves the count blank rather than guessing.
+                if let n = ProductConfigurationResolver.wholeCount(from: rawValue) {
                     result[opt.id] = .integer(n)
-                } else if let d = rawValue as? Double {
-                    result[opt.id] = .integer(Int(d))
-                } else if let s = rawValue as? String, let n = Int(s) {
-                    result[opt.id] = .integer(n)
-                } else {
-                    result[opt.id] = .integer(0)
                 }
             case .boolean:
                 if let b = rawValue as? Bool {

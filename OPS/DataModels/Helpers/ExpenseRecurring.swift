@@ -110,18 +110,43 @@ enum ExpenseRecurring {
 
     // MARK: - Input
 
-    private static let amountNoise: Set<Character> = ["$", ",", " ", "\u{00A0}"]
+    /// The money shapes people type on any keyboard. A comma or period with one
+    /// or two final digits is the decimal mark (the decimal key on a French
+    /// Canadian keypad is a comma); a comma or period between groups of three
+    /// digits groups thousands. Anything else is refused rather than guessed —
+    /// never read `35,50` as 3,550.
+    private static let amountShapes: [(pattern: String, grouping: Character?, decimal: Character?)] = [
+        (#"^[0-9]+$"#, nil, nil),
+        (#"^[0-9]+\.[0-9]{1,2}$"#, nil, "."),
+        (#"^[0-9]+,[0-9]{1,2}$"#, nil, ","),
+        (#"^[0-9]{1,3}(,[0-9]{3})+$"#, ",", nil),
+        (#"^[0-9]{1,3}(,[0-9]{3})+\.[0-9]{1,2}$"#, ",", "."),
+        (#"^[0-9]{1,3}(\.[0-9]{3})+,[0-9]{1,2}$"#, ".", ","),
+    ]
 
-    /// Typed money → amount. Nil unless it is a positive amount with at most
-    /// two decimals, no larger than the database allows. Tolerates `$`,
-    /// grouping commas and stray spaces.
+    /// Typed money → amount: `350`, `350.5`, `35,50`, `1,234.56`, `1 234,56`
+    /// and `1.234,56` all read as written. Nil unless the amount is positive,
+    /// has at most two decimals, and is no larger than the database allows.
     static func parseAmount(_ raw: String) -> Double? {
-        let cleaned = String(raw.filter { !amountNoise.contains($0) })
-        guard cleaned.range(of: #"^\d+(\.\d{1,2})?$"#, options: .regularExpression) != nil,
-              let value = Double(cleaned), value.isFinite, value > 0, value <= maxAmount else {
+        let text = String(raw.filter { !$0.isWhitespace && $0 != "$" })
+        guard let canonical = canonicalAmount(text),
+              let value = Double(canonical), value.isFinite, value > 0, value <= maxAmount else {
             return nil
         }
         return value
+    }
+
+    /// `1,234.56` / `1.234,56` / `35,50` → `1234.56` / `1234.56` / `35.50`.
+    private static func canonicalAmount(_ text: String) -> String? {
+        for shape in amountShapes where text.range(of: shape.pattern, options: .regularExpression) != nil {
+            var result = text
+            if let grouping = shape.grouping { result.removeAll { $0 == grouping } }
+            if let decimal = shape.decimal, decimal != "." {
+                result = result.replacingOccurrences(of: String(decimal), with: ".")
+            }
+            return result
+        }
+        return nil
     }
 
     /// The name as the database will store it, or nil when it would be refused

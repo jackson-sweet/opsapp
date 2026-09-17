@@ -88,6 +88,12 @@ struct RecurringLineSheet: View {
             viewModel.setup(companyId: companyId)
             await viewModel.load()
         }
+        .onReceive(
+            NotificationCenter.default.publisher(for: .expenseUpdated)
+                .receive(on: DispatchQueue.main)
+        ) { _ in
+            viewModel.scheduleRefresh()
+        }
         .trackScreen("Expenses.RecurringLine")
     }
 

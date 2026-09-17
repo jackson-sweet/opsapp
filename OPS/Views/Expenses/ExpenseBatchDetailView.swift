@@ -164,6 +164,14 @@ struct ExpenseBatchDetailView: View {
             recurring.setup(companyId: companyId)
             await recurring.load()
         }
+        // A setup changed on another device: keep the arrangement current.
+        .onReceive(
+            NotificationCenter.default.publisher(for: .expenseUpdated)
+                .receive(on: DispatchQueue.main)
+        ) { _ in
+            guard canApprove, !hasLeftDetail else { return }
+            recurring.scheduleRefresh()
+        }
         .fullScreenCover(isPresented: $showReceiptViewer) {
             if let url = receiptImageUrl {
                 FullScreenReceiptViewer(imageUrl: url)
@@ -452,10 +460,13 @@ struct ExpenseBatchDetailView: View {
     }
 
     /// Rare, person-level setup — a quiet action under the lines, never prime
-    /// space. Starts at this batch's month; hidden once the batch is paid out.
+    /// space. Starts at this batch's month; hidden once the batch is paid out,
+    /// and on an approver's own batch unless they are an admin (the database
+    /// refuses anyone else a reimbursement for themselves).
     @ViewBuilder
     private var addRecurringAction: some View {
-        if canApprove, currentBatch.paidAt == nil, let userId = batch.submittedBy, !userId.isEmpty {
+        if canApprove, currentBatch.paidAt == nil, let userId = batch.submittedBy, !userId.isEmpty,
+           permissionStore.isAdmin || userId.lowercased() != dataController.currentUser?.id.lowercased() {
             HStack {
                 Button {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()

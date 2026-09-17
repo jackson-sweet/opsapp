@@ -240,6 +240,20 @@ final class RecurringReimbursementViewModelTests: XCTestCase {
         XCTAssertNil(viewModel.inFlight)
     }
 
+    func testACommandThatLandsBeforeTheFirstReadStillLeavesTheListLoaded() async {
+        repository.snapshot.setups = [setup(amount: 400)]
+        repository.reply = setup(amount: 400)
+
+        // Nothing has loaded when the command answers.
+        XCTAssertNil(viewModel.snapshot)
+        let outcome = await viewModel.update(setup(), name: "Phone plan", amount: 400)
+        XCTAssertEqual(outcome, .done)
+
+        // The follow-up read settles the list on the database.
+        while viewModel.snapshot == nil { await Task.yield() }
+        XCTAssertEqual(viewModel.setups.first?.amount, 400)
+    }
+
     // MARK: - Skip / UNDO
 
     func testSkipOffersUndoThatRestoresTheMonth() async throws {

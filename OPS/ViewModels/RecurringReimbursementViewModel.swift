@@ -203,7 +203,7 @@ final class RecurringReimbursementViewModel: ObservableObject {
         } success: { _ in
             // Strong capture on purpose: UNDO must work after the surface that
             // skipped has closed. The toast releases it when it dismisses.
-            Feedback.Recurring.skipped(month: month) {
+            Feedback.Recurring.skipped(month: month, expenseId: expenseId) {
                 Task { @MainActor in
                     if await self.restore(expenseId: expenseId, period: period) == .done {
                         onChanged()
@@ -222,7 +222,7 @@ final class RecurringReimbursementViewModel: ObservableObject {
         return await run(.restore(expenseId)) { repository in
             try await repository.restoreLine(expenseId: expenseId)
         } success: { _ in
-            Feedback.Recurring.restored(month: month)
+            Feedback.Recurring.restored(month: month, expenseId: expenseId)
         }
     }
 
@@ -249,6 +249,9 @@ final class RecurringReimbursementViewModel: ObservableObject {
             merge(setup)
             toasts(success(setup))
             NotificationCenter.default.post(name: .opsExpensesDidChange, object: nil)
+            // A command moves months, batches and totals beyond the one setup it
+            // answers with; a follow-up read settles every surface on them.
+            scheduleRefresh()
             return .done
         } catch {
             let refusal = Self.refusal(for: error)
@@ -262,11 +265,12 @@ final class RecurringReimbursementViewModel: ObservableObject {
 
     /// Replaces the setup with the command's answer. A deleted setup leaves the
     /// list. Any read already in flight is older than this answer, so it is
-    /// discarded.
+    /// discarded — unless nothing has loaded yet, in which case that first read
+    /// must still land (the follow-up refresh settles it on the answer).
     private func merge(_ setup: ExpenseRecurringReimbursementDTO) {
+        guard var current = snapshot else { return }
         loadGeneration += 1
         isLoading = false
-        guard var current = snapshot else { return }
         current.setups.removeAll { $0.id.lowercased() == setup.id.lowercased() }
         if setup.deletedAt == nil {
             current.setups.append(setup)

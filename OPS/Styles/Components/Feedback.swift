@@ -158,17 +158,20 @@ enum Feedback {
         }
 
         /// UNDO puts the month back — mis-tap recovery, same window as payouts.
-        static func skipped(month: String, undo: @escaping () -> Void) -> Toast {
+        /// Keyed by line: two reimbursements skipped for the same month back to
+        /// back each keep their own UNDO.
+        static func skipped(month: String, expenseId: String, undo: @escaping () -> Void) -> Toast {
             Toast(
                 label: "// \(month) SKIPPED",
                 tone: .success,
                 autoDismissAfter: 6,
-                action: ToastAction(label: "UNDO", accessibilityLabel: "Restore \(month)", handler: undo)
+                action: ToastAction(label: "UNDO", accessibilityLabel: "Restore \(month)", handler: undo),
+                coalescingKey: "recurring-skip-\(expenseId)"
             )
         }
 
-        static func restored(month: String) -> Toast {
-            Toast(label: "// \(month) RESTORED", tone: .success)
+        static func restored(month: String, expenseId: String) -> Toast {
+            Toast(label: "// \(month) RESTORED", tone: .success, coalescingKey: "recurring-restore-\(expenseId)")
         }
 
         /// The server's refusal, said plainly. Contention and connectivity are
@@ -578,7 +581,8 @@ enum Feedback {
         Expense.allocationsSaved, Expense.ruleCreated, Expense.ruleUpdated, Expense.ruleDeleted,
         Expense.receiptUploadFailed,
         Recurring.updated, Recurring.resumed, Recurring.deleted, Recurring.loadFailed, Recurring.added(amount: "CA$350.00"),
-        Recurring.ended(month: "AUG 2026"), Recurring.skipped(month: "AUG 2026", undo: {}), Recurring.restored(month: "AUG 2026"),
+        Recurring.ended(month: "AUG 2026"), Recurring.skipped(month: "AUG 2026", expenseId: "e", undo: {}),
+        Recurring.restored(month: "AUG 2026", expenseId: "e"),
         JobBoard.taskTypeCreated, JobBoard.taskTypeUpdated, JobBoard.statusChanged, JobBoard.teamUpdated,
         JobBoard.clientCreated, JobBoard.clientUpdated, JobBoard.deleted, JobBoard.projectCompleted, JobBoard.projectClosed,
         JobBoard.noTasksToReschedule(createTask: {}),

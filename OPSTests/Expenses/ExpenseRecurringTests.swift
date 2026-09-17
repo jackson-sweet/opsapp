@@ -122,6 +122,29 @@ final class ExpenseRecurringTests: XCTestCase {
         XCTAssertEqual(ExpenseRecurring.parseAmount("10000"), 10000)
     }
 
+    func testParseAmountReadsTheDecimalKeyOfAnyKeyboard() {
+        // A French Canadian keypad's decimal key is a comma: 35,50 is $35.50,
+        // never $3,550.
+        XCTAssertEqual(ExpenseRecurring.parseAmount("35,50"), 35.5)
+        XCTAssertEqual(ExpenseRecurring.parseAmount("0,5"), 0.5)
+        XCTAssertEqual(ExpenseRecurring.parseAmount("1,23"), 1.23)
+        XCTAssertEqual(ExpenseRecurring.parseAmount("1 234,56"), 1234.56)
+        XCTAssertEqual(ExpenseRecurring.parseAmount("1\u{202F}234,56"), 1234.56)
+        XCTAssertEqual(ExpenseRecurring.parseAmount("1.234,56"), 1234.56)
+        // Commas between groups of three digits still group thousands.
+        XCTAssertEqual(ExpenseRecurring.parseAmount("1,234"), 1234)
+        XCTAssertEqual(ExpenseRecurring.parseAmount("9,999.99"), 9999.99)
+    }
+
+    func testParseAmountRefusesAmbiguousOrMalformedMarks() {
+        XCTAssertNil(ExpenseRecurring.parseAmount("1,2345"))
+        XCTAssertNil(ExpenseRecurring.parseAmount("275."))
+        XCTAssertNil(ExpenseRecurring.parseAmount(",50"))
+        XCTAssertNil(ExpenseRecurring.parseAmount("1.234"))
+        XCTAssertNil(ExpenseRecurring.parseAmount("12,34,56"))
+        XCTAssertNil(ExpenseRecurring.parseAmount("1,234,567"))
+    }
+
     func testParseAmountRefusesWhatTheDatabaseRefuses() {
         XCTAssertNil(ExpenseRecurring.parseAmount(""))
         XCTAssertNil(ExpenseRecurring.parseAmount("0"))
@@ -334,8 +357,8 @@ final class ExpenseRecurringTests: XCTestCase {
             Feedback.Recurring.loadFailed,
             Feedback.Recurring.added(amount: BooksFormat.exact(275, code: "CAD")),
             Feedback.Recurring.ended(month: ExpenseRecurring.formatMonth("2026-12-01")),
-            Feedback.Recurring.skipped(month: ExpenseRecurring.formatMonth("2026-08-01"), undo: {}),
-            Feedback.Recurring.restored(month: ExpenseRecurring.formatMonth("2026-08-01")),
+            Feedback.Recurring.skipped(month: ExpenseRecurring.formatMonth("2026-08-01"), expenseId: "e-aug", undo: {}),
+            Feedback.Recurring.restored(month: ExpenseRecurring.formatMonth("2026-08-01"), expenseId: "e-aug"),
         ]
         for toast in toasts {
             XCTAssertTrue(toast.label.hasPrefix("// "), toast.label)
@@ -343,6 +366,13 @@ final class ExpenseRecurringTests: XCTestCase {
             XCTAssertEqual(body, body.uppercased(), toast.label)
         }
         XCTAssertEqual(Feedback.Recurring.added(amount: "CA$275.00").label, "// RECURRING ADDED · CA$275.00 / MO")
-        XCTAssertEqual(Feedback.Recurring.skipped(month: "AUG 2026", undo: {}).action?.label, "UNDO")
+        XCTAssertEqual(Feedback.Recurring.skipped(month: "AUG 2026", expenseId: "e-aug", undo: {}).action?.label, "UNDO")
+    }
+
+    func testSkippingTwoLinesForTheSameMonthKeepsBothUndos() {
+        let vehicle = Feedback.Recurring.skipped(month: "AUG 2026", expenseId: "e-vehicle", undo: {})
+        let phone = Feedback.Recurring.skipped(month: "AUG 2026", expenseId: "e-phone", undo: {})
+        XCTAssertEqual(vehicle.label, phone.label)
+        XCTAssertNotEqual(vehicle.coalescingKey, phone.coalescingKey)
     }
 }

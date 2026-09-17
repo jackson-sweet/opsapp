@@ -477,35 +477,54 @@ struct RecurringReimbursementSheet: View {
 
     private func seedIfNeeded() async {
         guard !hasSeeded else { return }
-        // Months follow the company calendar and edits need the live record.
-        if viewModel.snapshot == nil {
-            await viewModel.load()
-        }
         switch mode {
         case .create(let person, let first):
+            // Months follow the company calendar; make sure it has loaded.
+            if viewModel.snapshot == nil {
+                await viewModel.load()
+            }
             personId = person?.id
             firstPeriod = first.map(ExpenseRecurring.monthStart) ?? currentMonth
         case .edit(let setupId):
-            var found = viewModel.setup(id: setupId)
-            if found == nil {
-                // A setup added elsewhere since the list loaded — read again once.
-                await viewModel.load()
-                found = viewModel.setup(id: setupId)
+            // Open instantly on what is on screen, then read the current record:
+            // the concurrency token must be today's, not the list's.
+            if let cached = viewModel.setup(id: setupId) {
+                seed(from: cached)
             }
-            guard let setup = found else {
-                // Gone, or the read failed — there is nothing safe to edit.
+            await viewModel.load()
+            guard let fresh = viewModel.setup(id: setupId) else {
+                // Gone, or never readable — there is nothing safe to edit.
                 ToastCenter.shared.present(
                     viewModel.loadFailed ? Feedback.Recurring.loadFailed : Feedback.Recurring.refused(.removed)
                 )
                 dismiss()
                 return
             }
-            seededSetup = setup
-            name = setup.name
-            amountText = ExpenseRecurring.amountText(setup.amount)
-            firstPeriod = setup.firstPeriod
+            if let seededSetup {
+                // Adopt a newer record only while the operator hasn't typed; once
+                // they have, the old token stands and a conflicting save is refused.
+                if fresh.updatedAt != seededSetup.updatedAt, formMatches(seededSetup) {
+                    seed(from: fresh)
+                }
+            } else {
+                seed(from: fresh)
+            }
+            return
         }
         hasSeeded = true
+    }
+
+    private func seed(from setup: ExpenseRecurringReimbursementDTO) {
+        seededSetup = setup
+        name = setup.name
+        amountText = ExpenseRecurring.amountText(setup.amount)
+        firstPeriod = setup.firstPeriod
+        hasSeeded = true
+    }
+
+    /// The form still shows exactly what `setup` held.
+    private func formMatches(_ setup: ExpenseRecurringReimbursementDTO) -> Bool {
+        name == setup.name && amountText == ExpenseRecurring.amountText(setup.amount)
     }
 
     // MARK: - Commands

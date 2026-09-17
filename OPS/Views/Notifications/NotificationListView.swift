@@ -1188,6 +1188,11 @@ struct NotificationListView: View {
                 return ("xmark.seal", OPSStyle.Colors.errorStatus)
             case "expense_paid":
                 return ("banknote", OPSStyle.Colors.successStatus)
+            // Recurring reimbursement added / updated / ending / skipped /
+            // removed — an informational change to money the office files.
+            // Routes like every expense row (deep_link_type = expense + batch).
+            case "expense_recurring":
+                return (OPSStyle.Icons.recurring, OPSStyle.Colors.secondaryText)
             // LiDAR Dimensioned Photo Capture — spec §6 / Phase G.
             // `ruler` matches the MEASURE entry on `ProjectActionBar` so the
             // user can trace a rail card back to the originating capture flow.

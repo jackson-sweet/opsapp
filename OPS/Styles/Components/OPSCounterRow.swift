@@ -56,20 +56,48 @@ struct OPSCounterRow: View {
                 .foregroundColor(isZero ? OPSStyle.Colors.textMute : OPSStyle.Colors.text)
                 .monospacedDigit()
 
-            HStack(spacing: 0) {
-                stepButton(systemImage: "minus", enabled: canDecrement, action: onDecrement)
-                    .accessibilityLabel("Decrease \(label)")
-                Divider()
-                    .frame(height: OPSStyle.Layout.touchTargetMin / 2)
-                    .overlay(OPSStyle.Colors.line)
-                stepButton(systemImage: "plus", enabled: canIncrement, action: onIncrement)
-                    .accessibilityLabel("Increase \(label)")
-            }
-            .nestedCard()
+            OPSCounterStepper(
+                label: label,
+                canDecrement: canDecrement,
+                canIncrement: canIncrement,
+                onDecrement: onDecrement,
+                onIncrement: onIncrement
+            )
         }
         .frame(minHeight: OPSStyle.Layout.touchTargetMin)
         .accessibilityElement(children: .contain)
         .accessibilityValue(value)
+    }
+}
+
+/// The nested −/+ pair on its own, for a row that lays out its own label and
+/// value (the estimate line item's count options). Same anatomy as the pair in
+/// `OPSCounterRow`: two 44pt targets split by a hairline, disabled ends, a light
+/// impact on every step.
+struct OPSCounterStepper: View {
+    /// What the buttons change, for VoiceOver ("Decrease Corners").
+    let label: String
+    let canDecrement: Bool
+    let canIncrement: Bool
+    let onDecrement: () -> Void
+    let onIncrement: () -> Void
+    /// Optional identifier root; the buttons take `<root>_decrement` and
+    /// `<root>_increment`.
+    var accessibilityIdentifierRoot: String?
+
+    var body: some View {
+        HStack(spacing: 0) {
+            stepButton(systemImage: "minus", enabled: canDecrement, action: onDecrement)
+                .accessibilityLabel("Decrease \(label)")
+                .accessibilityIdentifier(accessibilityIdentifierRoot.map { "\($0)_decrement" } ?? "")
+            Divider()
+                .frame(height: OPSStyle.Layout.touchTargetMin / 2)
+                .overlay(OPSStyle.Colors.line)
+            stepButton(systemImage: "plus", enabled: canIncrement, action: onIncrement)
+                .accessibilityLabel("Increase \(label)")
+                .accessibilityIdentifier(accessibilityIdentifierRoot.map { "\($0)_increment" } ?? "")
+        }
+        .nestedCard()
     }
 
     private func stepButton(

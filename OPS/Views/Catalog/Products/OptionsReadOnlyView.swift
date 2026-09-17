@@ -55,7 +55,7 @@ struct OptionsReadOnlyView: View {
                 Spacer()
             }
 
-            if let defaultValue = option.defaultValue, !defaultValue.isEmpty {
+            if let defaultValue = ProductOptionDefaultPolicy.displayedDefault(for: option) {
                 HStack(spacing: OPSStyle.Layout.spacing2) {
                     Text("DEFAULT")
                         .font(OPSStyle.Typography.metadata)

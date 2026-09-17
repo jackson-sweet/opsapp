@@ -23,7 +23,8 @@ struct OPSApp: App {
             CatalogSetupQARuntime.isEnabled() ||
             ScheduleLongPressQARuntime.isEnabled() ||
             SiteVisitCaptureQARuntime.isEnabled() ||
-            VinylOrderQARuntime.isEnabled() {
+            VinylOrderQARuntime.isEnabled() ||
+            LineItemCountsQARuntime.isEnabled() {
             return
         }
         #endif
@@ -44,7 +45,8 @@ struct OPSApp: App {
             CatalogSetupQARuntime.isEnabled() ||
             ScheduleLongPressQARuntime.isEnabled() ||
             SiteVisitCaptureQARuntime.isEnabled() ||
-            VinylOrderQARuntime.isEnabled()
+            VinylOrderQARuntime.isEnabled() ||
+            LineItemCountsQARuntime.isEnabled()
         #else
         let isHermeticQALaunch = false
         #endif
@@ -134,6 +136,10 @@ private struct OPSInitializedRoot: View {
         } else if VinylOrderQARuntime.isEnabled() {
             // The workspace takes plain values — no controller, no store.
             VinylOrderQAHost()
+                .preferredColorScheme(.dark)
+        } else if LineItemCountsQARuntime.isEnabled() {
+            // The sheet reads only its store and an unconfigured view model.
+            LineItemCountsQAHost()
                 .preferredColorScheme(.dark)
         } else if CatalogSetupQARuntime.isEnabled() {
             CatalogSetupQALocalHost()

@@ -266,7 +266,7 @@ struct ProductOptionAuthoringSheet: View {
                 }
             }
 
-            if let defaultValue = option.defaultValue, !defaultValue.isEmpty {
+            if let defaultValue = ProductOptionDefaultPolicy.displayedDefault(for: option) {
                 Text("DEFAULT - \(defaultValue)")
                     .font(OPSStyle.Typography.metadata)
                     .foregroundColor(OPSStyle.Colors.tertiaryText)
@@ -725,9 +725,13 @@ private struct ProductOptionEditorSheet: View {
             }
             .tint(OPSStyle.Colors.text)
 
-            CatalogFieldLabel("Default")
-            TextField("", text: $defaultValue)
-                .textFieldStyle(CatalogTextFieldStyle())
+            // A count takes no default: the estimate editors never fill one,
+            // so the field would promise something nothing honours.
+            if ProductOptionDefaultPolicy.offersDefault(for: kind) {
+                CatalogFieldLabel("Default")
+                TextField("", text: $defaultValue)
+                    .textFieldStyle(CatalogTextFieldStyle())
+            }
 
             CatalogFieldLabel("Default source")
             TextField("", text: $optionDefaultSource)
@@ -884,7 +888,7 @@ private struct ProductOptionEditorSheet: View {
                         affectsPrice: affectsPrice,
                         affectsRecipe: affectsRecipe,
                         required: required,
-                        defaultValue: trimmedOptional(defaultValue),
+                        defaultValue: ProductOptionDefaultPolicy.savedDefault(defaultValue, kind: kind),
                         optionDefaultSource: trimmedOptional(optionDefaultSource),
                         sortOrder: optionSortOrder
                     )
@@ -900,7 +904,7 @@ private struct ProductOptionEditorSheet: View {
                         affectsPrice: affectsPrice,
                         affectsRecipe: affectsRecipe,
                         required: required,
-                        defaultValue: trimmedOptional(defaultValue),
+                        defaultValue: ProductOptionDefaultPolicy.savedDefault(defaultValue, kind: kind),
                         optionDefaultSource: trimmedOptional(optionDefaultSource),
                         sortOrder: optionSortOrder
                     )

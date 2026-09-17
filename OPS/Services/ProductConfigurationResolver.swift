@@ -123,6 +123,30 @@ struct ProductConfigurationResolver {
         return result
     }
 
+    /// A whole count from an untyped value: a JSON integer, a whole-valued JSON
+    /// number (`1.0`), or an integer string (`"2"`, surrounding whitespace
+    /// allowed). A fractional number, a boolean, empty or other text, or no
+    /// value at all is not a count — the caller leaves the count blank rather
+    /// than guessing one. `JSONSerialization` hands booleans back as
+    /// `NSNumber`s that `as? Int` reads as 0/1, so the CFBoolean check runs first.
+    static func wholeCount(from raw: Any?) -> Int? {
+        switch raw {
+        case let number as NSNumber:
+            guard CFGetTypeID(number as CFTypeRef) != CFBooleanGetTypeID() else { return nil }
+            let value = number.doubleValue
+            guard value.isFinite,
+                  value.rounded(.towardZero) == value,
+                  value >= Double(Int.min), value < Double(Int.max) else { return nil }
+            return Int(value)
+        case let text as String:
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard trimmed.range(of: #"^-?[0-9]+$"#, options: .regularExpression) != nil else { return nil }
+            return Int(trimmed)
+        default:
+            return nil
+        }
+    }
+
     private func fires(modifier: ProductPricingModifier, value: OptionValue) -> Bool {
         if let triggerId = modifier.triggerValueId {
             if case .selectId(let id) = value, id == triggerId { return true }

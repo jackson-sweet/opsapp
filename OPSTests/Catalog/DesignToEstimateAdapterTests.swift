@@ -369,6 +369,126 @@ final class DesignToEstimateAdapterTests: XCTestCase {
         } else { XCTFail("expected the colour to resolve to its option value id") }
     }
 
+    // MARK: - Counts the drawing did not measure stay blank
+
+    /// A count is the job's geometry. Acceptance refuses a blank count but cannot
+    /// tell an injected 0 from a real one, so the adapter carries only what the
+    /// drawing measured: a measured count (0 included) is set, anything the
+    /// drawing did not measure is left off the line for the estimator to enter.
+
+    private func canproRailing(metadata: String) -> DesignToEstimateAdapter.GeneratedLineItem? {
+        let (railing, fixtureOptions, values, modifiers) = buildCanproRailFixture()
+        var options = fixtureOptions
+        let wallReturns = ProductOption(
+            id: "o_wall", productId: "p_canpro_rail", name: "Wall returns",
+            kind: .integer, affectsPrice: false, affectsRecipe: true,
+            defaultValue: "0", optionDefaultSource: nil, sortOrder: 5
+        )
+        options["p_canpro_rail", default: []].append(wallReturns)
+        let json = """
+        { "components": [ { "component_type": "railing", "metadata": \(metadata) } ] }
+        """
+        return DesignToEstimateAdapter().generate(
+            design: makeDesign(jsonString: json),
+            defaults: [.railing: railing],
+            productOptions: options,
+            productOptionValues: values,
+            productModifiers: modifiers
+        ).first
+    }
+
+    func test_generate_measuredCountIsSet_measuredZeroIsZero_unmeasuredCountIsAbsent() throws {
+        let item = try XCTUnwrap(canproRailing(metadata: """
+        { "linear_feet": 20, "right_ends": 1, "corners": 0, "color": "Black" }
+        """))
+
+        XCTAssertEqual(item.configuredOptions["o_right"], .integer(1), "a measured count is carried")
+        XCTAssertEqual(item.configuredOptions["o_corners"], .integer(0), "a measured 0 is a count")
+        XCTAssertNil(item.configuredOptions["o_left"], "left_ends was not measured — blank, not 0")
+        XCTAssertNil(item.configuredOptions["o_45"], "off_angle_corners was not measured — blank, not 0")
+        XCTAssertNil(item.configuredOptions["o_wall"], "wall returns are never drawing-driven — blank, not 0")
+        XCTAssertEqual(item.configuredOptions["o_color"], .selectId("v_black"))
+    }
+
+    func test_generate_neverFillsAnUnmeasuredCountFromItsCatalogueDefault() throws {
+        let (railing, fixtureOptions, values, modifiers) = buildCanproRailFixture()
+        var options = fixtureOptions
+        options["p_canpro_rail"] = options["p_canpro_rail"]?.map { option in
+            guard option.kind == .integer else { return option }
+            return ProductOption(
+                id: option.id, productId: option.productId, name: option.name,
+                kind: .integer, affectsPrice: false, affectsRecipe: true,
+                defaultValue: "1", optionDefaultSource: nil, sortOrder: option.sortOrder
+            )
+        }
+        let json = """
+        { "components": [ { "component_type": "railing", "metadata": { "linear_feet": 12 } } ] }
+        """
+
+        let item = try XCTUnwrap(DesignToEstimateAdapter().generate(
+            design: makeDesign(jsonString: json),
+            defaults: [.railing: railing],
+            productOptions: options,
+            productOptionValues: values,
+            productModifiers: modifiers
+        ).first)
+
+        for optionId in ["o_left", "o_right", "o_corners", "o_45"] {
+            XCTAssertNil(item.configuredOptions[optionId], "\(optionId) must not take its catalogue default")
+        }
+        // Select defaults still apply when the drawing is silent.
+        XCTAssertEqual(item.configuredOptions["o_color"], .selectId("v_black"))
+    }
+
+    func test_generate_designSourcedCountIsBlank_whenTheDrawingOmitsIt() throws {
+        let (railing, options, values, modifiers) = buildRailingFixture()
+        let json = """
+        {
+          "components": [
+            {
+              "component_type": "railing",
+              "metadata": { "linear_feet": 24, "color": "Black", "mount_type": "Topmount", "mount_surface": "Surface" }
+            }
+          ]
+        }
+        """
+
+        let item = try XCTUnwrap(DesignToEstimateAdapter().generate(
+            design: makeDesign(jsonString: json),
+            defaults: [.railing: railing],
+            productOptions: options,
+            productOptionValues: values,
+            productModifiers: modifiers
+        ).first)
+
+        XCTAssertNil(item.configuredOptions["o_corners"], "$design.corners_count absent — blank, not the default 0")
+        XCTAssertEqual(item.resolvedOptionsLabel, "Topmount · Surface · Black")
+    }
+
+    func test_generate_readsAWholeCountInAnyNumericForm_andRejectsAnythingElse() throws {
+        let item = try XCTUnwrap(canproRailing(metadata: """
+        { "linear_feet": 20, "left_ends": "2", "right_ends": 1.0, "corners": 1.5, "off_angle_corners": true }
+        """))
+
+        XCTAssertEqual(item.configuredOptions["o_left"], .integer(2), "an integer string is a count")
+        XCTAssertEqual(item.configuredOptions["o_right"], .integer(1), "a whole-valued number is a count")
+        XCTAssertNil(item.configuredOptions["o_corners"], "1.5 is not a count — blank, never truncated")
+        XCTAssertNil(item.configuredOptions["o_45"], "a boolean is not a count")
+    }
+
+    func test_generate_blankCountIsLeftOutOfTheSavedSnapshot() throws {
+        let item = try XCTUnwrap(canproRailing(metadata: """
+        { "linear_feet": 20, "left_ends": 0, "right_ends": 1, "corners": 0, "off_angle_corners": 0 }
+        """))
+
+        let raw = try XCTUnwrap(CatalogEstimateMerger.encodeConfiguredOptions(item.configuredOptions))
+        let object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(raw.rawJSONString.utf8)) as? [String: Any]
+        )
+        XCTAssertNil(object["o_wall"], "an unmeasured count must not reach the line as 0")
+        XCTAssertEqual((object["o_left"] as? NSNumber)?.intValue, 0)
+    }
+
     func test_designMetadataKey_matchesCountOptionNamesCaseAndSpacingInsensitively() {
         XCTAssertEqual(DesignToEstimateAdapter.designMetadataKey(forIntegerOptionNamed: "Left ends"), "left_ends")
         XCTAssertEqual(DesignToEstimateAdapter.designMetadataKey(forIntegerOptionNamed: "  RIGHT   ENDS "), "right_ends")

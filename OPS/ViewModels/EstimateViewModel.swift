@@ -265,13 +265,29 @@ class EstimateViewModel: ObservableObject {
         }
     }
 
-    func updateLineItem(id: String, estimateId: String, description: String?, quantity: Double?, unitPrice: Double?, isOptional: Bool?) async {
+    /// Updates a line. For a configurable product's line, pass the whole new
+    /// snapshot (`configuredOptionsJSON` + resolved price and label); nil
+    /// leaves the stored snapshot untouched, which is right for a flat line.
+    func updateLineItem(
+        id: String,
+        estimateId: String,
+        description: String?,
+        quantity: Double?,
+        unitPrice: Double?,
+        isOptional: Bool?,
+        configuredOptionsJSON: String? = nil,
+        resolvedUnitPrice: Double? = nil,
+        resolvedOptionsLabel: String? = nil
+    ) async {
         guard let repo = repository else { return }
         let dto = UpdateLineItemDTO(
             description: description,
             quantity: quantity,
             unitPrice: unitPrice,
-            isOptional: isOptional
+            isOptional: isOptional,
+            configuredOptions: configuredOptionsJSON.map { RawJSONColumn(rawJSONString: $0) },
+            resolvedUnitPrice: resolvedUnitPrice,
+            resolvedOptionsLabel: resolvedOptionsLabel
         )
         do {
             _ = try await repo.updateLineItem(id, fields: dto)

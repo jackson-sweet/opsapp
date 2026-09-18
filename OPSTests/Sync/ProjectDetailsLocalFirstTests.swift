@@ -11,12 +11,17 @@
 //
 //  Three contracts are pinned here.
 //
-//  1. `syncClientNow` is NOT a sync pass. `triggerSync()` writes `statusText` on
-//     every path it can take — "Syncing…" when it runs, "Offline — changes
-//     queued" when it can't — so an untouched `statusText` after a client
-//     refresh is direct evidence that the freight train did not leave the
-//     station. The merge half is exercised separately against a DTO, through
-//     the same `mergeClient` the pull and realtime paths use.
+//  1. `syncClientNow` is NOT a sync pass. Once an engine has a session,
+//     `triggerSync()` writes `statusText` whichever way it goes — "Syncing…"
+//     when it runs, "Offline — changes queued" when the network refuses it —
+//     so an untouched `statusText` after a client refresh on that SAME engine
+//     is direct evidence that the freight train did not leave the station.
+//     The pair runs on an engine configured with a store (a session) and a
+//     network that refuses every pass, so the outcome is identical on any
+//     host. An engine with no session leaves the status alone by design —
+//     nobody is signed in to sync for — which is why a bare `SyncEngine()`
+//     can prove nothing here. The merge half is exercised separately against
+//     a DTO, through the same `mergeClient` the pull and realtime paths use.
 //
 //  2. The activity feed paints local rows BEFORE the fetch resolves. Asserted
 //     against a fetch held open on a gate, so the ordering is observed rather
@@ -40,8 +45,8 @@ final class ProjectDetailsLocalFirstTests: XCTestCase {
     /// targeted client fetch must not: it is a one-row read behind a screen
     /// open, not a sync the operator asked for.
     @MainActor
-    func test_syncClientNowNeverPresentsItselfAsASyncPass() async {
-        let engine = SyncEngine()
+    func test_syncClientNowNeverPresentsItselfAsASyncPass() async throws {
+        let engine = try makeOfflineEngine()
 
         await engine.syncClientNow(clientId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
 
@@ -53,27 +58,28 @@ final class ProjectDetailsLocalFirstTests: XCTestCase {
         XCTAssertFalse(engine.isSyncing)
     }
 
-    /// The discriminator for the assertion above: the call this replaced writes
-    /// `statusText` even when it does nothing at all, so an untouched status is
-    /// only meaningful because `triggerSync()` would have changed it.
+    /// The discriminator for the assertion above: on the same engine, the call
+    /// this replaced writes `statusText` even when the network refuses it, so
+    /// an untouched status is only meaningful because `triggerSync()` would
+    /// have changed it.
     @MainActor
-    func test_triggerSyncDoesAnnounceItself() async {
-        let engine = SyncEngine()
+    func test_triggerSyncDoesAnnounceItself() async throws {
+        let engine = try makeOfflineEngine()
 
         await engine.triggerSync()
 
         XCTAssertEqual(
             engine.statusText,
             "Offline — changes queued",
-            "Precondition: triggerSync writes status on every path, which is what makes the test above a proof"
+            "Precondition: on this engine triggerSync writes status, which is what makes the test above a proof"
         )
     }
 
     /// An empty id must not reach the network at all — and must still not look
     /// like a sync.
     @MainActor
-    func test_syncClientNowWithoutAnIdDoesNothing() async {
-        let engine = SyncEngine()
+    func test_syncClientNowWithoutAnIdDoesNothing() async throws {
+        let engine = try makeOfflineEngine()
 
         await engine.syncClientNow(clientId: "")
 
@@ -422,6 +428,27 @@ final class ProjectDetailsLocalFirstTests: XCTestCase {
         return ProjectFixture(context: context, dataController: dataController)
     }
 
+    /// An engine with a session (a configured store) behind a network that
+    /// refuses every pass, run by its own execution coordinator so the host
+    /// app's foreground state can never pause it. `triggerSync()` here always
+    /// reaches its offline branch, and nothing can touch the network.
+    @MainActor
+    private func makeOfflineEngine() throws -> SyncEngine {
+        let container = try makeContainer()
+        let engine = SyncEngine(
+            execution: SyncExecutionCoordinator(allowance: ControlledSyncAllowance())
+        )
+        engine.configure(modelContext: container.mainContext, connectivity: OfflineConnectivity())
+        addTeardownBlock { @MainActor in
+            // The retry timer, observers and realtime binding stop before the
+            // store they read is released.
+            engine.stopForLogoutSync()
+            await engine.stopForLogoutAsync()
+            withExtendedLifetime(container) {}
+        }
+        return engine
+    }
+
     /// Every container seeds one inert SyncOperation. A `#Predicate` fetch of
     /// SyncOperation TRAPS (uncatchable EXC_BREAKPOINT, not a thrown error)
     /// against a table that has never held a row, and the client merge reaches
@@ -485,6 +512,17 @@ final class ProjectDetailsLocalFirstTests: XCTestCase {
         """.data(using: .utf8)!
         return try JSONDecoder().decode(ProjectNoteDTO.self, from: json)
     }
+}
+
+// MARK: - Offline network
+
+/// A network that refuses every sync pass. The decision helpers are the
+/// override seam `ConnectivityManager` documents for tests.
+@MainActor
+private final class OfflineConnectivity: ConnectivityManager {
+    override var shouldAttemptSync: Bool { false }
+    override var shouldPullData: Bool { false }
+    override var shouldUploadPhotos: Bool { false }
 }
 
 // MARK: - Note fetch doubles

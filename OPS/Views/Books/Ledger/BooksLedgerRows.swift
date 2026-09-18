@@ -205,9 +205,15 @@ struct BooksExpenseRow: View {
 
     private var meta: String {
         var parts: [String] = []
-        if let cat = expense.category?.name, !cat.isEmpty { parts.append(cat.uppercased()) }
-        let date = BooksLedgerStatus.shortDate(expense.expenseDate)
-        if !date.isEmpty { parts.append(date) }
+        if expense.isRecurringReimbursement {
+            // The month it pays for, not a receipt date.
+            parts.append("RECURRING")
+            if let period = expense.recurringPeriod { parts.append(ExpenseRecurring.formatMonth(period)) }
+        } else {
+            if let cat = expense.category?.name, !cat.isEmpty { parts.append(cat.uppercased()) }
+            let date = BooksLedgerStatus.shortDate(expense.expenseDate)
+            if !date.isEmpty { parts.append(date) }
+        }
         if let who, !who.isEmpty { parts.append(who) }
         return parts.joined(separator: " · ")
     }
@@ -239,7 +245,11 @@ struct BooksExpenseRow: View {
 
     @ViewBuilder
     private var receiptThumb: some View {
-        if hasReceipt {
+        if expense.isRecurringReimbursement {
+            // Office-filed monthly line: the neutral repeat mark, never the
+            // rose no-receipt alarm.
+            RecurringReimbursementMark(width: 34, height: 42, cornerRadius: 3)
+        } else if hasReceipt {
             // Real thumbnail — compact ledger rows use the lightweight object
             // first; batch review intentionally uses the authoritative full
             // receipt so historical square thumbnails cannot hide content.
@@ -343,9 +353,10 @@ enum BooksLedgerStatus {
         }
     }
 
-    // Expense lifecycle pill — missing receipt overrides envelope phase.
+    // Expense lifecycle pill — missing receipt overrides envelope phase. A
+    // recurring reimbursement needs no receipt, so it always shows its state.
     static func expense(_ exp: ExpenseDTO, batchStatus: ExpenseBatchStatus? = nil) -> BooksPill {
-        if exp.receiptImageUrl?.isEmpty ?? true {
+        if !exp.isRecurringReimbursement, exp.receiptImageUrl?.isEmpty ?? true {
             return BooksPill(text: "NO RECEIPT", color: OPSStyle.Colors.rose)
         }
         switch ExpenseStatus(rawValue: exp.status) {

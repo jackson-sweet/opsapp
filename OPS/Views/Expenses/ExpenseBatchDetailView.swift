@@ -5,6 +5,12 @@
 //  Batch review detail — receipt-forward expense cards, flag toggles,
 //  review progress bar, dynamic sticky footer.
 //
+//  Recurring reimbursements (a fixed monthly amount the office pays with this
+//  person's expenses) are handled here too: their line shows the repeat mark
+//  instead of a receipt and opens to the arrangement with EDIT and SKIP (UNDO
+//  rides the toast), and a quiet action under the lines adds one for this
+//  person, starting at this batch's month.
+//
 
 import SwiftUI
 import SwiftData
@@ -42,6 +48,25 @@ struct ExpenseBatchDetailView: View {
     @State private var showRejectConfirmation = false
     @State private var hasLeftDetail = false
     @State private var correctingExpense: ExpenseDTO? = nil
+    @StateObject private var recurring: RecurringReimbursementViewModel
+    @State private var recurringSheet: RecurringSheetMode? = nil
+
+    /// `recurring` and `initialExpandedExpenseId` are injectable so the
+    /// recurring states can be rendered from a seeded model instead of the
+    /// network, and opened without a tap
+    /// (`RecurringReimbursementSnapshotTests`). Production takes the defaults.
+    @MainActor
+    init(
+        batch: ExpenseBatchDTO,
+        viewModel: ExpenseViewModel,
+        recurring: RecurringReimbursementViewModel? = nil,
+        initialExpandedExpenseId: String? = nil
+    ) {
+        self.batch = batch
+        self.viewModel = viewModel
+        _recurring = StateObject(wrappedValue: recurring ?? RecurringReimbursementViewModel())
+        _expandedExpenseId = State(initialValue: initialExpandedExpenseId)
+    }
 
     // MARK: - Computed
 
@@ -150,6 +175,20 @@ struct ExpenseBatchDetailView: View {
             await viewModel.loadBatchExpenses(batch.id)
             isLoading = false
         }
+        .task {
+            guard canApprove,
+                  let companyId = dataController.currentUser?.companyId, !companyId.isEmpty else { return }
+            recurring.setup(companyId: companyId)
+            await recurring.load()
+        }
+        // A setup changed on another device: keep the arrangement current.
+        .onReceive(
+            NotificationCenter.default.publisher(for: .expenseUpdated)
+                .receive(on: DispatchQueue.main)
+        ) { _ in
+            guard canApprove, !hasLeftDetail else { return }
+            recurring.scheduleRefresh()
+        }
         .fullScreenCover(isPresented: $showReceiptViewer) {
             if let url = receiptImageUrl {
                 FullScreenReceiptViewer(imageUrl: url)
@@ -170,6 +209,17 @@ struct ExpenseBatchDetailView: View {
         }) { expense in
             ExpenseFormSheet(viewModel: viewModel, editing: expense, correctionBatch: currentBatch, correctionMode: true)
                 .environmentObject(dataController)
+        }
+        .sheet(item: $recurringSheet) { mode in
+            RecurringReimbursementSheet(
+                viewModel: recurring,
+                mode: mode,
+                batches: viewModel.reviewBatches,
+                people: [],
+                nameFor: personName,
+                onChanged: reloadLinesAfterRecurringChange
+            )
+            .environmentObject(dataController)
         }
         .errorToast($viewModel.error, label: Feedback.Err.batchUpdateFailed)
     }
@@ -420,8 +470,46 @@ struct ExpenseBatchDetailView: View {
             ForEach(viewModel.selectedBatchExpenses) { expense in
                 expenseReviewCard(expense)
             }
+
+            addRecurringAction
         }
         .padding(.horizontal, OPSStyle.Layout.spacing3)
+    }
+
+    /// Rare, person-level setup — a quiet action under the lines, never prime
+    /// space. Starts at this batch's month; hidden once the batch is paid out,
+    /// and on an approver's own batch unless they are an admin (the database
+    /// refuses anyone else a reimbursement for themselves).
+    @ViewBuilder
+    private var addRecurringAction: some View {
+        if canApprove, currentBatch.paidAt == nil, let userId = batch.submittedBy, !userId.isEmpty,
+           permissionStore.isAdmin || userId.lowercased() != dataController.currentUser?.id.lowercased() {
+            HStack {
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    recurringSheet = .create(
+                        person: RecurringPerson(id: userId, name: personName(userId)),
+                        firstPeriod: batch.periodStart
+                    )
+                } label: {
+                    HStack(spacing: OPSStyle.Layout.spacing1) {
+                        Image(systemName: OPSStyle.Icons.plus)
+                            .font(.system(size: OPSStyle.Layout.IconSize.xs, weight: .medium))
+                        Text("RECURRING REIMBURSEMENT")
+                            .font(OPSStyle.Typography.metadata)
+                            .kerning(1.2)
+                    }
+                    .foregroundColor(OPSStyle.Colors.text3)
+                    .frame(minHeight: OPSStyle.Layout.touchTargetMin)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(PlainButtonStyle())
+                .accessibilityLabel("Add a recurring reimbursement")
+                .accessibilityHint("A fixed amount paid with this person's expenses every month")
+                Spacer()
+            }
+            .padding(.top, OPSStyle.Layout.spacing1)
+        }
     }
 
     private func expenseReviewCard(_ expense: ExpenseDTO) -> some View {
@@ -443,16 +531,30 @@ struct ExpenseBatchDetailView: View {
                         .lineLimit(1)
 
                     HStack(spacing: OPSStyle.Layout.spacing1) {
-                        Text(expense.category?.name ?? "Uncategorized")
-                            .font(OPSStyle.Typography.smallCaption)
-                            .foregroundColor(OPSStyle.Colors.secondaryText)
-                        if let dateStr = expense.expenseDate {
-                            Text("\u{00B7}")
-                                .font(OPSStyle.Typography.smallCaption)
-                                .foregroundColor(OPSStyle.Colors.tertiaryText)
-                            Text(formatExpenseDate(dateStr))
+                        if expense.isRecurringReimbursement {
+                            Text("Recurring")
                                 .font(OPSStyle.Typography.smallCaption)
                                 .foregroundColor(OPSStyle.Colors.secondaryText)
+                            if let period = expense.recurringPeriod {
+                                Text("\u{00B7}")
+                                    .font(OPSStyle.Typography.smallCaption)
+                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                Text(ExpenseRecurring.formatMonth(period))
+                                    .font(OPSStyle.Typography.smallCaption)
+                                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                            }
+                        } else {
+                            Text(expense.category?.name ?? "Uncategorized")
+                                .font(OPSStyle.Typography.smallCaption)
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                            if let dateStr = expense.expenseDate {
+                                Text("\u{00B7}")
+                                    .font(OPSStyle.Typography.smallCaption)
+                                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+                                Text(formatExpenseDate(dateStr))
+                                    .font(OPSStyle.Typography.smallCaption)
+                                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                            }
                         }
                     }
 
@@ -491,7 +593,8 @@ struct ExpenseBatchDetailView: View {
                         .font(OPSStyle.Typography.bodyBold)
                         .foregroundColor(OPSStyle.Colors.primaryText)
 
-                    if isReviewable {
+                    // A recurring line is office-owned: nothing to flag.
+                    if isReviewable && !expense.isRecurringReimbursement {
                         Button {
                             if isFlagged {
                                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -531,7 +634,9 @@ struct ExpenseBatchDetailView: View {
 
     private func receiptThumbnail(_ expense: ExpenseDTO) -> some View {
         Group {
-            if let receiptUrl = ExpenseReceiptDisplaySource.reviewURL(
+            if expense.isRecurringReimbursement {
+                RecurringReimbursementMark(width: 60, height: 80, iconSize: OPSStyle.Layout.IconSize.md)
+            } else if let receiptUrl = ExpenseReceiptDisplaySource.reviewURL(
                 full: expense.receiptImageUrl,
                 thumbnail: expense.receiptThumbnailUrl
             ), let url = URL(string: receiptUrl) {
@@ -583,7 +688,110 @@ struct ExpenseBatchDetailView: View {
 
     // MARK: - Expanded Section
 
+    @ViewBuilder
     private func expandedSection(_ expense: ExpenseDTO, isFlagged: Bool) -> some View {
+        if expense.isRecurringReimbursement {
+            recurringExpandedSection(expense)
+        } else {
+            receiptExpandedSection(expense, isFlagged: isFlagged)
+        }
+    }
+
+    /// The arrangement behind a recurring line, and the two verbs for its month.
+    private func recurringExpandedSection(_ expense: ExpenseDTO) -> some View {
+        let setup = recurring.setup(for: expense)
+        let canSkip = canApprove
+            && ExpenseStatus(rawValue: expense.status) == .approved
+            && currentBatch.paidAt == nil
+            && expense.recurringPeriod != nil
+        let skipping = recurring.inFlight == .skip(expense.id)
+
+        return VStack(spacing: 0) {
+            Divider().background(OPSStyle.Colors.cardBorder)
+
+            VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing2) {
+                Text("RECURRING")
+                    .font(OPSStyle.Typography.smallCaption)
+                    .foregroundColor(OPSStyle.Colors.tertiaryText)
+
+                Text(setup.map(recurringArrangement) ?? "—")
+                    .font(OPSStyle.Typography.caption)
+                    .monospacedDigit()
+                    .foregroundColor(OPSStyle.Colors.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if let period = expense.recurringPeriod {
+                    Text("Pays for \(ExpenseRecurring.formatMonth(period))")
+                        .font(OPSStyle.Typography.caption)
+                        .monospacedDigit()
+                        .foregroundColor(OPSStyle.Colors.tertiaryText)
+                }
+
+                if canApprove {
+                    HStack(spacing: OPSStyle.Layout.spacing2) {
+                        if let setup {
+                            Button("EDIT") {
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                recurringSheet = .edit(setupId: setup.id)
+                            }
+                            .opsSecondaryCompactButtonStyle()
+                            .disabled(recurring.inFlight != nil)
+                            .accessibilityHint("Change the amount, end it, or delete it")
+                        }
+                        if canSkip, let period = expense.recurringPeriod {
+                            Button {
+                                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                Task { await recurring.skip(expense, onChanged: reloadLinesAfterRecurringChange) }
+                            } label: {
+                                if skipping {
+                                    ProgressView()
+                                        .controlSize(.small)
+                                        .tint(OPSStyle.Colors.text2)
+                                } else {
+                                    Text("SKIP \(ExpenseRecurring.formatMonth(period))")
+                                }
+                            }
+                            .opsSecondaryCompactButtonStyle()
+                            .disabled(recurring.inFlight != nil)
+                            .accessibilityHint("Leave this month out. Undo from the confirmation.")
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.top, OPSStyle.Layout.spacing1)
+                }
+            }
+            .padding(.horizontal, OPSStyle.Layout.spacing3)
+            .padding(.vertical, OPSStyle.Layout.spacing2)
+        }
+        .background(OPSStyle.Colors.background.opacity(0.3))
+    }
+
+    /// `CA$350.00 every month · since AUG 2026` / `… · AUG 2026 to DEC 2026`.
+    private func recurringArrangement(_ setup: ExpenseRecurringReimbursementDTO) -> String {
+        let amount = BooksFormat.exact(setup.amount, code: setup.currency)
+        let since = ExpenseRecurring.formatMonth(setup.firstPeriod)
+        guard let last = setup.lastPeriod else { return "\(amount) every month · since \(since)" }
+        return "\(amount) every month · \(since) to \(ExpenseRecurring.formatMonth(last))"
+    }
+
+    /// A recurring command moved money in this batch — re-read its lines if it
+    /// is still the batch on screen (a toast's UNDO can land later). Totals and
+    /// the console refresh on the expense signal the command broadcasts.
+    private func reloadLinesAfterRecurringChange() {
+        let batchId = batch.id
+        Task { await viewModel.reloadBatchLinesIfSelected(batchId) }
+    }
+
+    /// Proper-case display name for a crew member (the sheet's "Paid to …").
+    private func personName(_ userId: String) -> String {
+        if let member = teamMembers.first(where: { $0.id.lowercased() == userId.lowercased() }) {
+            let name = member.fullName.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !name.isEmpty { return name }
+        }
+        return "—"
+    }
+
+    private func receiptExpandedSection(_ expense: ExpenseDTO, isFlagged: Bool) -> some View {
         VStack(spacing: 0) {
             Divider().background(OPSStyle.Colors.cardBorder)
 

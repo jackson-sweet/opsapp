@@ -376,8 +376,11 @@ final class RealtimeProcessor: ObservableObject {
         // Expenses, expense envelopes (batches), and calendar events filtered by company_id.
         // expense_batches drives live envelope-status flips (filling → with the office,
         // auto-approved) and total recalcs in the review hub + crew list.
+        // expense_recurring_reimbursements keeps the recurring reimbursement lists
+        // (batch review, expense settings) current when a setup changes elsewhere.
         subscribeToTable(channel: channel, table: "expenses", filter: "company_id=eq.\(companyId)")
         subscribeToTable(channel: channel, table: "expense_batches", filter: "company_id=eq.\(companyId)")
+        subscribeToTable(channel: channel, table: "expense_recurring_reimbursements", filter: "company_id=eq.\(companyId)")
         subscribeToTable(channel: channel, table: "calendar_user_events", filter: "company_id=eq.\(companyId)")
 
         // Notifications filtered by user_id (user-specific)
@@ -666,6 +669,7 @@ final class RealtimeProcessor: ObservableObject {
         bindings.append(RealtimeBinding(table: "companies", filter: "id=eq.\(companyId)"))
         bindings.append(RealtimeBinding(table: "expenses", filter: "company_id=eq.\(companyId)"))
         bindings.append(RealtimeBinding(table: "expense_batches", filter: "company_id=eq.\(companyId)"))
+        bindings.append(RealtimeBinding(table: "expense_recurring_reimbursements", filter: "company_id=eq.\(companyId)"))
         bindings.append(RealtimeBinding(table: "calendar_user_events", filter: "company_id=eq.\(companyId)"))
         if let userId {
             bindings.append(RealtimeBinding(table: "notifications", filter: "user_id=eq.\(userId)"))
@@ -1166,7 +1170,7 @@ final class RealtimeProcessor: ObservableObject {
             case "opportunities", "activities", "follow_ups":
                 NotificationCenter.default.post(name: .opsLeadsDidChange, object: nil)
 
-            case "expenses", "expense_batches":
+            case "expenses", "expense_batches", "expense_recurring_reimbursements":
                 NotificationCenter.default.post(name: .expenseUpdated, object: nil)
                 NotificationCenter.default.post(name: .opsExpensesDidChange, object: nil)
 
@@ -1345,7 +1349,7 @@ final class RealtimeProcessor: ObservableObject {
             case "opportunities", "activities", "follow_ups":
                 NotificationCenter.default.post(name: .opsLeadsDidChange, object: nil)
 
-            case "expenses", "expense_batches":
+            case "expenses", "expense_batches", "expense_recurring_reimbursements":
                 NotificationCenter.default.post(name: .expenseUpdated, object: nil)
                 NotificationCenter.default.post(name: .opsExpensesDidChange, object: nil)
 
@@ -1560,7 +1564,7 @@ final class RealtimeProcessor: ObservableObject {
             case "opportunities", "activities", "follow_ups":
                 NotificationCenter.default.post(name: .opsLeadsDidChange, object: nil)
 
-            case "expenses", "expense_batches":
+            case "expenses", "expense_batches", "expense_recurring_reimbursements":
                 NotificationCenter.default.post(name: .expenseUpdated, object: nil)
                 NotificationCenter.default.post(name: .opsExpensesDidChange, object: nil)
             case "calendar_user_events":
@@ -1630,7 +1634,7 @@ final class RealtimeProcessor: ObservableObject {
             case "opportunities", "activities", "follow_ups":
                 NotificationCenter.default.post(name: .opsLeadsDidChange, object: nil)
 
-            case "expenses", "expense_batches":
+            case "expenses", "expense_batches", "expense_recurring_reimbursements":
                 NotificationCenter.default.post(name: .expenseUpdated, object: nil)
                 NotificationCenter.default.post(name: .opsExpensesDidChange, object: nil)
             case "calendar_user_events":

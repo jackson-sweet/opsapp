@@ -3,7 +3,8 @@
 //  OPS
 //
 //  Company-level expense settings — review frequency, thresholds,
-//  policy toggles, auto-approve rules, and category management.
+//  policy toggles, recurring reimbursements, auto-approve rules, and category
+//  management.
 //
 
 import SwiftUI
@@ -58,6 +59,9 @@ struct ExpenseSettingsView: View {
                             sectionHeader("SUBMISSION POLICY")
                             policyCard
                         }
+
+                        // RECURRING REIMBURSEMENTS (approvers only)
+                        RecurringReimbursementsSection(batches: viewModel.reviewBatches)
 
                         // AUTO-APPROVE RULES
                         autoApproveRulesSection

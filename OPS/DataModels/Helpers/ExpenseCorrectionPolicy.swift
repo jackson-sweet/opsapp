@@ -11,6 +11,8 @@ enum ExpenseCorrectionPolicy {
               let actorId, UUID(uuidString: actorId) != nil,
               let companyId, expense.companyId.lowercased() == companyId.lowercased(),
               expense.submittedBy.lowercased() != actorId.lowercased(),
+              // Recurring reimbursement lines change only from their setup.
+              !expense.isRecurringReimbursement,
               ["submitted", "rejected"].contains(expense.status), expense.deletedAt == nil,
               expense.approvedBy == nil, expense.approvedAt == nil,
               expense.accountingSyncId == nil, expense.accountingSyncedAt == nil,

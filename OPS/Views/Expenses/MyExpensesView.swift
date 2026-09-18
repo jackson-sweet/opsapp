@@ -21,9 +21,13 @@ struct MyExpensesView: View {
     @State private var needsExpensesReload = false
     @StateObject private var viewModel = ExpenseViewModel()
     @EnvironmentObject private var dataController: DataController
+    @EnvironmentObject private var permissionStore: PermissionStore
     @Query private var allProjects: [Project]
     @State private var showNewExpenseSheet = false
     @State private var editingExpense: ExpenseDTO? = nil
+    /// A recurring reimbursement line opens its own read-only sheet — the
+    /// office owns it, so it is never edited as an expense.
+    @State private var recurringLine: ExpenseDTO? = nil
     @State private var searchText = ""
     @State private var expandedMonths: Set<String> = []
     @State private var expandedProjects: Set<String> = []
@@ -102,6 +106,17 @@ struct MyExpensesView: View {
         .navigationBarBackButtonHidden(true)
         .sheet(item: $editingExpense) { expense in
             ExpenseFormSheet(viewModel: viewModel, editing: expense)
+        }
+        .sheet(item: $recurringLine) { line in
+            RecurringLineSheet(
+                line: line,
+                batchIsPaid: viewModel.myBatches.first(where: { $0.id == line.batchId })?.paidAt != nil,
+                canManage: permissionStore.can("expenses.approve"),
+                batches: viewModel.myBatches,
+                nameFor: { dataController.getUser(id: $0)?.fullName ?? "—" },
+                onChanged: { Task { await viewModel.loadAll() } }
+            )
+            .environmentObject(dataController)
         }
         .sheet(isPresented: $showNewExpenseSheet) {
             ExpenseFormSheet(viewModel: viewModel)
@@ -326,7 +341,13 @@ struct MyExpensesView: View {
             categoryName: expense.category?.name,
             categoryIcon: expense.category?.icon,
             batchStatus: viewModel.batchStatus(for: expense),
-            onTap: { editingExpense = expense },
+            onTap: {
+                if expense.isRecurringReimbursement {
+                    recurringLine = expense
+                } else {
+                    editingExpense = expense
+                }
+            },
             onSwipeLeft: {
                 let status = ExpenseStatus(rawValue: expense.status)
                 // Delete only draft / rejected lines — submitted/approved/paid are locked here.

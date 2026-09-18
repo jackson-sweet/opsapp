@@ -1114,6 +1114,13 @@ class ExpenseViewModel: ObservableObject {
         }
     }
 
+    /// Re-reads `batchId`'s lines only while it is the batch on screen, so a
+    /// late refresh (a toast's UNDO) never replaces another batch's lines.
+    func reloadBatchLinesIfSelected(_ batchId: String) async {
+        guard selectedBatchId == batchId else { return }
+        await loadBatchExpenses(batchId)
+    }
+
     private func applySelectedBatchExpenses(_ lines: [ExpenseDTO]) {
         selectedBatchExpenses = ExpenseBuckets.attentionOrdered(lines)
         flaggedExpenseIds = Set(selectedBatchExpenses.compactMap { $0.flaggedBy != nil ? $0.id : nil })

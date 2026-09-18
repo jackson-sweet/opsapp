@@ -60,9 +60,11 @@ struct ExpenseCard: View {
     }
 
     /// Approved / reimbursed lines are locked — no delete. Also gated by the
-    /// caller's `canDelete` (submitter or admin).
+    /// caller's `canDelete` (submitter or admin). A recurring reimbursement is
+    /// office-owned and never deleted from a list.
     private var canSwipeLeft: Bool {
-        canDelete && expenseStatus != .approved && expenseStatus != .reimbursed
+        canDelete && !expense.isRecurringReimbursement
+            && expenseStatus != .approved && expenseStatus != .reimbursed
     }
 
     private var formattedDate: String {
@@ -131,16 +133,28 @@ struct ExpenseCard: View {
 
                 // Row 2: category icon + name, with the adder on the trailing edge
                 // where a name is supplied (shared surfaces like a project list).
+                // A recurring reimbursement names the month it pays for instead.
                 HStack(spacing: OPSStyle.Layout.spacing1) {
-                    if let icon = categoryIcon, !icon.isEmpty {
-                        Image(systemName: icon)
+                    if expense.isRecurringReimbursement {
+                        Image(systemName: OPSStyle.Icons.recurring)
                             .font(.system(size: OPSStyle.Layout.IconSize.xs))
                             .foregroundColor(OPSStyle.Colors.secondaryText)
+                            .accessibilityHidden(true)
+                        Text(recurringLabel)
+                            .font(OPSStyle.Typography.smallBody)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                            .lineLimit(1)
+                    } else {
+                        if let icon = categoryIcon, !icon.isEmpty {
+                            Image(systemName: icon)
+                                .font(.system(size: OPSStyle.Layout.IconSize.xs))
+                                .foregroundColor(OPSStyle.Colors.secondaryText)
+                        }
+                        Text(categoryName ?? "UNCATEGORIZED")
+                            .font(OPSStyle.Typography.smallBody)
+                            .foregroundColor(OPSStyle.Colors.secondaryText)
+                            .lineLimit(1)
                     }
-                    Text(categoryName ?? "UNCATEGORIZED")
-                        .font(OPSStyle.Typography.smallBody)
-                        .foregroundColor(OPSStyle.Colors.secondaryText)
-                        .lineLimit(1)
 
                     if let submittedByName, !submittedByName.isEmpty {
                         Spacer(minLength: OPSStyle.Layout.spacing2)
@@ -167,6 +181,12 @@ struct ExpenseCard: View {
             .glassSurface()
         }
         .buttonStyle(PlainButtonStyle())
+    }
+
+    /// `Recurring · AUG 2026` — the month this line pays for.
+    private var recurringLabel: String {
+        guard let period = expense.recurringPeriod else { return "Recurring" }
+        return "Recurring · \(ExpenseRecurring.formatMonth(period))"
     }
 
     private var phaseLine: some View {

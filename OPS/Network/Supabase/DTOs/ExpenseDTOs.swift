@@ -47,6 +47,13 @@ struct ExpenseDTO: Codable, Identifiable {
     let deletedAt: String?
     let allocations: [ExpenseAllocationDTO]?
     let category: ExpenseCategoryDTO?
+    /// Set on the monthly line a recurring reimbursement files. The office owns
+    /// it: only the setup's commands change it. A `var` with a nil default so
+    /// fixtures built before it still compile and it still decodes (a `let`
+    /// with a default is skipped by the synthesized Decodable).
+    var recurringReimbursementId: String? = nil
+    /// First day (`yyyy-MM-01`) of the month a recurring line pays for.
+    var recurringPeriod: String? = nil
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -86,6 +93,8 @@ struct ExpenseDTO: Codable, Identifiable {
         case deletedAt            = "deleted_at"
         case allocations          = "expense_project_allocations"
         case category             = "expense_categories"
+        case recurringReimbursementId = "recurring_reimbursement_id"
+        case recurringPeriod      = "recurring_period"
     }
 }
 

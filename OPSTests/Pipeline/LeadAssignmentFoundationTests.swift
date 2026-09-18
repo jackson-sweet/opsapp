@@ -727,7 +727,8 @@ final class LeadAssignmentFoundationTests: XCTestCase {
             PermissionRegistry.editable.contains { $0.id == "inbox.view_company" },
             "Legacy inbox.view_company must not appear in canonical mutations"
         )
-        XCTAssertEqual(PermissionRegistry.editable.count, 100)
+        // 100 + `site_visits.capture` (CREW SITE VISITS P1).
+        XCTAssertEqual(PermissionRegistry.editable.count, 101)
     }
 
     func testPipelinePermissionNormalizationOnlyNarrowsDependentActions() {

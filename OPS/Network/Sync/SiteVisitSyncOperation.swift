@@ -27,6 +27,40 @@ enum SiteVisitSyncOperation {
         /// can hold the artifact until that deck's own create has landed —
         /// `site_visit_artifacts.deck_design_id` is a foreign key (bug 6271078d).
         let deckDesignId: String?
+        /// Set on a stopped send (parked or declined) when its record is edited
+        /// on the phone afterwards; see `RestartMark`. Never sent to a server.
+        let restartMark: RestartMark?
+
+        /// Typing is local-only, so an edit made after a send stopped cannot
+        /// restart it at the keystroke. The edit is recorded on the stopped
+        /// send instead, as the stop it was made against: the send's status,
+        /// last attempt and retry count. Saving the visit restarts the send only
+        /// while that stop still stands — any later attempt, RETRY or decline
+        /// changes one of them, so an edit the operator has since overruled, or
+        /// a send has since carried, restarts nothing.
+        struct RestartMark: Codable, Equatable {
+            let status: String
+            let lastAttemptedAt: Date?
+            let retryCount: Int
+
+            enum CodingKeys: String, CodingKey {
+                case status
+                case lastAttemptedAt = "last_attempted_at"
+                case retryCount = "retry_count"
+            }
+
+            init(stoppedSend send: SyncOperation) {
+                status = send.status
+                lastAttemptedAt = send.lastAttemptedAt
+                retryCount = send.retryCount
+            }
+
+            func stillStands(for send: SyncOperation) -> Bool {
+                status == send.status
+                    && lastAttemptedAt == send.lastAttemptedAt
+                    && retryCount == send.retryCount
+            }
+        }
 
         enum CodingKeys: String, CodingKey {
             case companyId = "company_id"
@@ -37,6 +71,7 @@ enum SiteVisitSyncOperation {
             case stageCommand = "stage_command"
             case writeCommand = "write_command"
             case deckDesignId = "deck_design_id"
+            case restartMark = "restart_mark"
         }
 
         init(
@@ -47,7 +82,8 @@ enum SiteVisitSyncOperation {
             stageCommand: SiteVisitStageCommand? = nil,
             writeCommand: SiteVisitWriteCommand? = nil,
             discard: SiteVisitDiscardIntent? = nil,
-            deckDesignId: String? = nil
+            deckDesignId: String? = nil,
+            restartMark: RestartMark? = nil
         ) {
             self.companyId = companyId.lowercased()
             self.siteVisitId = siteVisitId.lowercased()
@@ -57,6 +93,22 @@ enum SiteVisitSyncOperation {
             self.writeCommand = writeCommand
             self.discard = discard
             self.deckDesignId = deckDesignId?.lowercased()
+            self.restartMark = restartMark
+        }
+
+        /// This envelope with `mark` recorded (or cleared, for nil).
+        func withRestartMark(_ mark: RestartMark?) -> Payload {
+            Payload(
+                companyId: companyId,
+                siteVisitId: siteVisitId,
+                entityId: entityId,
+                completion: completion,
+                stageCommand: stageCommand,
+                writeCommand: writeCommand,
+                discard: discard,
+                deckDesignId: deckDesignId,
+                restartMark: mark
+            )
         }
     }
 

@@ -48,6 +48,13 @@ final class SiteVisitPersistenceCoordinator {
         "pending", "inProgress", "failed", "parked", "declined",
     ]
 
+    /// Sends that wait on the operator: a permanent rejection held for review
+    /// ("only user Retry / Discard moves it out") or a send the operator
+    /// stopped in PENDING WORK. Saving the visit never restarts one on its own
+    /// — only an edit made on the phone after the stop does
+    /// (`markStoppedSendsEdited`, `saveShouldQueue`).
+    private static let stoppedStatuses: Set<String> = ["parked", "declined"]
+
     /// Bounded work-count evidence; does not contain operator data.
     private(set) var lastChangedEntityCount = 0
     private(set) var lastLoadedOperationCount = 0
@@ -185,7 +192,10 @@ final class SiteVisitPersistenceCoordinator {
                 } else {
                     // Local-only save: the rows keep `needsSync`, and
                     // `queueDirtyWork` turns them into operations when the
-                    // operator saves the visit.
+                    // operator saves the visit. An edit to a record whose
+                    // send has stopped is recorded on that send, so the save
+                    // restarts it.
+                    try markStoppedSendsEdited(changed)
                     result = QueueResult(operationIds: [], chainTips: [:])
                 }
                 queuedIds = result.operationIds
@@ -406,6 +416,10 @@ final class SiteVisitPersistenceCoordinator {
                hasUnresolvedOperation(specification, operations: operations) {
                 continue
             }
+            if !onlyOrphans,
+               !saveShouldQueue(specification, operations: operations) {
+                continue
+            }
             let operation = try enqueue(
                 specification,
                 dependsOnId: nil,
@@ -421,6 +435,10 @@ final class SiteVisitPersistenceCoordinator {
             let specification = SiteVisitSyncOperation.artifact(artifact)
             if onlyOrphans,
                hasUnresolvedOperation(specification, operations: operations) {
+                continue
+            }
+            if !onlyOrphans,
+               !saveShouldQueue(specification, operations: operations) {
                 continue
             }
             let operation = try enqueue(
@@ -448,6 +466,10 @@ final class SiteVisitPersistenceCoordinator {
                hasUnresolvedOperation(specification, operations: operations) {
                 continue
             }
+            if !onlyOrphans,
+               !saveShouldQueue(specification, operations: operations) {
+                continue
+            }
             let operation = try enqueue(
                 specification,
                 dependsOnId: dependencyRoot(
@@ -470,6 +492,10 @@ final class SiteVisitPersistenceCoordinator {
                hasUnresolvedOperation(specification, operations: operations) {
                 continue
             }
+            if !onlyOrphans,
+               !saveShouldQueue(specification, operations: operations) {
+                continue
+            }
             let operation = try enqueue(
                 specification,
                 dependsOnId: dependencyRoot(
@@ -489,6 +515,10 @@ final class SiteVisitPersistenceCoordinator {
             let specification = SiteVisitSyncOperation.identityDraft(draft)
             if onlyOrphans,
                hasUnresolvedOperation(specification, operations: operations) {
+                continue
+            }
+            if !onlyOrphans,
+               !saveShouldQueue(specification, operations: operations) {
                 continue
             }
             let operation = try enqueue(
@@ -703,10 +733,14 @@ final class SiteVisitPersistenceCoordinator {
         if let chainTip = chainTips[siteVisitId] { return chainTip }
         return operations
             .filter { operation in
+                // A declined send never completes (the operator stopped it),
+                // and a dependency is satisfied only by `completed` — so
+                // nothing new may be sequenced behind one, or it waits forever.
                 guard operation.operationType
                         != SiteVisitSyncOperation.completionOperationType,
                       operation.operationType != SiteVisitSyncOperation.stageOperationType,
                       Self.unresolvedStatuses.contains(operation.status),
+                      operation.status != "declined",
                       SiteVisitOutboundSync.isSiteVisitOperation(operation),
                       let payload = try? JSONDecoder().decode(
                           SiteVisitSyncOperation.Payload.self,
@@ -728,19 +762,7 @@ final class SiteVisitPersistenceCoordinator {
         operations: inout [SyncOperation]
     ) throws -> SyncOperation {
         let canonicalEntityId = specification.entityId.lowercased()
-        let isMedia = specification.operationType
-            == SiteVisitSyncOperation.mediaOperationType
-        let candidates = operations
-            .filter {
-                $0.entityType == specification.entityType.rawValue
-                    && $0.entityId.lowercased() == canonicalEntityId
-                    && $0.operationType != SiteVisitSyncOperation.completionOperationType
-                    && $0.operationType != SiteVisitSyncOperation.stageOperationType
-                    && (($0.operationType
-                            == SiteVisitSyncOperation.mediaOperationType) == isMedia)
-                    && Self.unresolvedStatuses.contains($0.status)
-            }
-            .sorted(by: operationOrder)
+        let candidates = unresolvedCandidates(specification, in: operations)
 
         let payload = try encodeOperation(specification.payload)
         if let existing = candidates.last(where: { SiteVisitVersionedSync.command($0)?.protocol == specification.payload.writeCommand?.protocol && $0.siteVisitWriteActorId == SiteVisitAuthorHeal.sessionUserId()?.lowercased() && $0.status != "inProgress" &&
@@ -807,6 +829,122 @@ final class SiteVisitPersistenceCoordinator {
 
     private func belongsToCompany(_ candidate: String) -> Bool {
         candidate.lowercased() == companyId
+    }
+
+    /// The unresolved sends `enqueue` matches for `specification`, oldest
+    /// first: same record, same kind (a photo upload or not), never a
+    /// completion or stage command.
+    private func unresolvedCandidates(
+        _ specification: SiteVisitSyncOperation.Specification,
+        in operations: [SyncOperation]
+    ) -> [SyncOperation] {
+        let canonicalEntityId = specification.entityId.lowercased()
+        let isMedia = specification.operationType
+            == SiteVisitSyncOperation.mediaOperationType
+        return operations
+            .filter {
+                $0.entityType == specification.entityType.rawValue
+                    && $0.entityId.lowercased() == canonicalEntityId
+                    && $0.operationType != SiteVisitSyncOperation.completionOperationType
+                    && $0.operationType != SiteVisitSyncOperation.stageOperationType
+                    && (($0.operationType
+                            == SiteVisitSyncOperation.mediaOperationType) == isMedia)
+                    && Self.unresolvedStatuses.contains($0.status)
+            }
+            .sorted(by: operationOrder)
+    }
+
+    /// Whether saving the visit (`queueDirtyWork`) should (re)queue this dirty
+    /// record's send. The save re-sends what changed on the phone and nothing
+    /// else — the outcome per-edit queueing had before typing went local-only
+    /// (2026-09-15). Until this rule every save re-derived a send for every
+    /// dirty row, so DONE revived held rejections and declined sends and
+    /// queued duplicates behind work already in flight.
+    ///
+    /// - A photo upload belongs to capture and markup: the save only derives
+    ///   one for a photo with no unresolved upload at all.
+    /// - An answer's queued command carries its values. When this operator's
+    ///   newest attempted, stopped or failed command already asks for exactly
+    ///   these, there is nothing new to send; an unattempted one is still
+    ///   refreshed in place.
+    /// - A parked or declined send restarts only for a record edited on the
+    ///   phone after the stop, while that stop still stands (`RestartMark`).
+    private func saveShouldQueue(
+        _ specification: SiteVisitSyncOperation.Specification,
+        operations: [SyncOperation]
+    ) -> Bool {
+        guard let newest = unresolvedCandidates(specification, in: operations).last else {
+            return true
+        }
+        if specification.operationType == SiteVisitSyncOperation.mediaOperationType {
+            return false
+        }
+        if let command = specification.payload.writeCommand {
+            if newest.status == "pending",
+               newest.siteVisitWriteAttemptedAt == nil,
+               newest.lastAttemptedAt == nil {
+                return true
+            }
+            guard newest.siteVisitWriteActorId == SiteVisitAuthorHeal.sessionUserId()?.lowercased(),
+                  let queued = SiteVisitVersionedSync.command(newest) else {
+                return true
+            }
+            return !Self.carriesSameValues(queued, command)
+        }
+        guard Self.stoppedStatuses.contains(newest.status) else { return true }
+        guard let mark = Self.envelope(of: newest)?.restartMark else { return false }
+        return mark.stillStands(for: newest)
+    }
+
+    /// Whether a queued answer command already asks for what `current` asks:
+    /// the same protocol and, row by row, the same values and explicit clear.
+    /// Base revisions and `before` rows are bookkeeping the sender rebases,
+    /// not intent.
+    private static func carriesSameValues(
+        _ queued: SiteVisitWriteCommand,
+        _ current: SiteVisitWriteCommand
+    ) -> Bool {
+        queued.protocol == current.protocol
+            && queued.entity == current.entity
+            && queued.rows.count == current.rows.count
+            && zip(queued.rows, current.rows).allSatisfy {
+                $0.id == $1.id && $0.values == $1.values && $0.clearAnswer == $1.clearAnswer
+            }
+    }
+
+    private static func envelope(of operation: SyncOperation) -> SiteVisitSyncOperation.Payload? {
+        try? JSONDecoder().decode(SiteVisitSyncOperation.Payload.self, from: operation.payload)
+    }
+
+    /// A local-only commit that edits a visit, artifact or identity draft
+    /// whose newest send has stopped (parked or declined) records the edit on
+    /// that send, in the same transaction as the row, so the next save
+    /// restarts it (`saveShouldQueue`). Answers need no mark — their queued
+    /// command carries its values, so the save compares content — and a save
+    /// never restarts a photo upload.
+    private func markStoppedSendsEdited(_ changed: [any PersistentModel]) throws {
+        let specifications: [SiteVisitSyncOperation.Specification] = changed.compactMap { model in
+            switch model {
+            case let visit as SiteVisit where belongsToCompany(visit.companyId):
+                return SiteVisitSyncOperation.parent(visit)
+            case let artifact as SiteVisitCaptureArtifact where belongsToCompany(artifact.companyId):
+                return SiteVisitSyncOperation.artifact(artifact)
+            case let draft as SiteVisitIdentityDraft where belongsToCompany(draft.companyId):
+                return SiteVisitSyncOperation.identityDraft(draft)
+            default:
+                return nil
+            }
+        }
+        guard !specifications.isEmpty else { return }
+        let operations = try fetchOperations(entityIds: Set(specifications.map(\.entityId)))
+        for specification in specifications {
+            guard let stopped = unresolvedCandidates(specification, in: operations).last,
+                  Self.stoppedStatuses.contains(stopped.status),
+                  let envelope = Self.envelope(of: stopped) else { continue }
+            let mark = SiteVisitSyncOperation.Payload.RestartMark(stoppedSend: stopped)
+            guard envelope.restartMark != mark else { continue }
+            stopped.payload = try encodeOperation(envelope.withRestartMark(mark))
+        }
     }
 
     private func hasUnresolvedOperation(

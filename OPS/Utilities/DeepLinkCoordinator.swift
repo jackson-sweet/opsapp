@@ -102,6 +102,87 @@ enum NotificationRailPushRoute {
     }
 }
 
+/// Routing for the booked site-visit prompts (`type = site_visit_reminder`;
+/// the moment is `deep_link_type` `site_visit_start` / `site_visit_heads_up`).
+/// Pure so the push, rail and cold-launch paths share one tested decision.
+///
+/// CREW SITE VISITS P1: the push now carries `siteVisitId` beside `leadId`, so
+/// an assignee without the Leads tab can land on the exact visit. The visit id
+/// is the primary key when present; the lead id rides along.
+enum SiteVisitPushRoute {
+    enum Kind: Equatable {
+        /// START — straight into capture.
+        case start
+        /// Heads-up / reminder — the lead, or Schedule on the visit's day for
+        /// a user without the Leads tab.
+        case headsUp
+    }
+
+    struct CoordinatorLink: Equatable {
+        let entity: String
+        let id: String
+        let extraUserInfo: [String: String]
+    }
+
+    static let startRelayName = Notification.Name("StartSiteVisit")
+    static let reminderRelayName = Notification.Name("OpenSiteVisitReminder")
+    static let leadIdKey = "leadId"
+    static let siteVisitIdKey = "siteVisitId"
+
+    /// `deep_link_type` is authoritative; a bare `site_visit_reminder` type
+    /// (no deep-link type) is treated as the heads-up — the non-committal
+    /// landing.
+    static func kind(deepLinkType: String?, type: String?) -> Kind? {
+        switch normalized(deepLinkType) {
+        case "site_visit_start": return .start
+        case "site_visit_heads_up": return .headsUp
+        default: break
+        }
+        switch normalized(type) {
+        case "site_visit_start": return .start
+        case "site_visit_heads_up", "site_visit_reminder": return .headsUp
+        default: return nil
+        }
+    }
+
+    /// The coordinator entity/id for a prompt tap. Nil when the payload names
+    /// neither a visit nor a lead.
+    static func coordinatorLink(kind: Kind, leadId: String?, siteVisitId: String?) -> CoordinatorLink? {
+        let lead = nonEmpty(leadId)
+        if let visit = nonEmpty(siteVisitId) {
+            return CoordinatorLink(
+                entity: kind == .start ? "site-visit-start-visit" : "site-visit-heads-up-visit",
+                id: visit,
+                extraUserInfo: lead.map { [leadIdKey: $0] } ?? [:]
+            )
+        }
+        guard let lead else { return nil }
+        return CoordinatorLink(
+            entity: kind == .start ? "site-visit-start" : "site-visit-heads-up",
+            id: lead,
+            extraUserInfo: [:]
+        )
+    }
+
+    /// The relay userInfo for a direct (non-coordinator) post.
+    static func userInfo(leadId: String?, siteVisitId: String?) -> [AnyHashable: Any] {
+        var info: [AnyHashable: Any] = [:]
+        if let lead = nonEmpty(leadId) { info[leadIdKey] = lead }
+        if let visit = nonEmpty(siteVisitId) { info[siteVisitIdKey] = visit }
+        return info
+    }
+
+    private static func normalized(_ value: String?) -> String? {
+        value?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    private static func nonEmpty(_ value: String?) -> String? {
+        guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !trimmed.isEmpty else { return nil }
+        return trimmed
+    }
+}
+
 @MainActor
 final class DeepLinkCoordinator: ObservableObject {
 
@@ -150,6 +231,11 @@ final class DeepLinkCoordinator: ObservableObject {
         /// An optional address for an originating creation parent. Its endpoint
         /// is weak; retaining navigation intent never retains an unfinished form.
         let projectCreationPresentationTarget: ProjectCreationPresentationTarget?
+
+        /// Secondary ids posted alongside the primary one (e.g. a site-visit
+        /// prompt's `leadId` beside its `siteVisitId`). Never overrides the
+        /// primary key or the correlation id.
+        let extraUserInfo: [String: String]
     }
 
     // MARK: - Published State
@@ -174,7 +260,8 @@ final class DeepLinkCoordinator: ObservableObject {
         entity: String,
         id: String,
         scheme: String,
-        projectCreationPresentationTarget: ProjectCreationPresentationTarget? = nil
+        projectCreationPresentationTarget: ProjectCreationPresentationTarget? = nil,
+        extraUserInfo: [String: String] = [:]
     ) {
         // Validate
         guard isKnownEntity(entity) else {
@@ -212,7 +299,8 @@ final class DeepLinkCoordinator: ObservableObject {
             receivedAt: Date(),
             scheme: scheme,
             wasRunning: UIApplication.shared.applicationState != .inactive,
-            projectCreationPresentationTarget: entity == "projects" ? projectCreationPresentationTarget : nil
+            projectCreationPresentationTarget: entity == "projects" ? projectCreationPresentationTarget : nil,
+            extraUserInfo: extraUserInfo
         )
 
         pendingLink = link
@@ -287,10 +375,12 @@ final class DeepLinkCoordinator: ObservableObject {
             // Should be unreachable — validated in receive().
             return
         }
-        var info: [AnyHashable: Any] = [
-            entityIdKey: link.id,
-            Self.deepLinkIdUserInfoKey: link.deepLinkId.uuidString
-        ]
+        var info: [AnyHashable: Any] = [:]
+        for (key, value) in link.extraUserInfo {
+            info[key] = value
+        }
+        info[entityIdKey] = link.id
+        info[Self.deepLinkIdUserInfoKey] = link.deepLinkId.uuidString
         if let target = link.projectCreationPresentationTarget {
             info[ProjectCreationPresentationTarget.userInfoKey] = target
         }
@@ -318,7 +408,17 @@ final class DeepLinkCoordinator: ObservableObject {
             // START-visit push tapped on a cold launch: the StartSiteVisit relay
             // has no listener until MainTabView mounts, so the intent rides the
             // same stash/drain as leads (MainTabView clears it on receipt).
-            return (Notification.Name("StartSiteVisit"), "leadId")
+            return (SiteVisitPushRoute.startRelayName, SiteVisitPushRoute.leadIdKey)
+        case "site-visit-start-visit":
+            // Same START intent keyed by the exact visit (the push carries
+            // siteVisitId); the lead id rides in extraUserInfo.
+            return (SiteVisitPushRoute.startRelayName, SiteVisitPushRoute.siteVisitIdKey)
+        case "site-visit-heads-up":
+            // Heads-up / reminder: the lead with the Leads tab, else Schedule
+            // on the visit's day (MainTabView decides).
+            return (SiteVisitPushRoute.reminderRelayName, SiteVisitPushRoute.leadIdKey)
+        case "site-visit-heads-up-visit":
+            return (SiteVisitPushRoute.reminderRelayName, SiteVisitPushRoute.siteVisitIdKey)
         case "tasks":
             return (Notification.Name("OpenTaskDetails"), "taskId")
         case "notifications":

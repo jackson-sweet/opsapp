@@ -94,6 +94,23 @@ final class RecurringLineSurfaceTests: XCTestCase {
         XCTAssertEqual(asAdmin.first?.name, "Priya Crew")
     }
 
+    /// Every surface routes on this one predicate — My Expenses and the Books
+    /// ledger open the read-only line sheet instead of the expense form, the
+    /// ledger swaps the receipt thumbnail for the repeat mark, and the review
+    /// card drops its flag. A blank id is a receipt, not a reimbursement.
+    func testTheRoutingPredicateIsTrueOnlyForARealSetupId() {
+        XCTAssertTrue(expense().isRecurringReimbursement)
+        XCTAssertFalse(expense(recurring: false).isRecurringReimbursement)
+
+        var blank = expense()
+        blank.recurringReimbursementId = ""
+        XCTAssertFalse(blank.isRecurringReimbursement, "A blank id must read as an ordinary receipt.")
+
+        var periodOnly = expense(recurring: false)
+        periodOnly.recurringPeriod = "2026-08-01"
+        XCTAssertFalse(periodOnly.isRecurringReimbursement, "A month without a setup is not office-owned.")
+    }
+
     func testDisplayNameFallsBackToEmailThenDash() {
         XCTAssertEqual(RecurringPerson.displayName(first: " Priya ", last: "Rivera", email: nil), "Priya Rivera")
         XCTAssertEqual(RecurringPerson.displayName(first: "", last: "", email: "priya@example.test"), "priya@example.test")

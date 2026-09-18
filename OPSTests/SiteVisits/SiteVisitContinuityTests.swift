@@ -145,7 +145,13 @@ final class SiteVisitContinuityTests: XCTestCase {
         let freshContext = ModelContext(try XCTUnwrap(containers.last))
         let saved = try XCTUnwrap(freshContext.fetch(FetchDescriptor<SiteVisitChecklistAnswer>()).first { $0.id == answer.id })
         XCTAssertEqual(saved.answerValue.text, "Newest")
-        XCTAssertTrue(try context.fetch(FetchDescriptor<SyncOperation>()).contains { $0.entityId == answer.id })
+        XCTAssertTrue(saved.needsSync, "The retried edit is durable on the phone and still owed to the server")
+        XCTAssertFalse(try context.fetch(FetchDescriptor<SyncOperation>()).contains { $0.entityId == answer.id },
+            "A flush is typing: it stays on the phone until the visit is saved")
+        XCTAssertTrue(vm.saveDraft())
+        let queued = try XCTUnwrap(context.fetch(FetchDescriptor<SyncOperation>()).first { $0.entityId == answer.id })
+        XCTAssertEqual(SiteVisitVersionedSync.command(queued)?.rows.first?.values["answer_value"]?["text"], .string("Newest"),
+            "Saving the visit queues the retried edit, not the first keystroke")
     }
 
     func test_unchangedIdentityAndAnswerNeverRestartStoppedWork() throws {

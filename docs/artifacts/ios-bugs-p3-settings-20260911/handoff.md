@@ -46,6 +46,8 @@ The report must remain open without a claimed new fix until those checks run and
 
 ## Required launcher for the three visual integration tests
 
+> **Superseded 2026-09-17.** The launcher now lives at `scripts/testing/capture_keyboard_screens.py` and keeps a heartbeat file while it runs. The two visual tests check that heartbeat first and skip with the exact command when no bridge is running; a running bridge that does not answer still fails. How to run the suite: ops-ios `CLAUDE.md`, Build Guidelines. The record below is kept as written.
+
 `SiteVisitTypeSettingsKeyboardTests` is a hosted visual integration suite. Run `capture_keyboard_screens.py` with Python 3.9+ before launching those three tests, and wait for its `ready: true` output. Existing conventional input/accessory unit tests have no new launcher requirement. No screenshot assertion is skipped if the bridge is absent: each request fails explicitly after 20 seconds.
 
 For the root-owned, already booted simulator in this session:

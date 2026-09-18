@@ -166,6 +166,7 @@ final class SiteVisitTypeSettingsKeyboardTests: XCTestCase {
     }
 
     func testVisitNameReceivesVisibleDoneInTheRealEditorSheet() throws {
+        try requireCaptureBridge()
         try withEditorSheet { session in
             var inputs = try self.inputs(in: session)
             let accessory = try focus(inputs.name, in: session)
@@ -182,6 +183,7 @@ final class SiteVisitTypeSettingsKeyboardTests: XCTestCase {
     }
 
     func testChecklistFieldLabelReceivesVisibleDoneInTheRealEditorSheet() throws {
+        try requireCaptureBridge()
         try withEditorSheet { session in
             var inputs = try self.inputs(in: session)
             let accessory = try focus(inputs.fieldLabel, in: session)
@@ -529,20 +531,70 @@ final class SiteVisitTypeSettingsKeyboardTests: XCTestCase {
         let error: String?
     }
 
-    /// This visual integration suite requires the documented host-side
-    /// capture_keyboard_screens.py launcher. Missing capture fails, never skips.
+    /// What `scripts/testing/capture_keyboard_screens.py` keeps in the capture
+    /// cache while it runs: refreshed about once a second, removed on exit.
+    private struct CaptureBridgeHeartbeat: Decodable {
+        let simulatorUDID: String
+        let bundleID: String
+        let heartbeatAt: TimeInterval
+        let expiresAt: TimeInterval
+    }
+
+    /// The app's own cache directory the bridge watches for requests.
+    private func captureCache() throws -> URL {
+        try XCTUnwrap(FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first)
+            .appendingPathComponent("OPSKeyboardScreenshotProof", isDirectory: true)
+    }
+
+    /// The keyboard's pixels come from the simulator host, not from this
+    /// process: hosted `drawHierarchy` omits the remote keyboard, and
+    /// `XCUIScreen` is refused without UI-testing authority. So the two visual
+    /// tests need the capture bridge running for THIS simulator. Without a
+    /// fresh heartbeat they skip with the exact command — the environment
+    /// cannot prove the keyboard, which is not the keyboard failing (the
+    /// `TabBarHitTargetTests` control-probe pattern). A bridge that is running
+    /// but does not answer still fails, in `requestScreenCapture`.
+    private func requireCaptureBridge() throws {
+        guard let simulator = ProcessInfo.processInfo.environment["SIMULATOR_UDID"] else {
+            throw XCTSkip("Keyboard pixel proof captures the simulator's screen from the host; this run is not on a simulator.")
+        }
+        let start = """
+            From the ops-ios checkout, start the capture bridge and wait for its "ready": true line, \
+            then run this suite again on the same simulator with -parallel-testing-enabled NO: \
+            python3 scripts/testing/capture_keyboard_screens.py --udid \(simulator) --max-seconds 600
+            """
+        let heartbeatURL = try captureCache().appendingPathComponent("capture-bridge.json")
+        guard let data = try? Data(contentsOf: heartbeatURL),
+              let heartbeat = try? JSONDecoder().decode(CaptureBridgeHeartbeat.self, from: data) else {
+            throw XCTSkip("The keyboard capture bridge is not running. \(start)")
+        }
+        guard heartbeat.simulatorUDID.caseInsensitiveCompare(simulator) == .orderedSame,
+              heartbeat.bundleID == Bundle.main.bundleIdentifier else {
+            throw XCTSkip("The keyboard capture bridge is serving simulator \(heartbeat.simulatorUDID), not this one. \(start)")
+        }
+        let now = Date().timeIntervalSince1970
+        guard now - heartbeat.heartbeatAt <= 5 else {
+            throw XCTSkip("The keyboard capture bridge stopped \(Int(now - heartbeat.heartbeatAt)) seconds ago. \(start)")
+        }
+        guard heartbeat.expiresAt - now >= 60 else {
+            throw XCTSkip("The keyboard capture bridge expires in \(max(0, Int(heartbeat.expiresAt - now))) seconds, too soon for this test. \(start)")
+        }
+    }
+
+    /// Reached only after `requireCaptureBridge()` saw a live bridge for this
+    /// simulator, so a missing or mismatched acknowledgment is a real failure
+    /// of the capture, never an absent bridge.
     private func requestScreenCapture(name: String) throws -> (data: Data, provenance: String) {
         let simulator = try XCTUnwrap(ProcessInfo.processInfo.environment["SIMULATOR_UDID"], "Keyboard pixel proof requires the dedicated simulator launcher")
         let bundle = try XCTUnwrap(Bundle.main.bundleIdentifier)
         try require(bundle == "co.opsapp.ops.OPS", "Capture requests must belong to the OPS app host")
-        let cache = try XCTUnwrap(FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first)
-            .appendingPathComponent("OPSKeyboardScreenshotProof", isDirectory: true)
+        let cache = try captureCache()
         try FileManager.default.createDirectory(at: cache, withIntermediateDirectories: true)
         let id = UUID().uuidString.lowercased()
         let request = ScreenCaptureRequest(requestID: id, name: name, bundleID: bundle, simulatorUDID: simulator, requestedAt: Date().timeIntervalSince1970)
         try JSONEncoder().encode(request).write(to: cache.appendingPathComponent("\(id).request.json"), options: .atomic)
         let replyURL = cache.appendingPathComponent("\(id).ack.json")
-        try require(waitUntil(timeout: 20) { FileManager.default.fileExists(atPath: replyURL.path) }, "No simulator screenshot acknowledgment within 20 seconds; run capture_keyboard_screens.py before this visual suite")
+        try require(waitUntil(timeout: 20) { FileManager.default.fileExists(atPath: replyURL.path) }, "The running capture bridge (scripts/testing/capture_keyboard_screens.py) did not acknowledge this screenshot within 20 seconds")
         let reply = try JSONDecoder().decode(ScreenCaptureReply.self, from: Data(contentsOf: replyURL))
         try require(reply.requestID == id && reply.name == name && reply.bundleID == bundle && reply.simulatorUDID.caseInsensitiveCompare(simulator) == .orderedSame, "The screenshot acknowledgment must match this exact request and simulator")
         try require(reply.error == nil, "Simulator screen capture failed: \(reply.error ?? "unknown")")

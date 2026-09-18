@@ -406,12 +406,15 @@ final class CalendarMirrorService: ObservableObject {
             if let prefetchedSiteVisitDetails {
                 leadDetails = prefetchedSiteVisitDetails[siteVisitLeadKey(for: visit)]
             } else if let opportunityId = visit.opportunityId {
-                let resolved = await siteVisitLeadResolver.refreshDetails(
-                    opportunityIds: [opportunityId],
+                // Visit-keyed brief: an assignee holds no opportunities grant,
+                // and an opportunities read would authoritatively wipe the
+                // brief-derived names Schedule cached for them.
+                let resolved = await siteVisitLeadResolver.refreshBriefs(
+                    visits: [CalendarSiteVisitBriefRequest(siteVisitId: visit.id, opportunityId: opportunityId)],
                     userId: currentUserId,
                     companyId: visit.companyId
                 )
-                leadDetails = resolved[canonicalIdentifier(opportunityId)]
+                leadDetails = resolved.detailsByOpportunityId[canonicalIdentifier(opportunityId)]
             } else {
                 leadDetails = nil
             }
@@ -454,16 +457,18 @@ final class CalendarMirrorService: ObservableObject {
 
         for companyId in visitsByCompany.keys.sorted() where !companyId.isEmpty {
             let companyVisits = visitsByCompany[companyId] ?? []
-            let opportunityIds = Array(Set(companyVisits.compactMap {
-                $0.opportunityId.map(canonicalIdentifier)
-            }.filter { !$0.isEmpty })).sorted()
-            guard !opportunityIds.isEmpty else { continue }
+            let leadLinkedVisits = companyVisits.filter {
+                !($0.opportunityId.map(canonicalIdentifier) ?? "").isEmpty
+            }
+            guard !leadLinkedVisits.isEmpty else { continue }
 
-            let companyDetails = await siteVisitLeadResolver.refreshDetails(
-                opportunityIds: opportunityIds,
+            let companyDetails = await siteVisitLeadResolver.refreshBriefs(
+                visits: leadLinkedVisits.map {
+                    CalendarSiteVisitBriefRequest(siteVisitId: $0.id, opportunityId: $0.opportunityId)
+                },
                 userId: currentUserId,
                 companyId: companyId
-            )
+            ).detailsByOpportunityId
             for (opportunityId, details) in companyDetails {
                 resolvedByVisitKey[siteVisitLeadKey(
                     opportunityId: opportunityId,

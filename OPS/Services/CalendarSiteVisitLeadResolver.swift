@@ -301,24 +301,93 @@ final class CalendarSiteVisitLeadCache: @unchecked Sendable {
     }
 }
 
+/// One booked visit Calendar wants a brief for, with the lead it is linked to
+/// on this phone (the id the authoritative merge replaces).
+struct CalendarSiteVisitBriefRequest: Equatable, Sendable {
+    let siteVisitId: String
+    let opportunityId: String?
+}
+
+/// The outcome of one `read_site_visit_briefs` refresh.
+struct CalendarSiteVisitBriefResolution: Equatable {
+    /// Lead details keyed by canonical opportunity id — same shape and cache
+    /// semantics as `refreshDetails`.
+    let detailsByOpportunityId: [String: CalendarSiteVisitLeadDetails]
+    /// The requested visit ids the server says this user can still read.
+    /// Nil when the answer was not authoritative (offline, error) — the caller
+    /// keeps whatever it last knew.
+    let readableSiteVisitIds: Set<String>?
+}
+
+/// Which booked visits Schedule may show, from the server's readable-set
+/// answers (CREW SITE VISITS P1). The phone never prunes rows it can no longer
+/// read, so a visit reassigned away (or whose lead moved out of reach) would
+/// otherwise stay on Schedule forever.
+///
+/// Per-id verdicts from the last SUCCESSFUL answer that covered the id: a
+/// requested id absent from that answer is hidden; an id never asked about
+/// shows (before any successful answer, everything shows); a failed refresh
+/// changes nothing.
+struct CalendarSiteVisitReadability: Equatable {
+    private(set) var verdicts: [String: Bool] = [:]
+
+    mutating func record(
+        readableSiteVisitIds: Set<String>?,
+        requestedSiteVisitIds: [String]
+    ) {
+        guard let readableSiteVisitIds else { return }
+        let readable = Set(readableSiteVisitIds.map(CalendarSiteVisitLeadIdentity.canonical))
+        for id in requestedSiteVisitIds.map(CalendarSiteVisitLeadIdentity.canonical) where !id.isEmpty {
+            verdicts[id] = readable.contains(id)
+        }
+    }
+
+    func isVisible(siteVisitId: String) -> Bool {
+        verdicts[CalendarSiteVisitLeadIdentity.canonical(siteVisitId)] ?? true
+    }
+
+    func visible<Item>(_ items: [Item], siteVisitId: (Item) -> String) -> [Item] {
+        items.filter { isVisible(siteVisitId: siteVisitId($0)) }
+    }
+
+    mutating func reset() {
+        verdicts = [:]
+    }
+}
+
 final class CalendarSiteVisitLeadResolver {
     typealias RemoteLoader = (
         _ companyId: String,
         _ opportunityIds: [String]
     ) async throws -> [CalendarSiteVisitLeadDetails]
 
+    /// Reads `read_site_visit_briefs` for at most
+    /// `SiteVisitBriefRepository.maxIdsPerRequest` visit ids.
+    typealias BriefLoader = (
+        _ siteVisitIds: [String]
+    ) async throws -> [SiteVisitBriefDTO]
+
     private let cache: CalendarSiteVisitLeadCache
     private let remoteLoader: RemoteLoader
+    private let briefLoader: BriefLoader
 
-    /// Production initializer. The repository performs one authoritative
-    /// company-scoped fetch for every distinct opportunity visible to Calendar.
+    private static let liveRemoteLoader: RemoteLoader = { companyId, opportunityIds in
+        try await OpportunityRepository(companyId: companyId)
+            .fetchByIds(opportunityIds)
+            .map { CalendarSiteVisitLeadDetails(dto: $0) }
+    }
+
+    private static let liveBriefLoader: BriefLoader = { siteVisitIds in
+        try await SiteVisitBriefRepository.fetchBriefs(siteVisitIds: siteVisitIds)
+    }
+
+    /// Production initializer. `refreshDetails` performs one authoritative
+    /// company-scoped opportunities fetch; `refreshBriefs` reads the narrow
+    /// visit-keyed projection an assignee may see.
     init(cache: CalendarSiteVisitLeadCache = .shared) {
         self.cache = cache
-        self.remoteLoader = { companyId, opportunityIds in
-            try await OpportunityRepository(companyId: companyId)
-                .fetchByIds(opportunityIds)
-                .map { CalendarSiteVisitLeadDetails(dto: $0) }
-        }
+        self.remoteLoader = Self.liveRemoteLoader
+        self.briefLoader = Self.liveBriefLoader
     }
 
     /// Test seam and alternate transport seam. The cache behavior remains real.
@@ -328,6 +397,95 @@ final class CalendarSiteVisitLeadResolver {
     ) {
         self.cache = cache
         self.remoteLoader = remoteLoader
+        self.briefLoader = Self.liveBriefLoader
+    }
+
+    /// Brief transport seam. The cache behavior remains real.
+    init(
+        cache: CalendarSiteVisitLeadCache,
+        briefLoader: @escaping BriefLoader
+    ) {
+        self.cache = cache
+        self.remoteLoader = Self.liveRemoteLoader
+        self.briefLoader = briefLoader
+    }
+
+    /// Resolves lead details through `read_site_visit_briefs`, keyed by the
+    /// booked visits Calendar is showing.
+    ///
+    /// Lead details keep `refreshDetails`' contract: one successful response
+    /// is authoritative for every lead id involved (the visits' local links
+    /// plus any the server returned) — an omitted lead drops its cached row —
+    /// and a transport failure returns the last successful scoped snapshot.
+    /// A successful response also yields the set of still-readable visit ids.
+    func refreshBriefs(
+        visits: [CalendarSiteVisitBriefRequest],
+        userId: String,
+        companyId: String
+    ) async -> CalendarSiteVisitBriefResolution {
+        let userId = CalendarSiteVisitLeadIdentity.canonical(userId)
+        let companyId = CalendarSiteVisitLeadIdentity.canonical(companyId)
+        let requestedVisitIds = SiteVisitBriefRepository.canonicalIds(visits.map(\.siteVisitId))
+        let localOpportunityIds = Set(
+            visits
+                .compactMap { $0.opportunityId.map(CalendarSiteVisitLeadIdentity.canonical) }
+                .filter { !$0.isEmpty }
+        )
+
+        guard !userId.isEmpty, !companyId.isEmpty, !requestedVisitIds.isEmpty else {
+            return CalendarSiteVisitBriefResolution(
+                detailsByOpportunityId: [:],
+                readableSiteVisitIds: nil
+            )
+        }
+
+        let cached = cache.load(userId: userId, companyId: companyId)
+        do {
+            var rows: [SiteVisitBriefDTO] = []
+            var start = 0
+            while start < requestedVisitIds.count {
+                let end = min(start + SiteVisitBriefRepository.maxIdsPerRequest, requestedVisitIds.count)
+                rows.append(contentsOf: try await briefLoader(Array(requestedVisitIds[start..<end])))
+                start = end
+            }
+
+            let requested = Set(requestedVisitIds)
+            let authoritativeRows = rows.filter {
+                requested.contains(CalendarSiteVisitLeadIdentity.canonical($0.siteVisitId))
+            }
+            let readable = Set(authoritativeRows.map {
+                CalendarSiteVisitLeadIdentity.canonical($0.siteVisitId)
+            })
+            let details = authoritativeRows.compactMap { row -> CalendarSiteVisitLeadDetails? in
+                guard let opportunityId = row.opportunityId.map(CalendarSiteVisitLeadIdentity.canonical),
+                      !opportunityId.isEmpty else { return nil }
+                return CalendarSiteVisitLeadDetails(
+                    opportunityId: opportunityId,
+                    companyId: companyId,
+                    contactName: row.contactName,
+                    title: row.title,
+                    address: row.address,
+                    agentSummary: row.aiSummary,
+                    leadDescription: row.description
+                )
+            }
+            let involvedOpportunityIds = localOpportunityIds.union(details.map(\.opportunityId))
+            let merged = cache.mergeAuthoritative(
+                details,
+                replacing: Array(involvedOpportunityIds),
+                userId: userId,
+                companyId: companyId
+            )
+            return CalendarSiteVisitBriefResolution(
+                detailsByOpportunityId: Self.index(merged, requestedIds: involvedOpportunityIds),
+                readableSiteVisitIds: readable
+            )
+        } catch {
+            return CalendarSiteVisitBriefResolution(
+                detailsByOpportunityId: Self.index(cached, requestedIds: localOpportunityIds),
+                readableSiteVisitIds: nil
+            )
+        }
     }
 
     /// Returns details keyed by canonical opportunity id. One successful

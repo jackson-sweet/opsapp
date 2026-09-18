@@ -22,11 +22,29 @@ final class BugReportPointAtItRoundTripTests: XCTestCase {
         let (stage, presenter) = try await presentReport()
 
         presenter.testingDraft?.description = "START JOB does nothing"
+        let pointingStarted = Date()
         presenter.beginPointing()
         try await waitUntil("the pick layer is up and the sheet is down") {
             presenter.testingPickLayerIsUp && !presenter.testingSheetIsUp
         }
         await stage.settle()
+
+        // A person takes longer to reach the problem than Vision takes to read
+        // the screen. Lifting before the read finishes is the instant tap the
+        // session deliberately bounds at `textWaitLimit` (named by role, not
+        // by its words), and on a loaded simulator the read can outlast that
+        // bound. So aim like a person: wait for the read, then prove it saw
+        // the button's words, so a blank or misread capture fails here, by name.
+        try await waitUntil("Vision has read the pick-time capture", limit: 30) {
+            presenter.testingRecognizedText != nil
+        }
+        let read = presenter.testingRecognizedText ?? []
+        let readSeconds = Date().timeIntervalSince(pointingStarted)
+        XCTContext.runActivity(named: String(format: "Pick-time capture read %.2f s after POINT AT IT", readSeconds)) { _ in }
+        XCTAssertTrue(
+            read.contains { $0.text.uppercased().contains("START JOB") },
+            "Vision must read the button's words off the pick-time capture; it read \(read.map(\.text))"
+        )
 
         // The house button in the fixture card carries no explicit label, so
         // its name has to come from what is written on it.

@@ -86,6 +86,9 @@ final class SiteVisitTypeSettingsKeyboardTests: XCTestCase {
         private(set) var pending = Set<Notification.Name>()
         private(set) var lastEvent = CACurrentMediaTime()
         private(set) var editingEvents: [String] = []
+        /// Every keyboard notification as delivered, including the non-local
+        /// ones `receive` ignores — for failure diagnostics only.
+        private(set) var keyboardEvents: [String] = []
         private let startedAt = CACurrentMediaTime()
         weak var accessoryWindow: UIWindow?
 
@@ -138,7 +141,12 @@ final class SiteVisitTypeSettingsKeyboardTests: XCTestCase {
         }
 
         @objc private func receive(_ notification: Notification) {
-            guard notification.userInfo?[UIResponder.keyboardIsLocalUserInfoKey] as? Bool != false else { return }
+            let isLocal = notification.userInfo?[UIResponder.keyboardIsLocalUserInfoKey] as? Bool
+            let end = (notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue
+            keyboardEvents.append(
+                "\(CACurrentMediaTime() - startedAt): \(notification.name.rawValue) local=\(isLocal.map { "\($0)" } ?? "nil") end=\(end.map { "\($0)" } ?? "nil")"
+            )
+            guard isLocal != false else { return }
             lastEvent = CACurrentMediaTime()
             if let value = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue {
                 frame = value.cgRectValue
@@ -235,6 +243,8 @@ final class SiteVisitTypeSettingsKeyboardTests: XCTestCase {
 
     private func withEditorSheet(_ assertions: (Session) throws -> Void) throws {
         let window = try AppHostWindow.acquire()
+        print("SiteVisitKeyboard start: first responder \(Self.chainFirstResponder()); views: \(Self.appWideFirstResponder())")
+        try requireKeyboardCanBeDismissed(in: window)
         let originalRoot = window.rootViewController
         let keyboard = KeyboardObservation()
         let state = SheetState()
@@ -287,6 +297,44 @@ final class SiteVisitTypeSettingsKeyboardTests: XCTestCase {
         keyboard.stop()
         print("SiteVisitKeyboard teardown: complete")
         if let assertionError { throw assertionError }
+    }
+
+    /// Control probe (the `TabBarHitTargetTests` pattern): a plain UIKit field
+    /// must be able to raise and dismiss the keyboard in this process, or the
+    /// editor's DONE cannot be measured here. Late in a full `OPSTests` run
+    /// (after ~5,000 tests) an earlier test leaves UIKit's keyboard stuck: it
+    /// re-announces itself as this suite presents, and once a field resigns
+    /// UIKit never announces it hiding — with nothing focused anywhere, even
+    /// for a fresh scratch field. That is the environment, not the editor, so
+    /// skip loudly with the fix instead of failing on the wrong cause. On a
+    /// clean process the probe also leaves the keyboard settled and down.
+    private func requireKeyboardCanBeDismissed(in window: UIWindow) throws {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        for candidate in UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).flatMap(\.windows) {
+            candidate.endEditing(true)
+        }
+        let keyboard = KeyboardObservation()
+        defer { keyboard.stop() }
+        let scratch = UITextField(frame: CGRect(x: 0, y: 0, width: 44, height: 44))
+        window.addSubview(scratch)
+        defer { scratch.removeFromSuperview() }
+        try require(scratch.becomeFirstResponder(), "A plain UIKit field must take focus in the app window")
+        // A keyboard that is already up may not announce itself again; only
+        // the hide has to be observed.
+        _ = waitUntil { keyboard.isVisible && keyboard.pending.isEmpty }
+        scratch.resignFirstResponder()
+        // Generous, so a loaded machine is never mistaken for a stuck process.
+        let dismissed = waitUntil(timeout: 10) {
+            !keyboard.isVisible && keyboard.pending.isEmpty && keyboard.hiddenCount > 0
+        }
+        guard dismissed else {
+            throw XCTSkip("""
+                This test process can no longer dismiss the keyboard for a plain UIKit text field — an \
+                earlier test left UIKit's keyboard stuck (seen late in full OPSTests runs) — so the settings \
+                editor's DONE cannot be measured here. Run this suite in its own process: \
+                -only-testing:OPSTests/SiteVisitTypeSettingsKeyboardTests -parallel-testing-enabled NO
+                """)
+        }
     }
 
     private func hasInputs(in view: UIView) -> Bool {
@@ -385,13 +433,64 @@ final class SiteVisitTypeSettingsKeyboardTests: XCTestCase {
         try require(false, "Keyboard and the same editor sheet did not finish settling; inspect focus diagnostics before classifying the failure")
     }
 
+    /// Whatever holds focus anywhere in the app, not only in this sheet. In a
+    /// full-suite run a responder left behind in another test's window can
+    /// keep the keyboard up after this sheet's field has resigned.
+    private static func appWideFirstResponder() -> String {
+        func focused(in view: UIView) -> UIView? {
+            if view.isFirstResponder { return view }
+            for subview in view.subviews {
+                if let hit = focused(in: subview) { return hit }
+            }
+            return nil
+        }
+        let windows = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap(\.windows)
+        for window in windows {
+            guard let responder = focused(in: window) else { continue }
+            var chain: [String] = []
+            var cursor: UIView? = responder
+            while let current = cursor, chain.count < 10 {
+                chain.append(String(describing: type(of: current)))
+                cursor = current.superview
+            }
+            let root = window.rootViewController.map { String(describing: type(of: $0)) } ?? "nil"
+            let presented = window.rootViewController?.presentedViewController
+                .map { String(describing: type(of: $0)) } ?? "nil"
+            return """
+            \(type(of: responder)) in \(type(of: window)) level=\(window.windowLevel.rawValue) \
+            hidden=\(window.isHidden) key=\(window.isKeyWindow) root=\(root) presented=\(presented) \
+            chain=\(chain.joined(separator: " < ")) (\(windows.count) windows in the app)
+            """
+        }
+        return "none among \(windows.count) windows"
+    }
+
+    /// UIKit routes a nil-targeted action to the first responder, whatever
+    /// kind of responder it is (a view controller can hold input views too).
+    private static func chainFirstResponder() -> String {
+        probedFirstResponder = nil
+        let delivered = UIApplication.shared.sendAction(
+            #selector(UIResponder.siteVisitKeyboardTestsProbeFirstResponder(_:)), to: nil, from: nil, for: nil
+        )
+        guard delivered, let responder = probedFirstResponder else { return "none (delivered=\(delivered))" }
+        probedFirstResponder = nil
+        return "\(type(of: responder)) isFirstResponder=\(responder.isFirstResponder)"
+            + " accessory=\(responder.inputAccessoryView.map { "\(type(of: $0))" } ?? "nil")"
+    }
+
     private func captureFailureDiagnostics(_ session: Session, tracking view: UIView?) {
         let liveInputs = descendants(of: UITextField.self, in: session.sheet.view).map { $0 as UIView }
             + descendants(of: UITextView.self, in: session.sheet.view).map { $0 as UIView }
         let accessory = view?.inputAccessoryView as? OPSKeyboardDoneAccessoryView
         let diagnostics = """
         App delegate: \(UIApplication.shared.delegate.map { String(describing: type(of: $0)) } ?? "nil")
+        App-wide first responder (views): \(Self.appWideFirstResponder())
+        First responder by responder chain (any responder): \(Self.chainFirstResponder())
+        Scene: activation=\(session.window.windowScene.map { "\($0.activationState.rawValue)" } ?? "nil") app state=\(UIApplication.shared.applicationState.rawValue) host window key=\(session.window.isKeyWindow)
         Keyboard shown=\(session.keyboard.shownCount) hidden=\(session.keyboard.hiddenCount) pending=\(session.keyboard.pending.map(\.rawValue).sorted())
+        Raw keyboard notifications:\n\(session.keyboard.keyboardEvents.joined(separator: "\n"))
         Tracked field still in live sheet: \(view.map { tracked in liveInputs.contains { $0 === tracked } } ?? false)
         Tracked: \(KeyboardObservation.describe(view))
         DONE gate: \(accessory.map { doneVisibilityFailure($0, in: session) ?? "visible" } ?? "tracked input has no canonical accessory")
@@ -708,6 +807,16 @@ final class SiteVisitTypeSettingsKeyboardTests: XCTestCase {
             RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.02))
         }
         return condition()
+    }
+}
+
+/// Where the responder-chain probe records the responder UIKit delivered to.
+@MainActor private var probedFirstResponder: UIResponder?
+
+extension UIResponder {
+    /// Failure diagnostics only: the first responder records itself.
+    @objc fileprivate func siteVisitKeyboardTestsProbeFirstResponder(_ sender: Any?) {
+        probedFirstResponder = self
     }
 }
 #endif

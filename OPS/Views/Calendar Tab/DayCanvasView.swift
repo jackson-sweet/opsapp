@@ -248,8 +248,9 @@ struct DayPageView: View {
     @State private var contextMenuRescheduleTask: ProjectTask?
 
     // Booked site-visit branch (calendar third source). Visits are
-    // appointments, not tasks — START NOW routes to the leads tab's ONE
-    // capture cover via the StartSiteVisit relay, never a second cover here.
+    // appointments, not tasks — START NOW / RESUME VISIT route through the
+    // StartSiteVisit relay (Leads tab cover or the root capture host), never
+    // a second cover here.
     @State private var visitBranchVisit: SiteVisit? = nil
     @State private var visitBookingRequest: BookSiteVisitRequest? = nil
 
@@ -278,14 +279,42 @@ struct DayPageView: View {
 
     // MARK: - Site-visit branch actions
 
+    /// START NOW and RESUME VISIT. The relay carries the exact visit (and its
+    /// lead, when it has one): MainTabView hands it to the Leads tab's capture
+    /// cover, or — for an assignee without the Leads tab, or a leadless visit
+    /// — to the root capture host. Never a second cover here.
     private func startVisitFromCalendar(_ visit: SiteVisit) {
-        guard let opportunityId = visit.opportunityId else { return }
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        // The leads tab owns the ONE capture presentation — relay to it.
         NotificationCenter.default.post(
-            name: Notification.Name("StartSiteVisit"),
+            name: SiteVisitPushRoute.startRelayName,
             object: nil,
-            userInfo: ["leadId": opportunityId]
+            userInfo: SiteVisitPushRoute.userInfo(leadId: visit.opportunityId, siteVisitId: visit.id)
+        )
+    }
+
+    /// The card dialog's actions for this user (`SiteVisitAccess.calendarActions`):
+    /// an assignee opens their visit; lead and booking actions need the lead
+    /// grants they have always needed.
+    private func calendarActions(for visit: SiteVisit) -> [SiteVisitCalendarAction] {
+        let store = PermissionStore.shared
+        let policy = store.leadAccessPolicy
+        let hasLeadsAccess = SiteVisitAccess.hasLeadsAccess(
+            policy: policy,
+            pipelineEnabled: store.isFeatureEnabled("pipeline")
+        )
+        let hasLead = !(visit.opportunityId ?? "").isEmpty
+        return SiteVisitAccess.calendarActions(
+            status: visit.status,
+            isToday: visit.scheduledAt.map { Calendar.current.isDateInToday($0) } ?? false,
+            hasLeadsAccess: hasLeadsAccess,
+            canConvertAny: policy.canConvertAny,
+            hasLead: hasLead,
+            hasBookingSnapshot: SiteVisitBookingLookup.snapshot(of: visit) != nil,
+            canOpenVisit: SiteVisitAccess.canOpenVisit(
+                hasLeadsAccess: hasLeadsAccess,
+                hasLead: hasLead,
+                isAssignee: SiteVisitAccess.isAssignee(visit, userId: dataController.currentUser?.id)
+            )
         )
     }
 
@@ -323,7 +352,12 @@ struct DayPageView: View {
                 scheduledAt: scheduledAt,
                 durationMinutes: visit.durationMinutes,
                 isInProgress: visit.status == .inProgress,
-                onTap: { visitBranchVisit = visit }
+                // A card with nothing this user can do stays a read-only
+                // appointment — no dialog of CANCEL alone.
+                onTap: {
+                    guard !calendarActions(for: visit).isEmpty else { return }
+                    visitBranchVisit = visit
+                }
             )
         }
     }
@@ -586,17 +620,22 @@ struct DayPageView: View {
             titleVisibility: .visible,
             presenting: visitBranchVisit
         ) { visit in
-            if visit.status == .scheduled,
-               let scheduledAt = visit.scheduledAt,
-               Calendar.current.isDateInToday(scheduledAt) {
-                Button("START NOW") { startVisitFromCalendar(visit) }
-            }
-            if visit.status == .scheduled, let snapshot = SiteVisitBookingLookup.snapshot(of: visit) {
-                Button("RESCHEDULE — \(SiteVisitBookingLookup.bookedToken(for: snapshot.scheduledAt))") {
-                    presentReschedule(visit, snapshot: snapshot)
+            ForEach(calendarActions(for: visit), id: \.self) { action in
+                switch action {
+                case .startNow:
+                    Button("START NOW") { startVisitFromCalendar(visit) }
+                case .resumeVisit:
+                    Button("RESUME VISIT") { startVisitFromCalendar(visit) }
+                case .reschedule:
+                    if let snapshot = SiteVisitBookingLookup.snapshot(of: visit) {
+                        Button("RESCHEDULE — \(SiteVisitBookingLookup.bookedToken(for: snapshot.scheduledAt))") {
+                            presentReschedule(visit, snapshot: snapshot)
+                        }
+                    }
+                case .openLead:
+                    Button("OPEN LEAD") { openLeadFromCalendar(visit) }
                 }
             }
-            Button("OPEN LEAD") { openLeadFromCalendar(visit) }
             Button("CANCEL", role: .cancel) {}
         }
         .onReceive(

@@ -208,6 +208,14 @@ struct ScheduleView: View {
             // per-visit work runs here once and `isActiveTab` carries the rest.
             viewModel.setDataController(dataController)
             beginVisit()
+            focusPendingScheduleDate()
+        }
+        // A site-visit heads-up tapped without the Leads tab lands here on the
+        // visit's day (CREW SITE VISITS P1). Drained on mount and on change so
+        // it holds across a cold launch and a tab that is already mounted.
+        .onChange(of: appState.pendingScheduleFocusDate) { _, date in
+            guard date != nil else { return }
+            focusPendingScheduleDate()
         }
         .onDisappear {
             endVisit()
@@ -540,6 +548,17 @@ struct ScheduleView: View {
 
     private func endVisit() {
         AnalyticsService.shared.endScreenView(screenName: "schedule")
+    }
+
+    /// Opens the day list on the stashed date — the visit's day — collapsing
+    /// the month grid so the booked card is what the operator sees.
+    private func focusPendingScheduleDate() {
+        guard let date = appState.pendingScheduleFocusDate else { return }
+        appState.pendingScheduleFocusDate = nil
+        if viewModel.isMonthExpanded {
+            viewModel.toggleMonthExpanded()
+        }
+        viewModel.selectDate(date, userInitiated: false)
     }
 
     // MARK: - Empty State

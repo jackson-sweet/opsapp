@@ -271,6 +271,11 @@ struct FloatingActionMenu: View {
         if leadPolicy.canCreate || leadPolicy.canEditAny || leadPolicy.canConvertAny {
             return true
         }
+        // A crew member whose only + action is Start Site Visit still gets the
+        // + button on every tab they have (CREW SITE VISITS P1).
+        if SiteVisitAccess.canStartWalkUp(permissionStore: permissionStore) {
+            return true
+        }
         return FABPermissionGate.canShowFAB { permissionStore.can($0) }
     }
 
@@ -343,7 +348,7 @@ struct FloatingActionMenu: View {
             workItems.append(
                 FABMenuItem(
                     id: "site-visit",
-                    icon: "camera.viewfinder",
+                    icon: OPSStyle.Icons.siteVisitCapture,
                     label: "Book Site Visit",
                     permission: "pipeline.convert",
                     authorization: { permissionStore.leadAccessPolicy.canConvertAny },
@@ -351,6 +356,29 @@ struct FloatingActionMenu: View {
                     action: {
                         showCreateMenu = false
                         showingVisitBranch = true
+                    }
+                )
+            )
+
+            // Walk-up capture for someone who cannot book (no convert): one
+            // entry, straight into the same capture START NOW opens. Never
+            // shown beside "Book Site Visit" — the two are either/or.
+            workItems.append(
+                FABMenuItem(
+                    id: "start-site-visit",
+                    icon: OPSStyle.Icons.siteVisitCapture,
+                    label: "Start Site Visit",
+                    permission: SiteVisitAccess.capturePermission,
+                    authorization: {
+                        !permissionStore.leadAccessPolicy.canConvertAny
+                            && SiteVisitAccess.canStartWalkUp(permissionStore: permissionStore)
+                    },
+                    disabledInTutorial: true,
+                    action: {
+                        showCreateMenu = false
+                        activeSiteVisitLead = nil
+                        activeSiteVisitType = nil
+                        showingSiteVisitCapture = true
                     }
                 )
             )

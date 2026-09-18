@@ -659,6 +659,189 @@ final class SiteVisitPersistenceCoordinatorTests: XCTestCase {
         )
     }
 
+    // MARK: - Saving never restarts stopped work on its own (2026-09-17)
+    //
+    // Saving the visit re-sends what changed on the phone and nothing else —
+    // the outcome the per-edit queueing had before typing went local-only. A
+    // parked send waits for review, a declined send stays declined, and a
+    // photo upload belongs to capture and markup.
+
+    func test_saveLeavesStoppedSendsForUneditedRecordsAlone() throws {
+        let context = try makeContainer().mainContext
+        let coordinator = SiteVisitPersistenceCoordinator(modelContext: context, companyId: companyId)
+        let visit = makeVisit()
+        let draft = SiteVisitIdentityDraft(siteVisitId: visitId, companyId: companyId, contactName: "Synthetic customer")
+        try coordinator.commit { context.insert(visit); context.insert(draft) }
+        let operations = try context.fetch(FetchDescriptor<SyncOperation>())
+        let parent = try XCTUnwrap(operations.first { $0.entityType == SyncEntityType.siteVisit.rawValue })
+        let identity = try XCTUnwrap(operations.first { $0.entityId == draft.id })
+        parent.status = "parked"; parent.lastAttemptedAt = Date(timeIntervalSince1970: 1_789_000_000)
+        identity.status = "declined"
+        try context.save()
+        XCTAssertTrue(visit.needsSync && draft.needsSync, "Precondition: both records are still owed to the server")
+
+        let saved = try coordinator.queueDirtyWork(siteVisitId: visitId)
+
+        XCTAssertTrue(saved.operationIds.isEmpty, "Nothing changed on the phone, so nothing is queued")
+        XCTAssertEqual(parent.status, "parked")
+        XCTAssertEqual(identity.status, "declined")
+        XCTAssertEqual(try context.fetch(FetchDescriptor<SyncOperation>()).count, operations.count)
+    }
+
+    func test_phoneEditAfterAStopRestartsThatSendAtTheNextSave() throws {
+        let context = try makeContainer().mainContext
+        let coordinator = SiteVisitPersistenceCoordinator(modelContext: context, companyId: companyId)
+        let visit = makeVisit()
+        let draft = SiteVisitIdentityDraft(siteVisitId: visitId, companyId: companyId, contactName: "Synthetic customer")
+        try coordinator.commit { context.insert(visit); context.insert(draft) }
+        let identity = try XCTUnwrap(context.fetch(FetchDescriptor<SyncOperation>()).first { $0.entityId == draft.id })
+        identity.status = "parked"; identity.retryCount = 3
+        identity.lastAttemptedAt = Date(timeIntervalSince1970: 1_789_000_000)
+        identity.lastError = "Synthetic permanent rejection"
+        try context.save()
+
+        try coordinator.commit(queueing: false) { draft.contactName = "Synthetic customer, corrected"; draft.touch() }
+        XCTAssertEqual(identity.status, "parked", "The edit stays on the phone until the visit is saved")
+
+        let saved = try coordinator.queueDirtyWork(siteVisitId: visitId)
+
+        XCTAssertTrue(saved.operationIds.contains(identity.id))
+        XCTAssertEqual(identity.status, "pending")
+        XCTAssertEqual(identity.retryCount, 0)
+        XCTAssertNil(identity.lastError)
+        XCTAssertEqual(try context.fetch(FetchDescriptor<SyncOperation>()).filter { $0.entityId == draft.id }.count, 1)
+    }
+
+    func test_anEditMadeBeforeTheOperatorDeclinedNeverOverridesTheDecline() throws {
+        let context = try makeContainer().mainContext
+        let coordinator = SiteVisitPersistenceCoordinator(modelContext: context, companyId: companyId)
+        let visit = makeVisit()
+        let draft = SiteVisitIdentityDraft(siteVisitId: visitId, companyId: companyId, contactName: "Synthetic customer")
+        try coordinator.commit { context.insert(visit); context.insert(draft) }
+        let identity = try XCTUnwrap(context.fetch(FetchDescriptor<SyncOperation>()).first { $0.entityId == draft.id })
+        identity.status = "parked"; identity.lastAttemptedAt = Date(timeIntervalSince1970: 1_789_000_000)
+        try context.save()
+        try coordinator.commit(queueing: false) { draft.notes = "Edited while the send was held"; draft.touch() }
+
+        // Then the operator stops the send in PENDING WORK (PendingWorkDecline).
+        identity.status = "declined"; identity.lastError = nil
+        identity.lastAttemptedAt = nil; identity.completedAt = nil
+        try context.save()
+
+        _ = try coordinator.queueDirtyWork(siteVisitId: visitId)
+
+        XCTAssertEqual(identity.status, "declined", "The operator's decline is the later decision")
+    }
+
+    func test_anEditTheSendHasAlreadyCarriedDoesNotRestartItAgain() throws {
+        let context = try makeContainer().mainContext
+        let coordinator = SiteVisitPersistenceCoordinator(modelContext: context, companyId: companyId)
+        let visit = makeVisit()
+        let draft = SiteVisitIdentityDraft(siteVisitId: visitId, companyId: companyId, contactName: "Synthetic customer")
+        try coordinator.commit { context.insert(visit); context.insert(draft) }
+        let identity = try XCTUnwrap(context.fetch(FetchDescriptor<SyncOperation>()).first { $0.entityId == draft.id })
+        identity.status = "parked"; identity.lastAttemptedAt = Date(timeIntervalSince1970: 1_789_000_000)
+        try context.save()
+        try coordinator.commit(queueing: false) { draft.notes = "Edited while the send was held"; draft.touch() }
+
+        // PENDING WORK's RETRY resent it — carrying the edit, since the sender
+        // reads the current row — and the server refused it again.
+        identity.status = "parked"; identity.lastAttemptedAt = Date(timeIntervalSince1970: 1_789_000_600)
+        try context.save()
+
+        _ = try coordinator.queueDirtyWork(siteVisitId: visitId)
+
+        XCTAssertEqual(identity.status, "parked", "Nothing new since that attempt: it waits for review again")
+        XCTAssertEqual(identity.lastAttemptedAt, Date(timeIntervalSince1970: 1_789_000_600))
+    }
+
+    func test_saveAddsNoSuccessorWhenTheQueuedAnswerAlreadySaysTheSame() throws {
+        let context = try makeContainer().mainContext
+        let coordinator = SiteVisitPersistenceCoordinator(modelContext: context, companyId: companyId)
+        let visit = makeVisit()
+        visit.needsSync = false; visit.lastSyncedAt = Date()
+        context.insert(visit); try context.save()
+        let answer = SiteVisitChecklistAnswer(siteVisitId: visitId, companyId: companyId, opportunityId: nil,
+            siteVisitTypeId: nil, fieldId: "scope", label: "Scope", kind: .shortText, required: false, sortOrder: 1)
+        try coordinator.commit(queueing: false) {
+            context.insert(answer); answer.answerValue = .text("Two posts"); answer.needsSync = true
+        }
+        _ = try coordinator.queueDirtyWork(siteVisitId: visitId)
+        let held = try XCTUnwrap(context.fetch(FetchDescriptor<SyncOperation>()).first { SiteVisitVersionedSync.handles($0) })
+        let bytes = held.payload
+        held.status = "parked"; held.siteVisitWriteAttemptedAt = Date(timeIntervalSince1970: 1_789_000_000)
+        try context.save()
+
+        _ = try coordinator.queueDirtyWork(siteVisitId: visitId)
+        var writes = try context.fetch(FetchDescriptor<SyncOperation>()).filter { SiteVisitVersionedSync.handles($0) }
+        XCTAssertEqual(writes.count, 1, "The held command already carries this answer")
+        XCTAssertEqual(held.payload, bytes)
+        XCTAssertEqual(held.status, "parked")
+
+        // A real edit is new intent: sequenced behind the held command, as before.
+        try coordinator.commit(queueing: false) { answer.answerValue = .text("Three posts"); answer.needsSync = true }
+        _ = try coordinator.queueDirtyWork(siteVisitId: visitId)
+        writes = try context.fetch(FetchDescriptor<SyncOperation>()).filter { SiteVisitVersionedSync.handles($0) }
+        XCTAssertEqual(writes.count, 2)
+        XCTAssertEqual(held.payload, bytes, "An attempted command is never rewritten")
+        let next = try XCTUnwrap(writes.first { $0.id != held.id })
+        XCTAssertEqual(next.dependsOnId, held.id.uuidString.lowercased())
+        XCTAssertEqual(SiteVisitVersionedSync.command(next)?.rows[0].values["answer_value"]?["text"], .string("Three posts"))
+    }
+
+    func test_workSavedAfterADeclineIsNeverSequencedBehindTheDeclinedSend() throws {
+        let context = try makeContainer().mainContext
+        let coordinator = SiteVisitPersistenceCoordinator(modelContext: context, companyId: companyId)
+        let visit = makeVisit()
+        visit.needsSync = false; visit.lastSyncedAt = Date()
+        context.insert(visit); try context.save()
+        let draft = SiteVisitIdentityDraft(siteVisitId: visitId, companyId: companyId, contactName: "Synthetic customer")
+        try coordinator.commit(queueing: false) { context.insert(draft) }
+        _ = try coordinator.queueDirtyWork(siteVisitId: visitId)
+        let identity = try XCTUnwrap(context.fetch(FetchDescriptor<SyncOperation>()).first { $0.entityId == draft.id })
+        identity.status = "declined"
+        try context.save()
+
+        let answer = SiteVisitChecklistAnswer(siteVisitId: visitId, companyId: companyId, opportunityId: nil,
+            siteVisitTypeId: nil, fieldId: "scope", label: "Scope", kind: .shortText, required: false, sortOrder: 1)
+        try coordinator.commit(queueing: false) {
+            context.insert(answer); answer.answerValue = .text("Two posts"); answer.needsSync = true
+        }
+        _ = try coordinator.queueDirtyWork(siteVisitId: visitId)
+
+        let operations = try context.fetch(FetchDescriptor<SyncOperation>())
+        let write = try XCTUnwrap(operations.first { $0.entityId == answer.id })
+        XCTAssertNotEqual(write.dependsOnId, identity.id.uuidString.lowercased(),
+            "A declined send never completes; work queued behind it would never upload")
+        XCTAssertTrue(SiteVisitOutboundSync.isReady(write, in: operations), "The answer uploads on its own")
+        XCTAssertEqual(identity.status, "declined")
+    }
+
+    func test_saveNeverRestartsOrDuplicatesAQueuedPhotoUpload() throws {
+        let context = try makeContainer().mainContext
+        let coordinator = SiteVisitPersistenceCoordinator(modelContext: context, companyId: companyId)
+        let visit = makeVisit()
+        let artifact = SiteVisitCaptureArtifact(siteVisitId: visit.id, companyId: companyId,
+            kind: .photo, source: .camera, localAssetURL: "local://project_images/original.jpg")
+        try coordinator.commit { context.insert(visit); context.insert(artifact) }
+        let upload = try XCTUnwrap(context.fetch(FetchDescriptor<SyncOperation>()).first {
+            $0.operationType == SiteVisitSyncOperation.mediaOperationType
+        })
+        let uploads = { try context.fetch(FetchDescriptor<SyncOperation>()).filter {
+            $0.operationType == SiteVisitSyncOperation.mediaOperationType
+        } }
+
+        upload.status = "inProgress"; try context.save()
+        _ = try coordinator.queueDirtyWork(siteVisitId: visitId)
+        XCTAssertEqual(try uploads().count, 1, "An upload in flight is not queued a second time")
+
+        upload.status = "declined"; upload.retryCount = 6; try context.save()
+        _ = try coordinator.queueDirtyWork(siteVisitId: visitId)
+        XCTAssertEqual(upload.status, "declined")
+        XCTAssertEqual(upload.retryCount, 6)
+        XCTAssertEqual(try uploads().count, 1)
+    }
+
     private func makeVisit() -> SiteVisit {
         SiteVisit(
             id: visitId,

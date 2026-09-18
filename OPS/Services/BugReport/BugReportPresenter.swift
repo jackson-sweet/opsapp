@@ -349,6 +349,16 @@ extension BugReportPresenter {
     var testingPickLayerIsUp: Bool { pickHost != nil }
     var testingDraft: BugReportDraft? { draft }
 
+    /// What Vision read off the pick-time capture, once that read has
+    /// finished; nil while it is still running (or with no pick session). A
+    /// lift before the read finishes gets at most `textWaitLimit` of grace —
+    /// the instant-tap case, named by role — so a test proving the naming
+    /// waits for this, as an operator's aim does.
+    var testingRecognizedText: [BugReportTextLine]? {
+        guard let pickSession, pickSession.linesReady else { return nil }
+        return pickSession.lines
+    }
+
     /// The finger lifting at `point` (pick-layer points, which are app-window
     /// points: both windows fill the same scene).
     func testingLift(at point: CGPoint) {

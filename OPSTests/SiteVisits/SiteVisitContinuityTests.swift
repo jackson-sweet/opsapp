@@ -145,21 +145,116 @@ final class SiteVisitContinuityTests: XCTestCase {
         let freshContext = ModelContext(try XCTUnwrap(containers.last))
         let saved = try XCTUnwrap(freshContext.fetch(FetchDescriptor<SiteVisitChecklistAnswer>()).first { $0.id == answer.id })
         XCTAssertEqual(saved.answerValue.text, "Newest")
-        XCTAssertTrue(try context.fetch(FetchDescriptor<SyncOperation>()).contains { $0.entityId == answer.id })
+        XCTAssertTrue(saved.needsSync, "The retried edit is durable on the phone and still owed to the server")
+        XCTAssertFalse(try context.fetch(FetchDescriptor<SyncOperation>()).contains { $0.entityId == answer.id },
+            "A flush is typing: it stays on the phone until the visit is saved")
+        XCTAssertTrue(vm.saveDraft())
+        let queued = try XCTUnwrap(context.fetch(FetchDescriptor<SyncOperation>()).first { $0.entityId == answer.id })
+        XCTAssertEqual(SiteVisitVersionedSync.command(queued)?.rows.first?.values["answer_value"]?["text"], .string("Newest"),
+            "Saving the visit queues the retried edit, not the first keystroke")
     }
 
+    /// Stopped work waits for the operator: a permanent rejection stays held
+    /// for review, a send the operator declined stays declined. Typing is
+    /// local-only, so saving the visit is the moment this can go wrong — the
+    /// same identity and answer, saved again, must restart neither send.
     func test_unchangedIdentityAndAnswerNeverRestartStoppedWork() throws {
+        let (vm, context) = try makeVisit()
+        let enterIdentity = {
+            vm.updateIdentityDraft(searchText: "", clientName: "", contactName: "Synthetic customer",
+                preferredEmail: "", additionalEmailsText: "", phoneNumber: "", address: "", notes: "")
+        }
+        enterIdentity()
+        let answer = try XCTUnwrap(vm.checklistAnswers.first { $0.kind == .longText })
+        vm.updateChecklistAnswer(answer, value: .text("Synthetic scope"))
+        XCTAssertTrue(vm.saveDraft())
+        let draftId = try XCTUnwrap(vm.identityDraft).id
+        try stopSend(of: draftId, in: context) { send in
+            send.status = "parked"; send.retryCount = 8
+            send.lastAttemptedAt = Date(timeIntervalSince1970: 1_789_000_000)
+        }
+        try stopSend(of: answer.id, in: context) { send in
+            send.status = "declined"; send.siteVisitWriteAttemptedAt = Date(timeIntervalSince1970: 1_789_000_000)
+        }
+
+        enterIdentity()
+        vm.updateChecklistAnswer(answer, value: .text("Synthetic scope"))
+        XCTAssertTrue(vm.saveDraft())
+
+        let identitySends = try storedSends(of: draftId, in: context)
+        XCTAssertEqual(identitySends.map(\.status), ["parked"], "No restart, and no second identity send")
+        XCTAssertEqual(identitySends.first?.retryCount, 8)
+        XCTAssertEqual(try storedSends(of: answer.id, in: context).map(\.status), ["declined"],
+            "The declined command already carries this answer; a successor would send it anyway")
+    }
+
+    /// The other half of the rule: an edit made on the phone after a send
+    /// stopped is what restarts it — when the visit is saved, never on the
+    /// keystroke.
+    func test_editAfterAStopRestartsThatSendWhenTheVisitIsSaved() throws {
         let (vm, context) = try makeVisit()
         vm.updateIdentityDraft(searchText: "", clientName: "", contactName: "Synthetic customer",
             preferredEmail: "", additionalEmailsText: "", phoneNumber: "", address: "", notes: "")
-        let draft = try XCTUnwrap(vm.identityDraft)
-        let operation = try XCTUnwrap(context.fetch(FetchDescriptor<SyncOperation>()).first { $0.entityId == draft.id })
-        operation.status = "parked"; operation.retryCount = 8
-        try context.save()
-        vm.updateIdentityDraft(searchText: "", clientName: "", contactName: "Synthetic customer",
+        XCTAssertTrue(vm.saveDraft())
+        let draftId = try XCTUnwrap(vm.identityDraft).id
+        try stopSend(of: draftId, in: context) { $0.status = "declined" }
+
+        vm.updateIdentityDraft(searchText: "", clientName: "", contactName: "Synthetic site lead",
             preferredEmail: "", additionalEmailsText: "", phoneNumber: "", address: "", notes: "")
-        XCTAssertEqual(operation.status, "parked")
-        XCTAssertEqual(operation.retryCount, 8)
+        XCTAssertEqual(try storedSends(of: draftId, in: context).map(\.status), ["declined"], "Typing stays on the phone")
+        XCTAssertTrue(vm.saveDraft())
+
+        let sends = try storedSends(of: draftId, in: context)
+        XCTAssertEqual(sends.map(\.status), ["pending"], "The stopped send is revived with the edit, not duplicated")
+        XCTAssertEqual(sends.first?.retryCount, 0)
+    }
+
+    /// Photo bytes upload as they are captured. Saving the visit is not a
+    /// retry button for a photo upload that stopped — markup and PENDING WORK
+    /// are the ways to restart one.
+    func test_savingTheVisitNeverRestartsAStoppedPhotoUpload() throws {
+        let (vm, context) = try makeVisit()
+        let item = StagedCaptureItem(id: UUID().uuidString.lowercased(), localURL: "local://project_images/synthetic.jpg",
+            originalLocalURL: "local://project_images/synthetic.original", capturedAt: Date(), pixelWidth: 1, pixelHeight: 1)
+        let batch = StagedCaptureBatch(id: UUID().uuidString.lowercased(), owner: try XCTUnwrap(vm.captureOwner), items: [item])
+        XCTAssertTrue(vm.attachStagedPhotos(batch))
+        try stopSend(of: item.id, operationType: SiteVisitSyncOperation.mediaOperationType, in: context) { send in
+            send.status = "declined"; send.retryCount = 5
+        }
+
+        XCTAssertTrue(vm.saveDraft())
+
+        let uploads = try storedSends(of: item.id, operationType: SiteVisitSyncOperation.mediaOperationType, in: context)
+        XCTAssertEqual(uploads.map(\.status), ["declined"], "Not restarted, and not queued a second time")
+        XCTAssertEqual(uploads.first?.retryCount, 5)
+    }
+
+    /// One queued send as the store holds it. The capture model persists
+    /// through its own isolated context, so an instance held from another
+    /// context can be stale — read and write through a fresh one.
+    private struct StoredSend {
+        let status: String
+        let retryCount: Int
+    }
+
+    private func storedSends(of entityId: String, operationType: String? = nil,
+                             in context: ModelContext) throws -> [StoredSend] {
+        let fresh = ModelContext(context.container)
+        return try fresh.fetch(FetchDescriptor<SyncOperation>())
+            .filter { $0.entityId == entityId && (operationType == nil || $0.operationType == operationType) }
+            .map { StoredSend(status: $0.status, retryCount: $0.retryCount) }
+    }
+
+    /// Stands in for the sender or PENDING WORK stopping a send: written and
+    /// saved from a context of its own, as those are.
+    private func stopSend(of entityId: String, operationType: String? = nil, in context: ModelContext,
+                          _ stop: (SyncOperation) -> Void) throws {
+        let writer = ModelContext(context.container)
+        let send = try XCTUnwrap(writer.fetch(FetchDescriptor<SyncOperation>()).first {
+            $0.entityId == entityId && (operationType == nil || $0.operationType == operationType)
+        })
+        stop(send)
+        try writer.save()
     }
 
     func test_stageSaveCommitsDurableCommandWithoutRemoteDelivery() async throws {

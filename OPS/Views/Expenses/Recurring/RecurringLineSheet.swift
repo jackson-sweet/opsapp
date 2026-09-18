@@ -28,8 +28,30 @@ struct RecurringLineSheet: View {
 
     @EnvironmentObject private var dataController: DataController
     @Environment(\.dismiss) private var dismiss
-    @StateObject private var viewModel = RecurringReimbursementViewModel()
+    @StateObject private var viewModel: RecurringReimbursementViewModel
     @State private var editorMode: RecurringSheetMode?
+
+    /// `viewModel` is injectable so the sheet can be rendered from a seeded
+    /// model instead of the network (`RecurringReimbursementSnapshotTests`).
+    /// Production always takes the default.
+    @MainActor
+    init(
+        line: ExpenseDTO,
+        batchIsPaid: Bool,
+        canManage: Bool,
+        batches: [ExpenseBatchDTO],
+        nameFor: @escaping (String) -> String,
+        onChanged: @escaping () -> Void = {},
+        viewModel: RecurringReimbursementViewModel? = nil
+    ) {
+        self.line = line
+        self.batchIsPaid = batchIsPaid
+        self.canManage = canManage
+        self.batches = batches
+        self.nameFor = nameFor
+        self.onChanged = onChanged
+        _viewModel = StateObject(wrappedValue: viewModel ?? RecurringReimbursementViewModel())
+    }
 
     private var setup: ExpenseRecurringReimbursementDTO? {
         viewModel.setup(for: line)

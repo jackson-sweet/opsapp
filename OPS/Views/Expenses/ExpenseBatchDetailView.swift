@@ -48,8 +48,25 @@ struct ExpenseBatchDetailView: View {
     @State private var showRejectConfirmation = false
     @State private var hasLeftDetail = false
     @State private var correctingExpense: ExpenseDTO? = nil
-    @StateObject private var recurring = RecurringReimbursementViewModel()
+    @StateObject private var recurring: RecurringReimbursementViewModel
     @State private var recurringSheet: RecurringSheetMode? = nil
+
+    /// `recurring` and `initialExpandedExpenseId` are injectable so the
+    /// recurring states can be rendered from a seeded model instead of the
+    /// network, and opened without a tap
+    /// (`RecurringReimbursementSnapshotTests`). Production takes the defaults.
+    @MainActor
+    init(
+        batch: ExpenseBatchDTO,
+        viewModel: ExpenseViewModel,
+        recurring: RecurringReimbursementViewModel? = nil,
+        initialExpandedExpenseId: String? = nil
+    ) {
+        self.batch = batch
+        self.viewModel = viewModel
+        _recurring = StateObject(wrappedValue: recurring ?? RecurringReimbursementViewModel())
+        _expandedExpenseId = State(initialValue: initialExpandedExpenseId)
+    }
 
     // MARK: - Computed
 

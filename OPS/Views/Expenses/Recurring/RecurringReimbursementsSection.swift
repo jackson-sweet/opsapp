@@ -20,8 +20,20 @@ struct RecurringReimbursementsSection: View {
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var permissionStore: PermissionStore
     @Query private var users: [User]
-    @StateObject private var viewModel = RecurringReimbursementViewModel()
+    @StateObject private var viewModel: RecurringReimbursementViewModel
     @State private var sheet: RecurringSheetMode?
+
+    /// `viewModel` is injectable so the list can be rendered from a seeded
+    /// model instead of the network (`RecurringReimbursementSnapshotTests`).
+    /// Production always takes the default.
+    @MainActor
+    init(
+        batches: [ExpenseBatchDTO],
+        viewModel: RecurringReimbursementViewModel? = nil
+    ) {
+        self.batches = batches
+        _viewModel = StateObject(wrappedValue: viewModel ?? RecurringReimbursementViewModel())
+    }
 
     private var canManage: Bool { permissionStore.can("expenses.approve") }
 

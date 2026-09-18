@@ -7,6 +7,10 @@
 //  configurable products surface inline option controls + live unit-price
 //  preview. Snapshot is persisted on save.
 //
+//  Count options (end posts, corners) open blank and stay blank until the
+//  operator enters a number; a required option left blank stops the save and
+//  is named. The rules live in `LineItemConfigurationForm`.
+//
 
 import SwiftUI
 import SwiftData
@@ -19,6 +23,11 @@ struct LineItemEditSheet: View {
 
     @Environment(\.dismiss) private var dismiss
 
+    /// The line's own product when the sheet opens an existing line. The
+    /// estimate form hands no product in for an edit, so without this an
+    /// existing configurable line would open with no options at all — and a
+    /// count it never carried could not be entered on the phone.
+    @Query private var linkedProducts: [Product]
     @Query private var allOptions: [ProductOption]
     @Query private var allOptionValues: [ProductOptionValue]
     @Query private var allModifiers: [ProductPricingModifier]
@@ -33,14 +42,35 @@ struct LineItemEditSheet: View {
     @State private var isSaving = false
     @State private var productId: String? = nil
     @State private var configuredOptions: [String: ProductConfigurationResolver.OptionValue] = [:]
+    @State private var didHydrate = false
+    /// Set by a save refused for blank required options. The prompt then
+    /// tracks the line live and clears itself once every option is entered.
+    @State private var showsMissingOptions = false
 
     private let resolver = ProductConfigurationResolver()
+    private static let saveButtonScrollId = "line_item_save_button"
+
+    init(
+        estimateId: String,
+        viewModel: EstimateViewModel,
+        editing: EstimateLineItem? = nil,
+        product: Product? = nil
+    ) {
+        self.estimateId = estimateId
+        self.viewModel = viewModel
+        self.editing = editing
+        self.product = product
+        let linkedProductId = product?.id ?? editing?.productId ?? ""
+        _linkedProducts = Query(filter: #Predicate<Product> { $0.id == linkedProductId })
+    }
+
+    private var resolvedProduct: Product? {
+        product ?? linkedProducts.first
+    }
 
     private var productOptions: [ProductOption] {
-        guard let p = product else { return [] }
-        return allOptions
-            .filter { $0.productId == p.id }
-            .sorted { ($0.sortOrder, $0.name) < ($1.sortOrder, $1.name) }
+        guard let p = resolvedProduct else { return [] }
+        return LineItemConfigurationForm.displayOrder(allOptions.filter { $0.productId == p.id })
     }
 
     private var productOptionValues: [ProductOptionValue] {
@@ -49,12 +79,12 @@ struct LineItemEditSheet: View {
     }
 
     private var productModifiers: [ProductPricingModifier] {
-        guard let p = product else { return [] }
+        guard let p = resolvedProduct else { return [] }
         return allModifiers.filter { $0.productId == p.id }
     }
 
     private var resolution: ProductConfigurationResolver.Resolution? {
-        guard let p = product, !productOptions.isEmpty else { return nil }
+        guard let p = resolvedProduct, !productOptions.isEmpty else { return nil }
         return resolver.resolve(
             product: p,
             options: productOptions,
@@ -77,6 +107,20 @@ struct LineItemEditSheet: View {
         !description.trimmingCharacters(in: .whitespaces).isEmpty &&
         (Double(quantity) ?? 0) > 0 &&
         (resolution != nil || (Double(unitPrice) ?? 0) >= 0)
+    }
+
+    /// Required options with no usable value, in display order. Empty for a
+    /// flat product.
+    private var missingOptions: [ProductOption] {
+        LineItemConfigurationForm.missingRequiredOptions(
+            options: productOptions,
+            optionValues: productOptionValues,
+            configured: configuredOptions
+        )
+    }
+
+    private var visibleMissingOptionIds: Set<String> {
+        showsMissingOptions ? Set(missingOptions.map(\.id)) : []
     }
 
     var body: some View {
@@ -184,7 +228,7 @@ struct LineItemEditSheet: View {
                     }
                     .padding(.horizontal, OPSStyle.Layout.spacing3)
 
-                    if !productOptions.isEmpty, let p = product, let res = resolution {
+                    if !productOptions.isEmpty, let p = resolvedProduct, let res = resolution {
                         configurationPanel(product: p, resolution: res)
                     }
 
@@ -209,11 +253,22 @@ struct LineItemEditSheet: View {
                     .padding(.horizontal, OPSStyle.Layout.spacing3)
                     .padding(.vertical, OPSStyle.Layout.spacing2)
 
-                    Button(editing != nil ? "SAVE CHANGES" : "ADD LINE ITEM") { save() }
-                        .opsPrimaryButtonStyle()
-                        .disabled(!isValid || isSaving)
-                        .opacity(isValid ? 1 : 0.5)
-                        .padding(.horizontal, OPSStyle.Layout.spacing3)
+                    ScrollViewReader { scrollProxy in
+                        VStack(spacing: OPSStyle.Layout.spacing3) {
+                            if showsMissingOptions, !missingOptions.isEmpty {
+                                missingOptionsPrompt(missingOptions)
+                                    .padding(.horizontal, OPSStyle.Layout.spacing3)
+                                    .transition(.opacity)
+                            }
+
+                            Button(editing != nil ? "SAVE CHANGES" : "ADD LINE ITEM") { attemptSave(scrollProxy) }
+                                .opsPrimaryButtonStyle()
+                                .disabled(!isValid || isSaving)
+                                .opacity(isValid ? 1 : 0.5)
+                                .padding(.horizontal, OPSStyle.Layout.spacing3)
+                                .id(Self.saveButtonScrollId)
+                        }
+                    }
 
                     if editing != nil {
                         Button("DELETE LINE ITEM") { deleteItem() }
@@ -222,6 +277,7 @@ struct LineItemEditSheet: View {
                     }
                 }
                 .padding(.top, OPSStyle.Layout.spacing3)
+                .animation(OPSStyle.Animation.panel, value: showsMissingOptions && !missingOptions.isEmpty)
             }
             .background(OPSStyle.Colors.background.ignoresSafeArea())
             .navigationTitle(editing != nil ? "EDIT LINE ITEM" : "NEW LINE ITEM")
@@ -285,10 +341,16 @@ struct LineItemEditSheet: View {
     @ViewBuilder
     private func optionRow(_ opt: ProductOption) -> some View {
         HStack(spacing: OPSStyle.Layout.spacing2) {
+            // Rose names a blank required option once a save has been refused
+            // for it — paired with the prompt that names it in words.
             Text(opt.name.uppercased())
                 .font(OPSStyle.Typography.smallCaption)
-                .foregroundColor(OPSStyle.Colors.secondaryText)
-                .frame(width: 110, alignment: .leading)
+                .foregroundColor(
+                    visibleMissingOptionIds.contains(opt.id)
+                        ? OPSStyle.Colors.roseTextM
+                        : OPSStyle.Colors.secondaryText
+                )
+                .frame(width: OPSStyle.Layout.optionRowLabelWidth, alignment: .leading)
 
             Spacer()
 
@@ -306,14 +368,14 @@ struct LineItemEditSheet: View {
 
     @ViewBuilder
     private func selectControl(_ opt: ProductOption) -> some View {
-        let values = allOptionValues
-            .filter { $0.optionId == opt.id }
-            .sorted { ($0.sortOrder, $0.value) < ($1.sortOrder, $1.value) }
+        let values = LineItemConfigurationForm.sortedValues(for: opt, in: allOptionValues)
         let currentId: String? = {
             if case .selectId(let id) = configuredOptions[opt.id] { return id }
             return nil
         }()
-        let currentLabel = values.first { $0.id == currentId }?.value ?? (opt.defaultValue ?? "—")
+        // Nothing chosen reads "—", never the catalogue default's text: the
+        // line carries no value until one is picked.
+        let currentValue = values.first { $0.id == currentId }?.value
 
         Menu {
             ForEach(values) { v in
@@ -323,9 +385,9 @@ struct LineItemEditSheet: View {
             }
         } label: {
             HStack(spacing: OPSStyle.Layout.spacing1) {
-                Text(currentLabel)
+                Text(currentValue ?? "—")
                     .font(OPSStyle.Typography.body)
-                    .foregroundColor(OPSStyle.Colors.primaryText)
+                    .foregroundColor(currentValue == nil ? OPSStyle.Colors.text3 : OPSStyle.Colors.primaryText)
                 Image(systemName: "chevron.down")
                     .font(.system(size: OPSStyle.Layout.IconSize.sm))
                     .foregroundColor(OPSStyle.Colors.secondaryText)
@@ -341,41 +403,42 @@ struct LineItemEditSheet: View {
         }
     }
 
+    /// A count: "—" until entered, then the number. Minus from blank enters 0
+    /// and plus enters 1, so "none" is one tap and reads differently from
+    /// "not entered". 0 is the floor — once a count is entered it never goes
+    /// back to blank.
+    ///
+    /// The value is set at the card data size, a full step apart from the −/+
+    /// pair, so a blank "—" can never be read as a third minus button. After a
+    /// refused save a blank count's "—" turns rose with its label.
     @ViewBuilder
     private func integerControl(_ opt: ProductOption) -> some View {
-        let current: Int = {
-            if case .integer(let n) = configuredOptions[opt.id] { return n }
-            return 0
-        }()
-        HStack(spacing: OPSStyle.Layout.spacing2) {
-            Button {
-                let next = max(0, current - 1)
-                configuredOptions[opt.id] = .integer(next)
-            } label: {
-                Image(systemName: "minus")
-                    .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-                    .frame(width: 36, height: 36)
-                    .nestedCard()
-            }
-            .buttonStyle(PlainButtonStyle())
+        let count = LineItemConfigurationForm.count(in: configuredOptions, optionId: opt.id)
+        HStack(spacing: OPSStyle.Layout.spacing3) {
+            Text(count.map { "\($0)" } ?? "—")
+                .font(OPSStyle.Typography.dataValueLg)
+                .foregroundColor(
+                    visibleMissingOptionIds.contains(opt.id)
+                        ? OPSStyle.Colors.roseTextM
+                        : (count == nil ? OPSStyle.Colors.text3 : OPSStyle.Colors.text)
+                )
+                .monospacedDigit()
+                .frame(minWidth: OPSStyle.Layout.counterValueMinWidth, alignment: .trailing)
+                .accessibilityLabel(count.map { "\($0)" } ?? "Not entered")
+                .accessibilityIdentifier("line_item_count_\(opt.id)_value")
 
-            Text("\(current)")
-                .font(OPSStyle.Typography.dataValue)
-                .foregroundColor(OPSStyle.Colors.primaryText)
-                .frame(minWidth: 36)
-
-            Button {
-                let next = min(999, current + 1)
-                configuredOptions[opt.id] = .integer(next)
-            } label: {
-                Image(systemName: "plus")
-                    .font(.system(size: OPSStyle.Layout.IconSize.sm, weight: .semibold))
-                    .foregroundColor(OPSStyle.Colors.primaryText)
-                    .frame(width: 36, height: 36)
-                    .nestedCard()
-            }
-            .buttonStyle(PlainButtonStyle())
+            OPSCounterStepper(
+                label: opt.name,
+                canDecrement: LineItemConfigurationForm.canDecrement(count),
+                canIncrement: LineItemConfigurationForm.canIncrement(count),
+                onDecrement: {
+                    configuredOptions[opt.id] = .integer(LineItemConfigurationForm.decremented(count))
+                },
+                onIncrement: {
+                    configuredOptions[opt.id] = .integer(LineItemConfigurationForm.incremented(count))
+                },
+                accessibilityIdentifierRoot: "line_item_count_\(opt.id)"
+            )
         }
     }
 
@@ -394,6 +457,29 @@ struct LineItemEditSheet: View {
     }
 
     // MARK: - Components
+
+    /// Shown above the save button after a save is refused: what is missing,
+    /// by name. Same rose blocker panel the catalogue flows use.
+    private func missingOptionsPrompt(_ missing: [ProductOption]) -> some View {
+        VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing1) {
+            Text(LineItemConfigurationForm.blockedTitle)
+                .font(OPSStyle.Typography.metadata)
+                .foregroundColor(OPSStyle.Colors.roseTextM)
+            Text(LineItemConfigurationForm.blockedMessage(for: missing))
+                .font(OPSStyle.Typography.smallCaption)
+                .foregroundColor(OPSStyle.Colors.roseTextM)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("line_item_missing_options_message")
+        }
+        .padding(OPSStyle.Layout.spacing3)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(OPSStyle.Colors.roseFillM)
+        .clipShape(RoundedRectangle(cornerRadius: OPSStyle.Layout.cardRadius))
+        .overlay {
+            RoundedRectangle(cornerRadius: OPSStyle.Layout.cardRadius)
+                .stroke(OPSStyle.Colors.roseLineM, lineWidth: OPSStyle.Layout.Border.standard)
+        }
+    }
 
     private func sectionHeader(_ title: String) -> some View {
         HStack {
@@ -419,6 +505,11 @@ struct LineItemEditSheet: View {
     // MARK: - Hydration
 
     private func hydrateFromInputs() {
+        // onAppear can fire again (a menu or keyboard dismissing); hydrate
+        // once so it never overwrites what the operator has entered.
+        guard !didHydrate else { return }
+        didHydrate = true
+
         if let item = editing {
             description = item.name
             type = item.type
@@ -430,45 +521,51 @@ struct LineItemEditSheet: View {
             isOptional = item.optional
             isTaxable = item.taxable
             productId = item.productId
-            if let json = item.configuredOptionsJSON {
-                configuredOptions = decodeConfiguredOptions(json)
-            }
-        } else if let p = product {
+            configuredOptions = LineItemConfigurationForm.hydrated(
+                snapshotJSON: item.configuredOptionsJSON,
+                options: productOptions,
+                optionValues: productOptionValues
+            )
+        } else if let p = resolvedProduct {
             description = p.name
             type = p.type
             unit = p.pricingUnit.rawValue
             productId = p.id
             unitPrice = String(format: "%.2f", p.basePrice)
             isTaxable = p.taxable
-            seedDefaultsForOptions()
+            configuredOptions = LineItemConfigurationForm.seeded(
+                configuredOptions,
+                options: productOptions,
+                optionValues: productOptionValues
+            )
         }
-    }
-
-    private func seedDefaultsForOptions() {
-        for opt in productOptions {
-            if configuredOptions[opt.id] != nil { continue }
-            switch opt.kind {
-            case .select:
-                let values = allOptionValues
-                    .filter { $0.optionId == opt.id }
-                    .sorted { ($0.sortOrder, $0.value) < ($1.sortOrder, $1.value) }
-                let match = values.first { $0.value == opt.defaultValue } ?? values.first
-                if let m = match { configuredOptions[opt.id] = .selectId(m.id) }
-            case .integer:
-                let n = Int(opt.defaultValue ?? "0") ?? 0
-                configuredOptions[opt.id] = .integer(n)
-            case .boolean:
-                let b = (opt.defaultValue ?? "false").lowercased() == "true"
-                configuredOptions[opt.id] = .boolean(b)
-            }
-        }
-    }
-
-    private func decodeConfiguredOptions(_ json: String) -> [String: ProductConfigurationResolver.OptionValue] {
-        ProductConfigurationResolver.decodeConfiguredOptions(json)
     }
 
     // MARK: - Actions
+
+    /// The save button. A configurable line with a blank required option is
+    /// refused here — named in the prompt, with a warning haptic and a
+    /// VoiceOver announcement — and never reaches the server. The prompt opens
+    /// directly above the button; the sheet scrolls so the button stays in
+    /// view beneath it instead of being pushed out from under the thumb.
+    private func attemptSave(_ scrollProxy: ScrollViewProxy) {
+        let missing = missingOptions
+        guard missing.isEmpty else {
+            showsMissingOptions = true
+            DispatchQueue.main.async {
+                withAnimation(OPSStyle.Animation.panel) {
+                    scrollProxy.scrollTo(Self.saveButtonScrollId, anchor: .bottom)
+                }
+            }
+            UINotificationFeedbackGenerator().notificationOccurred(.warning)
+            UIAccessibility.post(
+                notification: .announcement,
+                argument: LineItemConfigurationForm.blockedMessage(for: missing)
+            )
+            return
+        }
+        save()
+    }
 
     private func save() {
         isSaving = true
@@ -476,12 +573,11 @@ struct LineItemEditSheet: View {
         Task {
             defer { isSaving = false }
             let res = resolution
-            let configuredJSON: String? = {
-                guard let res = res else { return nil }
-                guard let data = try? JSONEncoder().encode(res.serializedOptions),
-                      let str = String(data: data, encoding: .utf8) else { return nil }
-                return str
-            }()
+            // A blank count has no key in the snapshot; an entered 0 is the
+            // JSON number 0.
+            let configuredJSON: String? = res == nil
+                ? nil
+                : LineItemConfigurationForm.snapshotJSON(configuredOptions)
 
             if let item = editing {
                 let priceForUpdate: Double? = res?.unitPrice ?? Double(unitPrice)
@@ -491,7 +587,10 @@ struct LineItemEditSheet: View {
                     description: description,
                     quantity: Double(quantity),
                     unitPrice: priceForUpdate,
-                    isOptional: isOptional
+                    isOptional: isOptional,
+                    configuredOptionsJSON: configuredJSON,
+                    resolvedUnitPrice: res?.unitPrice,
+                    resolvedOptionsLabel: res?.label
                 )
             } else {
                 let priceForCreate = res?.unitPrice ?? (Double(unitPrice) ?? 0)

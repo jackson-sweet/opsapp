@@ -609,6 +609,12 @@ enum OPSStyle {
         static let wizardInstructionBarClearance: CGFloat = 80.0
         static let emptyStatePadding: CGFloat = 48.0    // §10 empty/error block, vertical (48px 20px)
         static let emptyStateActionWidth: CGFloat = 200.0 // §10 compact centered CTA under an empty state
+        /// Configurable line item option rows (`LineItemEditSheet`): the fixed
+        /// label column, so every option's control starts on the same edge.
+        static let optionRowLabelWidth: CGFloat = 110.0
+        /// A counter's value cell — one step target wide, so a blank "—", "0"
+        /// and "12" occupy the same cell and the −/+ pair never shifts.
+        static let counterValueMinWidth: CGFloat = touchTargetMin
 
         // Schedule sheet — the one-screen date picker (`CalendarSchedulerSheet`).
         // Fixed chrome around a single scrolling region, so each band's height

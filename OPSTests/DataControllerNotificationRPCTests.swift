@@ -29,7 +29,12 @@
 //    3. The server owns recipient derivation. An empty local crew, an absent
 //       local project row, or a locally-computed member/count map may no longer
 //       gate or shape the call — only a genuinely empty unit of work does
-//       (no added assignees, no spawned pairs).
+//       (no added assignees, no spawned pairs). A reschedule has one local
+//       precondition of its own: the new dates must actually be saved. After
+//       the flush the task has to be live on this phone with no edit still
+//       queued — a timed-out drain or a refused write is not a saved
+//       schedule, and the server would word the notice from the OLD dates
+//       (the 2026-09-10 calendar repair).
 //    4. Push targets rail truth. Each dispatch returns exactly the ids (or
 //       resolved targets) it fed to the push lane: the ids the SERVER reported
 //       NEW rail rows for. An empty server result means no push at all, so rail
@@ -78,10 +83,14 @@ final class DataControllerNotificationRPCTests: XCTestCase {
         var scheduleEntries: [NotificationRepository.ScheduleRunSummaryEntry] = []
         var failure: Error?
 
+        /// What the drain changes on this phone as it lands the queued work.
+        var onFlush: (() -> Void)?
+
         /// Stands in for `syncEngine.pushPending()` — the step that puts the
         /// mutation's rows on the server before the RPC reads them.
         func recordFlush() {
             calls.append(.flush)
+            onFlush?()
         }
 
         func notifyTaskCompleted(taskId: String) async throws -> [String] {
@@ -272,6 +281,7 @@ final class DataControllerNotificationRPCTests: XCTestCase {
         let fixture = try makeFixture()
         fixture.spy.created = [operatorID]
         let taskId = "a417a994-2b5e-4d90-8f61-77c0d3ea1b45"
+        try seedRescheduledTask(id: taskId, in: fixture.context)
 
         let pushed = await fixture.controller.dispatchTaskRescheduleNotification(
             taskId: taskId,
@@ -289,6 +299,7 @@ final class DataControllerNotificationRPCTests: XCTestCase {
     func test_rescheduleStillCallsTheServerWithNoLocalProjectRow() async throws {
         let fixture = try makeFixture()
         fixture.spy.created = [operatorID]
+        try seedRescheduledTask(id: "task-orphan", in: fixture.context, withLocalProject: false)
 
         let pushed = await fixture.controller.dispatchTaskRescheduleNotification(
             taskId: "task-orphan",
@@ -301,6 +312,75 @@ final class DataControllerNotificationRPCTests: XCTestCase {
             "The task's own crew is derived server-side — a missing local project row must not silence the rail"
         )
         XCTAssertTrue(pushed.isEmpty, "No local copy -> rail only")
+    }
+
+    func test_rescheduleAnnouncesTheDatesTheFlushJustLanded() async throws {
+        let fixture = try makeFixture()
+        fixture.spy.created = [operatorID]
+        let task = try seedRescheduledTask(id: "task-landing", in: fixture.context, datesStillQueued: true)
+        // The drain delivers the queued dates and settles the row on this phone.
+        fixture.spy.onFlush = { task.needsSync = false }
+
+        let pushed = await fixture.controller.dispatchTaskRescheduleNotification(
+            taskId: "task-landing",
+            push: .init(taskName: "Framing", projectName: "South deck rebuild", projectId: "p-1")
+        )
+
+        XCTAssertEqual(
+            fixture.spy.calls,
+            [.flush, .taskRescheduled(taskId: "task-landing")],
+            "The saved-dates check reads the task AFTER the flush — dates the drain just delivered are announced"
+        )
+        XCTAssertEqual(pushed, [operatorID])
+    }
+
+    func test_rescheduleWaitsWhileTheNewDatesAreStillQueued() async throws {
+        let fixture = try makeFixture()
+        fixture.spy.created = [operatorID]
+        try seedRescheduledTask(id: "task-queued", in: fixture.context, datesStillQueued: true)
+
+        let pushed = await fixture.controller.dispatchTaskRescheduleNotification(
+            taskId: "task-queued",
+            push: .init(taskName: "Framing", projectName: "South deck rebuild", projectId: "p-1")
+        )
+
+        XCTAssertEqual(
+            fixture.spy.calls,
+            [.flush],
+            "A timed-out drain or a refused write is not a saved schedule — the server would word the notice from the OLD dates"
+        )
+        XCTAssertTrue(pushed.isEmpty, "No announcement means no push")
+    }
+
+    func test_rescheduleAnnouncesNothingForADeletedTask() async throws {
+        let fixture = try makeFixture()
+        fixture.spy.created = [operatorID]
+        try seedRescheduledTask(id: "task-deleted", in: fixture.context, deletedAt: Date(timeIntervalSince1970: 1_789_000_000))
+
+        let pushed = await fixture.controller.dispatchTaskRescheduleNotification(
+            taskId: "task-deleted",
+            push: .init(taskName: "Framing", projectName: "South deck rebuild", projectId: "p-1")
+        )
+
+        XCTAssertEqual(fixture.spy.calls, [.flush], "A deleted task's dates are nobody's schedule")
+        XCTAssertTrue(pushed.isEmpty)
+    }
+
+    func test_rescheduleAnnouncesNothingForATaskThisPhoneDoesNotHold() async throws {
+        let fixture = try makeFixture()
+        fixture.spy.created = [operatorID]
+
+        let pushed = await fixture.controller.dispatchTaskRescheduleNotification(
+            taskId: "task-unknown",
+            push: nil
+        )
+
+        XCTAssertEqual(
+            fixture.spy.calls,
+            [.flush],
+            "Only the phone that moved the dates announces them, and it holds the task it moved"
+        )
+        XCTAssertTrue(pushed.isEmpty)
     }
 
     // MARK: - 4. Dependency ready (notify_dependency_ready)
@@ -585,6 +665,38 @@ final class DataControllerNotificationRPCTests: XCTestCase {
         controller.notificationSyncFlush = { spy.recordFlush() }
 
         return Fixture(controller: controller, context: context, spy: spy)
+    }
+
+    /// The task a reschedule dispatch reads after its flush. By default it is
+    /// live and its dates are saved (nothing queued), under a local project.
+    /// `withLocalProject: false` leaves the phone with no project row at all;
+    /// `datesStillQueued` keeps the moved dates waiting to reach the server.
+    @discardableResult
+    private func seedRescheduledTask(
+        id: String,
+        in context: ModelContext,
+        withLocalProject: Bool = true,
+        datesStillQueued: Bool = false,
+        deletedAt: Date? = nil
+    ) throws -> ProjectTask {
+        let task = ProjectTask(
+            id: id,
+            projectId: "project-reschedule",
+            taskTypeId: "task-type-1",
+            companyId: "co-lifecycle",
+            status: .active
+        )
+        if withLocalProject {
+            let project = Project(id: "project-reschedule", title: "South deck rebuild", status: .inProgress)
+            project.companyId = "co-lifecycle"
+            context.insert(project)
+            task.project = project
+        }
+        task.needsSync = datesStillQueued
+        task.deletedAt = deletedAt
+        context.insert(task)
+        try context.save()
+        return task
     }
 
     /// Two dependents on one project. `dependent-1` carries the title and

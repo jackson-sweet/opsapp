@@ -115,6 +115,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
         let invoiceId = additionalData?["invoiceId"] as? String
         let estimateId = additionalData?["estimateId"] as? String
         let leadId = (additionalData?["leadId"] as? String) ?? (additionalData?["opportunityId"] as? String)
+        let siteVisitId = additionalData?["siteVisitId"] as? String
         let batchId = additionalData?["batchId"] as? String
         let screen = additionalData?["screen"] as? String
 
@@ -162,18 +163,22 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
                 return
             }
 
-            // Site-visit prompts (server cron): heads-up opens the lead, START
+            // Site-visit prompts (server cron): heads-up opens the lead (or,
+            // without the Leads tab, Schedule on the visit's day); START
             // deep-links into capture via the StartSiteVisit relay. The cron
             // writes deep_link_type; accept the plain type key too. Must
             // precede the bare leadId short-circuit below, which would
-            // otherwise swallow both into a plain lead open.
-            let siteVisitLink = (additionalData?["deep_link_type"] as? String) ?? notificationType
-            if siteVisitLink == "site_visit_start", let leadId = leadId {
-                self.startSiteVisitViaCoordinator(leadId)
-                return
-            }
-            if siteVisitLink == "site_visit_heads_up", let leadId = leadId {
-                self.openLeadViaCoordinator(leadId)
+            // otherwise swallow both into a plain lead open. The payload's
+            // siteVisitId lets an assignee land on the exact visit.
+            if let kind = SiteVisitPushRoute.kind(
+                deepLinkType: additionalData?["deep_link_type"] as? String,
+                type: notificationType
+            ), let link = SiteVisitPushRoute.coordinatorLink(
+                kind: kind,
+                leadId: leadId,
+                siteVisitId: siteVisitId
+            ) {
+                self.routeSiteVisitPromptViaCoordinator(link)
                 return
             }
 
@@ -536,10 +541,16 @@ class AppDelegate: NSObject, UIApplicationDelegate, OSNotificationLifecycleListe
         }
     }
 
-    /// START-visit push taps: same durable handoff, straight into capture.
-    private func startSiteVisitViaCoordinator(_ leadId: String) {
+    /// Site-visit prompt taps (START and heads-up): same durable handoff. The
+    /// link carries the visit id when the push has one, the lead id beside it.
+    private func routeSiteVisitPromptViaCoordinator(_ link: SiteVisitPushRoute.CoordinatorLink) {
         Task { @MainActor in
-            DeepLinkCoordinator.shared.receive(entity: "site-visit-start", id: leadId, scheme: "push")
+            DeepLinkCoordinator.shared.receive(
+                entity: link.entity,
+                id: link.id,
+                scheme: "push",
+                extraUserInfo: link.extraUserInfo
+            )
         }
     }
 

@@ -115,6 +115,10 @@ enum PermissionRegistry {
         permission("pipeline.configure_stages", "Configure stages", "Pipeline", [.all]),
         permission("pipeline.manage_views", "Manage shared pipeline views", "Pipeline", [.all]),
 
+        // Walk-up capture: start a site visit with no lead. Assigned visits
+        // need no grant at all — assignment is the grant (CREW SITE VISITS P1).
+        permission("site_visits.capture", "Start site visits", "Site Visits", [.all]),
+
         permission("products.view", "View products", "Products", [.all]),
         permission("products.manage", "Manage products", "Products", [.all]),
 
@@ -227,6 +231,8 @@ enum PermissionRegistry {
         "Pipeline": "pipeline",
         "Estimates": "estimates",
         "Invoices": "pipeline",
+        // `site_visits.capture` rides the `pipeline` flag's permission list.
+        "Site Visits": "pipeline",
         "Deck Builder": "deck_builder",
     ]
 
@@ -243,6 +249,7 @@ enum PermissionRegistry {
         case "Invoices": OPSStyle.Icons.invoiceReceipt
         case "Expenses": OPSStyle.Icons.expense
         case "Pipeline": OPSStyle.Icons.accountingChart
+        case "Site Visits": OPSStyle.Icons.siteVisitCapture
         case "Calendar": OPSStyle.Icons.calendar
         case "Catalog", "Products": "shippingbox.fill"
         case "Team", "Time Off", "Profile": OPSStyle.Icons.crew

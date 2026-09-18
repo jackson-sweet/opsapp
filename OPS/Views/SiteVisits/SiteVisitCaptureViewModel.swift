@@ -131,6 +131,25 @@ final class SiteVisitCaptureViewModel: ObservableObject {
     var leadAutocreateQueue: ClientLeadAutocreateQueueing = ClientLeadAutocreateQueue.shared
     var currentDate: () -> Date = { Date() }
 
+    // MARK: - Lead authority (CREW SITE VISITS P1)
+    //
+    // An assignee may capture and complete a visit with no pipeline grant, but
+    // every binding-shaped action stays lead authority: the server freezes the
+    // visit's opportunity/project/client links and deleted_at for an
+    // assignee-only save, and refuses a stage command without lead edit. The
+    // console reads its gates from `SiteVisitAccess` so it never queues a write
+    // the server will park.
+    //
+    // Nil = unrestricted. `SiteVisitCaptureView` — the only production entry —
+    // always installs the live policy before `loadOrCreateVisit()`; a view
+    // model built directly (packet/continuity tests, previews) keeps the
+    // pre-existing behaviour.
+
+    /// The operator's lead policy, read live so a permission refresh applies.
+    var leadPolicyProvider: (() -> LeadAccessPolicy)?
+    /// Walk-up authority (`site_visits.capture` or any-scope `pipeline.convert`).
+    var walkUpAuthorityProvider: (() -> Bool)?
+
     init(
         opportunity: Opportunity?,
         companyId: String,
@@ -267,7 +286,55 @@ final class SiteVisitCaptureViewModel: ObservableObject {
     }
 
     var hasBoundOpportunity: Bool {
-        activeOpportunityId?.trimmedNilIfEmpty != nil
+        boundLeadId != nil
+    }
+
+    /// The lead this visit is bound to — the console's lead, the identity
+    /// draft's, or the visit row's own link (an assigned visit opened without
+    /// a readable lead row still carries `opportunity_id`).
+    var boundLeadId: String? {
+        activeOpportunityId?.trimmedNilIfEmpty ?? siteVisit?.opportunityId?.trimmedNilIfEmpty
+    }
+
+    /// The bound lead's `assigned_to`, known only when the console holds that
+    /// lead's row. A brief-built snapshot carries none, which reads as "no
+    /// assigned-scope authority" — never as authority.
+    private var boundLeadAssignedTo: String? {
+        guard let current = currentOpportunity,
+              let bound = boundLeadId,
+              current.id.lowercased() == bound.lowercased() else { return nil }
+        return current.assignedTo
+    }
+
+    var isProjectLinked: Bool {
+        siteVisit?.projectId?.trimmedNilIfEmpty != nil
+            || siteVisit?.projectRef?.trimmedNilIfEmpty != nil
+    }
+
+    /// What this operator may do to this visit's lead binding. See
+    /// `SiteVisitAccess.captureGates`.
+    var captureGates: SiteVisitCaptureGates {
+        guard let leadPolicyProvider else { return .unrestricted }
+        return SiteVisitAccess.captureGates(
+            policy: leadPolicyProvider(),
+            boundLeadId: boundLeadId,
+            boundLeadAssignedTo: boundLeadAssignedTo,
+            isProjectLinked: isProjectLinked
+        )
+    }
+
+    /// A resume target that is no longer open must not be replaced by a new
+    /// visit the operator has no authority to create — an assignee would mint
+    /// a lead-bound row the server refuses, and a crew member without walk-up
+    /// authority a leadless one.
+    private var canMintReplacementVisit: Bool {
+        guard let leadPolicyProvider else { return true }
+        return SiteVisitAccess.canCreateVisit(
+            policy: leadPolicyProvider(),
+            boundLeadId: currentOpportunity?.id,
+            boundLeadAssignedTo: currentOpportunity?.assignedTo,
+            canStartWalkUp: walkUpAuthorityProvider?() ?? false
+        )
     }
 
     var canCreateLeadFromIdentity: Bool {
@@ -284,9 +351,17 @@ final class SiteVisitCaptureViewModel: ObservableObject {
         }
 
         let candidates = openVisits()
-        if case .resume(let requestedId) = entryIntent,
-           let exact = candidates.first(where: { $0.id.lowercased() == requestedId.lowercased() }) {
-            siteVisit = exact
+        let resumeTarget: SiteVisit? = {
+            guard case .resume(let requestedId) = entryIntent else { return nil }
+            return candidates.first { $0.id.lowercased() == requestedId.lowercased() }
+        }()
+        if let resumeTarget {
+            siteVisit = resumeTarget
+        } else if case .resume = entryIntent, !canMintReplacementVisit {
+            // The visit closed (completed / cancelled / reassigned) between the
+            // tap and this load. Say so instead of fabricating a replacement.
+            errorMessage = "SITE VISIT UNAVAILABLE"
+            return
         } else if let opportunity = currentOpportunity {
             siteVisit = candidates.first { $0.opportunityId == opportunity.id } ?? createVisit()
         } else {
@@ -974,7 +1049,8 @@ final class SiteVisitCaptureViewModel: ObservableObject {
         stageSnapshotGeneration += 1
         let generation = stageSnapshotGeneration
         stageSnapshot = nil
-        guard let opportunityId = currentOpportunity?.id else { return }
+        guard captureGates.canMoveLeadStage,
+              let opportunityId = currentOpportunity?.id else { return }
         do {
             let snapshot = try await readStageSnapshot(opportunityId)
             guard !Task.isCancelled, generation == stageSnapshotGeneration,
@@ -996,7 +1072,10 @@ final class SiteVisitCaptureViewModel: ObservableObject {
     }
 
     func makeStageDecision() -> SiteVisitStageDecision? {
-        guard let opportunity = currentOpportunity else { return nil }
+        // No lead edit → no stage decision, so no stage command is ever queued
+        // and the review never promises a stage move it cannot make.
+        guard captureGates.canMoveLeadStage,
+              let opportunity = currentOpportunity else { return nil }
         let snapshot = stageSnapshot.flatMap { snapshot -> SiteVisitStageSnapshot? in
             guard snapshot.isSupported,
                   snapshot.opportunityId.lowercased() == opportunity.id.lowercased(),
@@ -1014,7 +1093,8 @@ final class SiteVisitCaptureViewModel: ObservableObject {
         guard preserveDraft() else { return .notCommitted(.persistence) }
         guard canComplete else { return .draftSaved }
         var command: SiteVisitStageCommand?
-        if let decision, let opportunity = currentOpportunity, let visit = siteVisit,
+        if let decision, captureGates.canMoveLeadStage,
+           let opportunity = currentOpportunity, let visit = siteVisit,
            decision.opportunityId == opportunity.id.lowercased(),
            !decision.currentStage.isTerminal, decision.targetStage != decision.currentStage,
            SiteVisitStageCommand.allowedStages.contains(decision.targetStage.rawValue) {
@@ -1052,6 +1132,8 @@ final class SiteVisitCaptureViewModel: ObservableObject {
 
     func reassignVisit(to opportunity: Opportunity, identityCommittedAt: Date? = nil) {
         guard opportunity.id != currentOpportunity?.id else { return }
+        // Re-linking changes `opportunity_id` — frozen for an assignee-only save.
+        guard captureGates.canChangeBinding else { return }
         let opportunity = Self.detachedOpportunitySnapshot(opportunity)
         guard let visit = requireVisit() else { return }
         let priorAddress = currentOpportunity?.address?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1110,6 +1192,7 @@ final class SiteVisitCaptureViewModel: ObservableObject {
     }
 
     func bindClient(_ client: Client) {
+        guard captureGates.canChangeBinding else { return }
         guard let draft = requireIdentityDraft() else { return }
         guard persistSiteVisitChanges({
             draft.clientId = client.id
@@ -1141,6 +1224,8 @@ final class SiteVisitCaptureViewModel: ObservableObject {
     /// search box. Captured photos/notes/measurements are kept; only identity and
     /// the binding are reset.
     func clearIdentitySelection() {
+        // Clearing nils the visit's `opportunity_id` — lead authority only.
+        guard captureGates.canChangeBinding else { return }
         guard let draft = requireIdentityDraft() else { return }
         let previousOpportunity = currentOpportunity
         guard persistSiteVisitChanges({
@@ -1185,6 +1270,7 @@ final class SiteVisitCaptureViewModel: ObservableObject {
         if let currentOpportunity {
             return .created(currentOpportunity)
         }
+        guard captureGates.canCreateLead else { return .failed }
 
         guard let draft = requireIdentityDraft() else { return .failed }
         guard let clientName = draft.clientName.trimmedNilIfEmpty ?? draft.contactName.trimmedNilIfEmpty else {
@@ -1480,6 +1566,9 @@ final class SiteVisitCaptureViewModel: ObservableObject {
     ) async {
         let trimmed = ProjectAutoNamer.canonicalizedAddress(rawAddress)
         let normalized = trimmed.isEmpty ? nil : trimmed
+        // Without lead edit the address stays on the visit; the lead's row is
+        // never patched (and the local lead snapshot never pretends it was).
+        let persistToLead = persistToLead && captureGates.canPersistAddressToLead
 
         guard let visit = requireVisit() else { return }
         guard persistLocally({
@@ -1614,6 +1703,9 @@ final class SiteVisitCaptureViewModel: ObservableObject {
     /// artifacts and checklist answers in one actor-bound packet command,
     /// tombstones the visit, and clears the capture state.
     func discardVisit() {
+        // Discarding tombstones the visit (`deleted_at`) — lead authority on a
+        // linked visit. The console hides DISCARD without it.
+        guard captureGates.canDiscardVisit else { return }
         guard let visit = siteVisit else { return }
         guard persistSiteVisitChanges(discarding: visit, {
             let now = Date()
@@ -1723,7 +1815,9 @@ final class SiteVisitCaptureViewModel: ObservableObject {
         let draft = SiteVisitIdentityDraft(
             siteVisitId: visit.id,
             companyId: companyId,
-            opportunityId: currentOpportunity?.id,
+            // A resumed lead-linked visit opened without the lead's row (an
+            // assignee has none) still belongs to that lead.
+            opportunityId: currentOpportunity?.id ?? visit.opportunityId,
             clientId: currentOpportunity?.clientId,
             searchText: "",
             // NAME holds the person; COMPANY (clientName) stays empty unless the

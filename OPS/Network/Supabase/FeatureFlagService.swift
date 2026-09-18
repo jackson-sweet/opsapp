@@ -48,7 +48,10 @@ enum FeatureFlagService {
             "pipeline.assign",
             "pipeline.convert",
             "pipeline.manage",
-            "pipeline.configure_stages"
+            "pipeline.configure_stages",
+            // CREW SITE VISITS P1 — walk-up capture belongs to the pipeline
+            // flag, mirroring `feature_flags('pipeline').permissions`.
+            "site_visits.capture"
         ],
         "estimates": [
             "estimates.create",

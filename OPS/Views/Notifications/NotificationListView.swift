@@ -270,6 +270,17 @@ enum LeadNotificationRouteParser {
         return nil
     }
 
+    /// Site-visit id from a booked-visit prompt's dedupe key —
+    /// `site_visit:<visit_id>:heads_up:<user_id>:<epoch>` /
+    /// `site_visit:<visit_id>:start:<user_id>:<epoch>` (bible §14.3.7). The rail
+    /// row has no siteVisitId column; the key is where the visit lives.
+    static func siteVisitId(fromDedupeKey dedupeKey: String?) -> String? {
+        guard let raw = normalize(dedupeKey) else { return nil }
+        let tokens = raw.split(separator: ":", omittingEmptySubsequences: false).map(String.init)
+        guard tokens.count >= 2, tokens[0] == "site_visit", isUUID(tokens[1]) else { return nil }
+        return tokens[1].lowercased()
+    }
+
     private static func isUUID(_ value: String) -> Bool {
         UUID(uuidString: value) != nil
     }
@@ -283,6 +294,16 @@ enum LeadNotificationRouteParser {
 struct NotificationListView: View {
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var appState: AppState
+
+    /// The LEADS tab exists for this user. A heads-up row names its lead only
+    /// for someone who can open it; the crew member it is assigned to lands on
+    /// Schedule instead (CREW SITE VISITS P1).
+    private var hasLeadsAccess: Bool {
+        SiteVisitAccess.hasLeadsAccess(
+            policy: PermissionStore.shared.leadAccessPolicy,
+            pipelineEnabled: PermissionStore.shared.isFeatureEnabled("pipeline")
+        )
+    }
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -1024,6 +1045,11 @@ struct NotificationListView: View {
                             // VISIT); web-only verbs like "Mark as Won" would lie
                             // about what the button does on iOS.
                             if LeadNotificationRouteParser.siteVisitDeepLinks.contains(notification.deepLinkType ?? "") {
+                                // A heads-up opens Schedule for a user without
+                                // the Leads tab — "OPEN LEAD" would lie.
+                                if notification.deepLinkType == "site_visit_heads_up", !hasLeadsAccess {
+                                    return "OPEN"
+                                }
                                 return notification.actionLabel ?? "OPEN LEAD"
                             }
                             if LeadNotificationRouteParser.isLeadNotification(
@@ -1347,20 +1373,25 @@ struct NotificationListView: View {
         // case at all and the button did nothing).
         let normalizedDeepLink = deepLink.trimmingCharacters(in: .whitespacesAndNewlines)
         if LeadNotificationRouteParser.siteVisitDeepLinks.contains(normalizedDeepLink) {
-            if normalizedDeepLink == "site_visit_start",
-               let opportunityId = LeadNotificationRouteParser.opportunityId(fromActionUrl: notification.actionUrl) {
-                dismiss()
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                    NotificationCenter.default.post(
-                        name: Notification.Name("StartSiteVisit"),
-                        object: nil,
-                        userInfo: ["leadId": opportunityId]
-                    )
-                }
-            } else {
-                // heads_up — or a START row whose id didn't resolve: the lead is
-                // still the right landing.
+            // The dedupe key names the exact visit; MainTabView resolves Leads
+            // tab vs. assigned visit (START) and lead vs. Schedule (heads-up).
+            let opportunityId = LeadNotificationRouteParser.opportunityId(fromActionUrl: notification.actionUrl)
+            let siteVisitId = LeadNotificationRouteParser.siteVisitId(fromDedupeKey: notification.dedupeKey)
+            guard opportunityId != nil || siteVisitId != nil else {
+                // Neither id resolved: the lead router's own fallbacks apply.
                 routeToLead(notification)
+                return
+            }
+            let relay = normalizedDeepLink == "site_visit_start"
+                ? SiteVisitPushRoute.startRelayName
+                : SiteVisitPushRoute.reminderRelayName
+            dismiss()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                NotificationCenter.default.post(
+                    name: relay,
+                    object: nil,
+                    userInfo: SiteVisitPushRoute.userInfo(leadId: opportunityId, siteVisitId: siteVisitId)
+                )
             }
             return
         }

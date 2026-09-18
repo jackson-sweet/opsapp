@@ -68,6 +68,12 @@ struct MainTabView: View {
     // Auto-log calls placed from OPS instead of showing the post-call prompt (154cb8a3).
     @AppStorage("autoLogOutboundCalls") private var autoLogOutboundCalls = true
 
+    // CREW SITE VISITS P1 — the root capture host for a visit opened without
+    // the Leads tab (an assignee), and its convert hand-off.
+    @State private var rootSiteVisitCapture: RootSiteVisitCaptureRequest?
+    @State private var rootSiteVisitConvertLead: Opportunity?
+    @State private var rootSiteVisitCaptureTask: Task<Void, Never>?
+
     // member_joined push → AssignMemberRoleSheet state
     @State private var showAssignRoleSheet = false
     @State private var assignRoleMemberId: String?
@@ -142,7 +148,12 @@ struct MainTabView: View {
         .publisher(for: Notification.Name("OpenLeadDetails"))
 
     private let startSiteVisitObserver = NotificationCenter.default
-        .publisher(for: Notification.Name("StartSiteVisit"))
+        .publisher(for: SiteVisitPushRoute.startRelayName)
+
+    // Site-visit heads-up / reminder: the lead with the Leads tab, else
+    // Schedule on the visit's day (CREW SITE VISITS P1).
+    private let siteVisitReminderObserver = NotificationCenter.default
+        .publisher(for: SiteVisitPushRoute.reminderRelayName)
 
     // SET THE TIME on an appointment-review rail row (bug 74bbb5b7). Same
     // permission posture as the two relays above; the leads tab owns the
@@ -842,29 +853,23 @@ struct MainTabView: View {
             selectTab(idx, with: OPSStyle.Animation.fast)
         }
 
-        // START-visit relay — the site_visit_start push and the calendar's
-        // START NOW both land here; the leads tab owns the ONE capture cover
-        // and drains `pendingSiteVisitStartLeadId` into it. Same permission
-        // posture as OpenLeadDetails: no pipeline access → access-denied rail.
+        // START / RESUME relay — the site_visit_start push, the rail's START
+        // row and the calendar's START NOW / RESUME VISIT all land here. With
+        // the Leads tab, its ONE capture cover drains the intent; without it,
+        // an assignee's open visit opens in the root capture host; anything
+        // else is the access-denied rail. See `handleStartSiteVisit`.
         .onReceive(startSiteVisitObserver) { notification in
-            guard let leadId = notification.userInfo?["leadId"] as? String, !leadId.isEmpty else { return }
-            appState.clearNavigationOccluders()
-            // Cold-launch / PIN-unlock drain: clear the stash so a START intent
-            // cannot re-fire on a later drain, mirroring the lead handler.
-            if notification.userInfo?[DeepLinkCoordinator.deepLinkIdUserInfoKey] != nil {
-                DeepLinkCoordinator.shared.clear()
-            }
-            guard hasLeadsAccess, let idx = leadsTabIndex else {
-                print("[PUSH_NAVIGATION] START visit for \(leadId) without pipeline access — access denied")
-                appState.presentAccessDenied(message: "This lead is no longer available.")
-                return
-            }
-            print("[PUSH_NAVIGATION] Starting site visit for lead: \(leadId)")
-            appState.pendingSiteVisitStartLeadId = leadId
-            withAnimation(OPSStyle.Animation.fast) {
-                selectedTab = idx
-            }
+            handleStartSiteVisit(notification)
         }
+
+        // Heads-up / reminder relay — see `handleSiteVisitReminder`.
+        .onReceive(siteVisitReminderObserver) { notification in
+            handleSiteVisitReminder(notification)
+        }
+        .modifier(RootSiteVisitCaptureHost(
+            request: $rootSiteVisitCapture,
+            convertLead: $rootSiteVisitConvertLead
+        ))
 
         // BOOK-a-time relay — the appointment-review rail row's SET THE TIME.
         // OPS read an email about an appointment and could not commit it; the
@@ -1307,6 +1312,161 @@ struct MainTabView: View {
     }
     
     // handlePermissionRefresh moved to PINGatedView (ContentView.swift)
+
+    // MARK: - Site visits without the Leads tab (CREW SITE VISITS P1)
+
+    private static func relayId(_ value: Any?) -> String? {
+        guard let raw = (value as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !raw.isEmpty else { return nil }
+        return raw.lowercased()
+    }
+
+    /// Local visits the relay may resolve against: the named visit and every
+    /// visit of the named lead. Scalar predicates only — assignment is matched
+    /// in Swift (`SiteVisitAccess`), never inside a `#Predicate` (an array
+    /// `contains` there segfaults SwiftData).
+    private func localSiteVisitCandidates(leadId: String?, siteVisitId: String?) -> [SiteVisitAccessCandidate] {
+        guard let context = dataController.modelContext else { return [] }
+        var visits: [SiteVisit] = []
+        if let siteVisitId {
+            let descriptor = FetchDescriptor<SiteVisit>(predicate: #Predicate<SiteVisit> { $0.id == siteVisitId })
+            visits += (try? context.fetch(descriptor)) ?? []
+        }
+        if let leadId {
+            let descriptor = FetchDescriptor<SiteVisit>(predicate: #Predicate<SiteVisit> { $0.opportunityId == leadId })
+            let known = Set(visits.map(\.id))
+            visits += ((try? context.fetch(descriptor)) ?? []).filter { !known.contains($0.id) }
+        }
+        return visits.map(SiteVisitAccessCandidate.init(visit:))
+    }
+
+    /// START / RESUME. Order (`SiteVisitAccess.resolveStart`): the Leads tab
+    /// when the user has it and the intent names a lead; else a local OPEN
+    /// visit the user is assigned to (by visit id, else by lead id) opens in
+    /// the root capture host; else the access-denied rail.
+    private func handleStartSiteVisit(_ notification: Notification) {
+        let leadId = Self.relayId(notification.userInfo?[SiteVisitPushRoute.leadIdKey])
+        let siteVisitId = Self.relayId(notification.userInfo?[SiteVisitPushRoute.siteVisitIdKey])
+        guard leadId != nil || siteVisitId != nil else { return }
+        appState.clearNavigationOccluders()
+        // Cold-launch / PIN-unlock drain: clear the stash so a START intent
+        // cannot re-fire on a later drain, mirroring the lead handler.
+        if notification.userInfo?[DeepLinkCoordinator.deepLinkIdUserInfoKey] != nil {
+            DeepLinkCoordinator.shared.clear()
+        }
+
+        let resolution = SiteVisitAccess.resolveStart(
+            leadId: leadId,
+            siteVisitId: siteVisitId,
+            hasLeadsAccess: hasLeadsAccess,
+            userId: dataController.currentUser?.id,
+            companyId: dataController.currentUser?.companyId,
+            candidates: localSiteVisitCandidates(leadId: leadId, siteVisitId: siteVisitId)
+        )
+        switch resolution {
+        case .leadsTab:
+            guard let leadId, let idx = leadsTabIndex else { return }
+            print("[PUSH_NAVIGATION] Starting site visit for lead: \(leadId)")
+            // Visit id first: the leads tab drains on the lead id's change.
+            appState.pendingSiteVisitStartVisitId = siteVisitId
+            appState.pendingSiteVisitStartLeadId = leadId
+            selectTab(idx, with: OPSStyle.Animation.fast)
+        case .rootCapture(let visitId):
+            print("[PUSH_NAVIGATION] Opening assigned site visit: \(visitId)")
+            presentRootSiteVisitCapture(visitId: visitId)
+        case .denied:
+            print("[PUSH_NAVIGATION] START visit (lead \(leadId ?? "-"), visit \(siteVisitId ?? "-")) not openable — access denied")
+            appState.presentAccessDenied(message: "This site visit is no longer available.")
+        }
+    }
+
+    /// Opens an assigned visit in the root capture host, with the lead's brief
+    /// when one is known: the local lead row if this phone has it, else the
+    /// last successful brief, else a live brief read. An authoritative brief
+    /// that no longer includes the visit means access ended — denied, not a
+    /// console that would park every write.
+    private func presentRootSiteVisitCapture(visitId: String) {
+        // Never stomp a capture already on screen: the operator is mid-visit.
+        guard rootSiteVisitCapture == nil else { return }
+        guard let context = dataController.modelContext,
+              let visit = (try? context.fetch(FetchDescriptor<SiteVisit>(
+                  predicate: #Predicate<SiteVisit> { $0.id == visitId }
+              )))?.first else {
+            appState.presentAccessDenied(message: "This site visit is no longer available.")
+            return
+        }
+        let companyId = visit.companyId
+        guard let leadId = visit.opportunityId?.lowercased(), !leadId.isEmpty else {
+            rootSiteVisitCapture = RootSiteVisitCaptureRequest(visitId: visitId, lead: nil)
+            return
+        }
+        if let localLead = (try? context.fetch(FetchDescriptor<Opportunity>(
+            predicate: #Predicate<Opportunity> { $0.id == leadId }
+        )))?.first, !localLead.isDeleted {
+            rootSiteVisitCapture = RootSiteVisitCaptureRequest(visitId: visitId, lead: localLead)
+            return
+        }
+        let userId = dataController.currentUser?.id ?? ""
+        if let cached = CalendarSiteVisitLeadCache.shared
+            .load(userId: userId, companyId: companyId)
+            .first(where: { $0.opportunityId == leadId }) {
+            rootSiteVisitCapture = RootSiteVisitCaptureRequest(
+                visitId: visitId,
+                lead: RootSiteVisitCaptureRequest.leadSnapshot(from: cached, companyId: companyId)
+            )
+            return
+        }
+
+        rootSiteVisitCaptureTask?.cancel()
+        rootSiteVisitCaptureTask = Task { @MainActor in
+            let resolution = await CalendarSiteVisitLeadResolver().refreshBriefs(
+                visits: [CalendarSiteVisitBriefRequest(siteVisitId: visitId, opportunityId: leadId)],
+                userId: userId,
+                companyId: companyId
+            )
+            guard !Task.isCancelled, rootSiteVisitCapture == nil else { return }
+            if let readable = resolution.readableSiteVisitIds, !readable.contains(visitId.lowercased()) {
+                appState.presentAccessDenied(message: "This site visit is no longer available.")
+                return
+            }
+            rootSiteVisitCapture = RootSiteVisitCaptureRequest(
+                visitId: visitId,
+                lead: resolution.detailsByOpportunityId[leadId].map {
+                    RootSiteVisitCaptureRequest.leadSnapshot(from: $0, companyId: companyId)
+                }
+            )
+        }
+    }
+
+    /// Heads-up / reminder. With the Leads tab the lead opens (unchanged);
+    /// without it — the crew member the visit is assigned to — Schedule opens
+    /// on the visit's day instead of an access-denied lead.
+    private func handleSiteVisitReminder(_ notification: Notification) {
+        let leadId = Self.relayId(notification.userInfo?[SiteVisitPushRoute.leadIdKey])
+        let siteVisitId = Self.relayId(notification.userInfo?[SiteVisitPushRoute.siteVisitIdKey])
+        guard leadId != nil || siteVisitId != nil else { return }
+        appState.clearNavigationOccluders()
+        if notification.userInfo?[DeepLinkCoordinator.deepLinkIdUserInfoKey] != nil {
+            DeepLinkCoordinator.shared.clear()
+        }
+        if hasLeadsAccess, let leadId, let idx = leadsTabIndex {
+            print("[PUSH_NAVIGATION] Site-visit reminder → lead \(leadId)")
+            appState.pendingLeadDeepLinkId = leadId
+            selectTab(idx, with: OPSStyle.Animation.fast)
+            return
+        }
+        let day = SiteVisitAccess.reminderFocusDate(
+            leadId: leadId,
+            siteVisitId: siteVisitId,
+            userId: dataController.currentUser?.id,
+            candidates: localSiteVisitCandidates(leadId: leadId, siteVisitId: siteVisitId)
+        )
+        print("[PUSH_NAVIGATION] Site-visit reminder → Schedule (\(day.map { "\($0)" } ?? "current day"))")
+        if let day {
+            appState.pendingScheduleFocusDate = day
+        }
+        selectTab(scheduleTabIndex, with: OPSStyle.Animation.fast)
+    }
 
     /// Maps a tab index to its `TabName` for analytics. Extracted from `body`
     /// because the inline closure form pushed the type-checker over its

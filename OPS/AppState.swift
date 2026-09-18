@@ -132,6 +132,17 @@ class AppState: ObservableObject {
     /// LeadsTabView drains it exactly like the lead deep link.
     @Published var pendingSiteVisitStartLeadId: String? = nil
 
+    /// The exact visit a START / RESUME intent names, when it names one (the
+    /// calendar card and the push both carry it). Set together with
+    /// `pendingSiteVisitStartLeadId` and drained with it, so the leads tab's
+    /// capture resumes THAT visit rather than the lead's newest open one.
+    @Published var pendingSiteVisitStartVisitId: String? = nil
+
+    /// A day the Schedule tab should open on — set when a site-visit heads-up
+    /// is tapped by a user without the Leads tab (CREW SITE VISITS P1).
+    /// ScheduleView drains it into its calendar's selected date.
+    @Published var pendingScheduleFocusDate: Date? = nil
+
     /// A BOOK-a-time intent headed for the leads tab's booking sheet — set by
     /// the appointment-review rail row's SET THE TIME action (bug 74bbb5b7).
     /// Drained exactly like the two batons above; the sheet is state-aware, so

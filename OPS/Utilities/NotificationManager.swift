@@ -1093,6 +1093,7 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
         let projectId = userInfo["projectId"] as? String
         let taskId = userInfo["taskId"] as? String
         let leadId = (userInfo["leadId"] as? String) ?? (userInfo["opportunityId"] as? String)
+        let siteVisitId = userInfo["siteVisitId"] as? String
         let screen = userInfo["screen"] as? String
         let type = userInfo["type"] as? String
         let deepLinkType = userInfo["deep_link_type"] as? String
@@ -1104,15 +1105,17 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
         // START push fell through to the bare-leadId branch — opening the lead
         // instead of capture. Mirror AppDelegate.onClick, coordinator-backed so
         // a cold launch cannot drop the intent (bug c2946efc).
-        if deepLinkType == "site_visit_start", let leadId = leadId {
+        // CREW SITE VISITS P1: the payload's siteVisitId lets an assignee land
+        // on the exact visit; a heads-up without the Leads tab opens Schedule.
+        if let kind = SiteVisitPushRoute.kind(deepLinkType: deepLinkType, type: type),
+           let link = SiteVisitPushRoute.coordinatorLink(kind: kind, leadId: leadId, siteVisitId: siteVisitId) {
             Task { @MainActor in
-                DeepLinkCoordinator.shared.receive(entity: "site-visit-start", id: leadId, scheme: "push")
-            }
-            return
-        }
-        if deepLinkType == "site_visit_heads_up", let leadId = leadId {
-            Task { @MainActor in
-                DeepLinkCoordinator.shared.receive(entity: "leads", id: leadId, scheme: "push")
+                DeepLinkCoordinator.shared.receive(
+                    entity: link.entity,
+                    id: link.id,
+                    scheme: "push",
+                    extraUserInfo: link.extraUserInfo
+                )
             }
             return
         }
@@ -1239,19 +1242,29 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
              "opportunity_created", "opportunity_updated", "opportunity_follow_up_due":
             routeToLeadOrJobBoard(leadId: leadId)
         case "site_visit_start":
-            // Straight into capture via the leads tab's relay — the intent
-            // was chosen at the tap.
+            // Straight into capture via the START relay — the intent was
+            // chosen at the tap. MainTabView resolves Leads tab vs. assignee.
             if let leadId = leadId, !leadId.isEmpty {
                 NotificationCenter.default.post(
-                    name: Notification.Name("StartSiteVisit"),
+                    name: SiteVisitPushRoute.startRelayName,
                     object: nil,
-                    userInfo: ["leadId": leadId]
+                    userInfo: SiteVisitPushRoute.userInfo(leadId: leadId, siteVisitId: nil)
                 )
             } else {
                 routeToLeadOrJobBoard(leadId: leadId)
             }
         case "site_visit_heads_up", "site_visit_reminder":
-            routeToLeadOrJobBoard(leadId: leadId)
+            // The lead with the Leads tab, else Schedule — never a dead
+            // access-denied lead for the crew member the visit is assigned to.
+            if let leadId = leadId, !leadId.isEmpty {
+                NotificationCenter.default.post(
+                    name: SiteVisitPushRoute.reminderRelayName,
+                    object: nil,
+                    userInfo: SiteVisitPushRoute.userInfo(leadId: leadId, siteVisitId: nil)
+                )
+            } else {
+                routeToLeadOrJobBoard(leadId: leadId)
+            }
         case "assignment", "update", "completion", "projectCompletion":
             if let projectId = projectId {
                 NotificationCenter.default.post(

@@ -68,6 +68,13 @@ struct SiteVisitCaptureView: View {
                         modelContext: modelContext,
                         entryIntent: resumingSiteVisitId.map { .resume(visitId: $0) } ?? .newVisit
                     )
+                    // Lead authority gates every binding-shaped action; installed
+                    // before the load so a missing resume target is never
+                    // replaced by a visit this operator cannot create.
+                    vm.leadPolicyProvider = { PermissionStore.shared.leadAccessPolicy }
+                    vm.walkUpAuthorityProvider = {
+                        SiteVisitAccess.canStartWalkUp(permissionStore: PermissionStore.shared)
+                    }
                     vm.loadOrCreateVisit()
                     if let initialSiteVisitType {
                         vm.selectSiteVisitType(initialSiteVisitType)
@@ -397,15 +404,21 @@ private struct SiteVisitCaptureConsole: View {
             Button("SAVE DRAFT & CLOSE") {
                 if viewModel.saveDraft() { onClose() }
             }
-            Button("DISCARD VISIT", role: .destructive) {
-                viewModel.discardVisit()
-                guard viewModel.errorMessage == nil else { return }
-                UINotificationFeedbackGenerator().notificationOccurred(.warning)
-                onClose()
+            // Discarding tombstones the visit — lead authority on a linked
+            // visit. An assignee saves and closes; they never delete the job.
+            if viewModel.captureGates.canDiscardVisit {
+                Button("DISCARD VISIT", role: .destructive) {
+                    viewModel.discardVisit()
+                    guard viewModel.errorMessage == nil else { return }
+                    UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                    onClose()
+                }
             }
             Button("KEEP CAPTURING", role: .cancel) {}
         } message: {
-            Text("Your draft is saved on this device — pick it back up anytime. Or discard it for good.")
+            Text(viewModel.captureGates.canDiscardVisit
+                 ? "Your draft is saved on this device — pick it back up anytime. Or discard it for good."
+                 : "Your draft is saved on this device — pick it back up anytime.")
         }
         .errorToast($viewModel.errorMessage, label: Feedback.Err.operationFailed)
     }
@@ -1276,9 +1289,13 @@ private struct SiteVisitIdentityPanel: View {
 
             if isExpanded {
                 searchField
-                suggestionList
+                if gates.canSearchLeads {
+                    suggestionList
+                }
 
-                if boundDisplayName == nil {
+                // Import fills this visit's own draft; a lead-bound visit
+                // already knows who it is for.
+                if boundDisplayName == nil && !viewModel.hasBoundOpportunity {
                     importContactsButton
                 }
 
@@ -1445,6 +1462,12 @@ private struct SiteVisitIdentityPanel: View {
         .accessibilityLabel("Lead and client details")
     }
 
+    /// Lead-authority gates for this visit. Without lead edit the binding is
+    /// read-only: the bound lead shows, with no clear, search or attach.
+    private var gates: SiteVisitCaptureGates {
+        viewModel.captureGates
+    }
+
     private var boundDisplayName: String? {
         if viewModel.hasBoundOpportunity {
             return viewModel.currentOpportunity?.displayContactName
@@ -1473,17 +1496,20 @@ private struct SiteVisitIdentityPanel: View {
 
                 Spacer(minLength: 0)
 
-                Button(action: clearSelection) {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 18, weight: .regular))
-                        .foregroundColor(OPSStyle.Colors.text3)
-                        .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
-                        .contentShape(Rectangle())
+                if gates.canChangeBinding {
+                    Button(action: clearSelection) {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 18, weight: .regular))
+                            .foregroundColor(OPSStyle.Colors.text3)
+                            .frame(width: OPSStyle.Layout.touchTargetMin, height: OPSStyle.Layout.touchTargetMin)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Clear linked lead or client")
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Clear linked lead or client")
             }
             .padding(.leading, OPSStyle.Layout.spacing3)
+            .padding(.trailing, gates.canChangeBinding ? 0 : OPSStyle.Layout.spacing3)
             .frame(height: 48)
             .background(
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
@@ -1493,7 +1519,7 @@ private struct SiteVisitIdentityPanel: View {
                 RoundedRectangle(cornerRadius: OPSStyle.Layout.buttonRadius, style: .continuous)
                     .strokeBorder(OPSStyle.Colors.oliveLineM, lineWidth: 1)
             )
-        } else {
+        } else if gates.canSearchLeads {
             HStack(spacing: OPSStyle.Layout.spacing2_5) {
                 Image(systemName: "magnifyingglass")
                     .font(.system(size: 16, weight: .regular))
@@ -1597,7 +1623,7 @@ private struct SiteVisitIdentityPanel: View {
 
             Spacer(minLength: OPSStyle.Layout.spacing1)
 
-            if !viewModel.hasBoundOpportunity {
+            if !viewModel.hasBoundOpportunity && gates.canCreateLead {
                 Button {
                     Task {
                         commitDraft()
@@ -1745,6 +1771,7 @@ private struct SiteVisitIdentityPanel: View {
     }
 
     private func apply(_ suggestion: SiteVisitIdentitySuggestion) {
+        guard gates.canChangeBinding else { return }
         switch suggestion.source {
         case .lead(let lead):
             viewModel.reassignVisit(to: lead)
@@ -2414,6 +2441,7 @@ private struct SiteVisitReviewSheet: View {
                     VStack(alignment: .leading, spacing: OPSStyle.Layout.spacing3) {
                         summaryCard
                         if viewModel.hasBoundOpportunity && viewModel.canComplete,
+                           viewModel.captureGates.canMoveLeadStage,
                            stageDecision?.currentStage.isTerminal == false {
                             stageCard
                         }
@@ -2508,7 +2536,11 @@ private struct SiteVisitReviewSheet: View {
                     .lineLimit(3)
             }
 
-            if !viewModel.hasBoundOpportunity {
+            // Linking a lead only matters to someone who can then create the
+            // project; a crew member finishing a walk-up is not asked.
+            if !viewModel.hasBoundOpportunity,
+               viewModel.captureGates.canCreateLead,
+               viewModel.captureGates.canCreateProject {
                 leadLinkPrompt
             }
         }
@@ -2679,6 +2711,7 @@ private struct SiteVisitReviewSheet: View {
         viewModel.hasProjectEvidence
         && viewModel.hasBoundOpportunity
         && viewModel.missingRequiredChecklistAnswers.isEmpty
+        && viewModel.captureGates.canCreateProject
     }
 
     private func reviewValue(for answer: SiteVisitChecklistAnswer) -> String {

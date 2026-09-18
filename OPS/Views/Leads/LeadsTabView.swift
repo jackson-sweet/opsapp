@@ -92,6 +92,9 @@ struct LeadsTabView: View {
     @State private var activeSheet: LeadsSheet?
     @State private var footerStage: PipelineStage?
     @State private var activeSiteVisitLead: Opportunity?
+    /// The exact visit a relayed START / RESUME names (calendar card, push).
+    /// Nil for every on-tab START, which keeps the lead's own resolution.
+    @State private var activeSiteVisitResumeId: String?
 
     /// The NOW/BOOK branch (spec §4.1). Every visit affordance on this tab
     /// funnels here instead of straight into the capture cover: START NOW
@@ -299,7 +302,10 @@ struct LeadsTabView: View {
             .fullScreenCover(item: $deckRequest) { request in
                 deckBuilder(request)
             }
-            .fullScreenCover(item: $activeSiteVisitLead) { lead in
+            .fullScreenCover(
+                item: $activeSiteVisitLead,
+                onDismiss: { activeSiteVisitResumeId = nil }
+            ) { lead in
                 SiteVisitCaptureView(
                     opportunity: lead,
                     onCreateProject: { convertedLead in
@@ -307,7 +313,8 @@ struct LeadsTabView: View {
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                             activeSheet = .convert(convertedLead)
                         }
-                    }
+                    },
+                    resumingSiteVisitId: activeSiteVisitResumeId
                 )
                 .environmentObject(dataController)
             }
@@ -844,6 +851,8 @@ struct LeadsTabView: View {
     private func resolvePendingSiteVisitStartIfNeeded() async {
         guard let leadId = appState.pendingSiteVisitStartLeadId, !leadId.isEmpty else { return }
         appState.pendingSiteVisitStartLeadId = nil
+        let visitId = appState.pendingSiteVisitStartVisitId
+        appState.pendingSiteVisitStartVisitId = nil
 
         // Never stomp an in-progress capture: a START tap for visit B while
         // visit A's capture cover is open drops the intent (the crew member is
@@ -852,6 +861,7 @@ struct LeadsTabView: View {
         guard activeSiteVisitLead == nil else { return }
 
         if let lead = viewModel.allOpportunities.first(where: { $0.id == leadId }) {
+            activeSiteVisitResumeId = visitId
             activeSiteVisitLead = lead
             return
         }
@@ -861,6 +871,7 @@ struct LeadsTabView: View {
             let dto = try await repo.fetchOne(leadId)
             let lead = dto.toModel()
             guard !lead.isDeleted else { return }
+            activeSiteVisitResumeId = visitId
             activeSiteVisitLead = lead
         } catch {
             print("[Pipeline] START-visit lead \(leadId) not resolvable: \(error)")

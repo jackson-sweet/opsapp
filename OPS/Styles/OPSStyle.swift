@@ -1187,6 +1187,7 @@ enum OPSStyle {
         static let invoiceReceipt   = "receipt"
         static let paymentDollar    = "dollarsign.circle.fill"
         static let siteVisitPin     = "mappin.circle.fill"
+        static let siteVisitCapture = "camera.viewfinder"                     // Start / book a site visit (FAB, permission category)
         static let route            = "arrow.triangle.turn.up.right.circle"   // THE icon for driving directions / navigate
         static let activityBubble   = "bubble.left.and.text.bubble.right.fill"
         static let followUpAlarm    = "alarm.fill"

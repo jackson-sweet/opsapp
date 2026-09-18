@@ -225,6 +225,12 @@ class CalendarViewModel: ObservableObject {
     private var calendarLoadTask: Task<Void, Never>?
     private var siteVisitLeadScopeKey: String?
     private let siteVisitLeadResolver = CalendarSiteVisitLeadResolver()
+    /// Every booked visit the local snapshot resolved for the current period,
+    /// before the server's readable-set verdicts are applied.
+    private var resolvedBookedVisitsForCurrentPeriod: [SiteVisit] = []
+    /// Server verdicts on which booked visits this user can still read
+    /// (`read_site_visit_briefs`). Reset with the operator/company scope.
+    private var siteVisitReadability = CalendarSiteVisitReadability()
 
     // Get scheduled tasks for a specific date — reads from week cache
     func scheduledTasks(for date: Date) -> [ProjectTask] {
@@ -605,31 +611,54 @@ class CalendarViewModel: ObservableObject {
         applyWeekCache(snapshot.week, resolving: resolvedTasks)
         cachedAuxiliaryWindow = snapshot.auxiliary.window
         userEventsForCurrentPeriod = resolvedEvents.sorted { $0.startDate < $1.startDate }
-        bookedVisitsForCurrentPeriod = resolvedVisits.sorted {
-            ($0.scheduledAt ?? .distantFuture) < ($1.scheduledAt ?? .distantFuture)
-        }
-
         let leadScopeKey = "\(user.id.lowercased())|\(companyId.lowercased())"
         if siteVisitLeadScopeKey != leadScopeKey {
             siteVisitLeadDetailsByOpportunityId = [:]
+            siteVisitReadability.reset()
             siteVisitLeadScopeKey = leadScopeKey
         }
+        resolvedBookedVisitsForCurrentPeriod = resolvedVisits.sorted {
+            ($0.scheduledAt ?? .distantFuture) < ($1.scheduledAt ?? .distantFuture)
+        }
+        publishReadableBookedVisits()
+
         let visibleOpportunityIds = Set(resolvedVisits.compactMap(\.opportunityId))
         siteVisitLeadDetailsByOpportunityId = siteVisitLeadDetailsByOpportunityId.filter {
             visibleOpportunityIds.contains($0.key)
         }
         publishSelectedDate()
 
-        if !visibleOpportunityIds.isEmpty {
-            let details = await siteVisitLeadResolver.refreshDetails(
-                opportunityIds: Array(visibleOpportunityIds),
+        // One visit-keyed brief read resolves the lead details (an assignee
+        // holds no opportunities grant) AND which of these visits the user can
+        // still read — the phone never prunes rows that fell out of reach.
+        if !resolvedVisits.isEmpty {
+            let requests = resolvedVisits.map {
+                CalendarSiteVisitBriefRequest(siteVisitId: $0.id, opportunityId: $0.opportunityId)
+            }
+            let resolution = await siteVisitLeadResolver.refreshBriefs(
+                visits: requests,
                 userId: user.id,
                 companyId: companyId
             )
             guard !Task.isCancelled, generation == calendarLoadGeneration else { return }
-            siteVisitLeadDetailsByOpportunityId = details
+            siteVisitLeadDetailsByOpportunityId = resolution.detailsByOpportunityId
+            siteVisitReadability.record(
+                readableSiteVisitIds: resolution.readableSiteVisitIds,
+                requestedSiteVisitIds: requests.map(\.siteVisitId)
+            )
+            publishReadableBookedVisits()
         }
         calendarLoadTask = nil
+    }
+
+    /// Publish the period's booked visits minus the ones the server says this
+    /// user can no longer read. Offline, the last successful verdicts stand;
+    /// before any, everything the local store holds shows.
+    private func publishReadableBookedVisits() {
+        bookedVisitsForCurrentPeriod = siteVisitReadability.visible(
+            resolvedBookedVisitsForCurrentPeriod,
+            siteVisitId: { $0.id }
+        )
     }
 
     /// Republish the selected day's task/project ids from the cache. Shared tail of

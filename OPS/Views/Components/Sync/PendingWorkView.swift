@@ -570,6 +570,9 @@ struct PendingWorkScreen: View {
     @State private var now = Date()
     @State private var exportPayload: PendingWorkExportPayload?
     @State private var resumingDraft = false
+    /// The draft's own visit, resumed exactly (never a fresh walk-up an
+    /// assignee without walk-up authority could not save).
+    @State private var resumingDraftVisitId: String?
     @State private var openingDesign: DeckDesign?
 
     /// Store changes drive the inventory; see `RecoveryRefreshMonitor`. Owned by
@@ -629,7 +632,8 @@ struct PendingWorkScreen: View {
         .fullScreenCover(isPresented: $resumingDraft) {
             SiteVisitCaptureView(
                 opportunity: nil,
-                onCreateProject: { _ in resumingDraft = false }
+                onCreateProject: { _ in resumingDraft = false },
+                resumingSiteVisitId: resumingDraftVisitId
             )
             .environmentObject(dataController)
         }
@@ -930,10 +934,11 @@ struct PendingWorkScreen: View {
     // MARK: - Open draft / design
 
     private func openDraft(_ draft: DraftSnapshot) {
-        // No id-targeted resume hook exists for the FAB capture flow, and its
-        // owner (FloatingActionMenu) is out of scope. Reopening the unlinked
-        // capture surfaces the newest content-bearing visit for the operator to
-        // finish — the common single-draft case lands on this draft.
+        // Resume THIS draft's visit. The capture console's id-targeted resume
+        // opens it exactly — including a lead-linked visit assigned to a crew
+        // member (CREW SITE VISITS P1) — and never mints a replacement the
+        // operator has no authority to create.
+        resumingDraftVisitId = draft.siteVisitId
         resumingDraft = true
     }
 
